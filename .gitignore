@@ -424,3 +424,45 @@ FodyWeavers.xsd
 
 # Official VS Code C# Dev Kit Extension exclusion
 #*.lscache
+
+# ---------------------------------------------------------------------------
+# Temporary local NuGet packages (see nuget.config beside this file): builds of CodeBrix
+# libraries that are not on nuget.org yet, for the root solution and for samples/WorkSite.
+# ---------------------------------------------------------------------------
+/temp-packages/
+
+# ---------------------------------------------------------------------------
+# The FrontendBuilder library's Rust material
+# ---------------------------------------------------------------------------
+# cargo's build output from running `cargo test` on the shared crate in place, and from cargo
+# commands on the platform's crate set.
+src/CodeBrix.WebPlatform.FrontendBuilder/Rust/codebrix-webplatform/target/
+src/CodeBrix.WebPlatform.FrontendBuilder/Rust/platform-crates/target/
+
+# ---------------------------------------------------------------------------
+# samples/WorkSite
+# ---------------------------------------------------------------------------
+# Rust build output of the frontend.
+samples/WorkSite/frontend/target/
+# Tailwind's generated stylesheet (dx rewrites it on every build).
+samples/WorkSite/frontend/assets/tailwind.css
+# The built frontend, copied into the backend's static-file folder by FrontendBuilder.
+samples/WorkSite/backend/WorkSite.Api/wwwroot/*
+!samples/WorkSite/backend/WorkSite.Api/wwwroot/.gitkeep
+# Published backend, and other build artifacts FrontendBuilder writes.
+samples/WorkSite/artifacts/
+# Secrets for the local containers (see .env.example beside it).
+samples/WorkSite/.env
+# Build output written into the frontend when it is materialized (the platform's
+# FrontendBuilder library): the shared crate and the platform's crates (platform/), the client
+# code generated from the backend, and the cargo configuration that points cargo at the crates.
+samples/WorkSite/frontend/platform/
+samples/WorkSite/frontend/src/generated/
+samples/WorkSite/frontend/.cargo/
+
+# The vendored crate folders and the build tools' source are exact copies of what crates.io
+# published (the dioxus-cli source with the recorded patches). Every vendored file has a recorded
+# checksum and cargo refuses to build when one is missing, so NOTHING above may hide a file inside
+# them. These lines must stay last.
+!src/CodeBrix.WebPlatform.FrontendBuilder/Rust/vendor/**
+!tools/dx-native-tools/sources/**
