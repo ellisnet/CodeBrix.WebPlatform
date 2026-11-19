@@ -1,0 +1,6 @@
+{
+  "git": {
+    "sha1": "706665c87413b3255bf4adefa0bcc152b29c077d"
+  },
+  "path_in_vcs": "crates/ansi-to-html"
+}

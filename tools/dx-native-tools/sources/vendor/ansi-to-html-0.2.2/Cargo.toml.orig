@@ -1,0 +1,25 @@
+[package]
+name = "ansi-to-html"
+version = "0.2.2"
+authors = ["Ludwig Stecher <ludwig.stecher@gmx.de>"]
+description = "ANSI escape codes to HTML converter"
+categories = ["command-line-interface", "encoding"]
+repository = "https://github.com/Aloso/to-html"
+documentation = "https://docs.rs/ansi-to-html"
+homepage = "https://github.com/Aloso/to-html/tree/master/crates/ansi-to-html"
+readme = "README.md"
+edition = "2021"
+license = "MIT"
+keywords = ["color", "cli", "terminal", "html"]
+
+[dependencies]
+regex = "1.7.3"
+thiserror = "1.0.40"
+
+[features]
+default = []
+# A now unused feature that will be removed in a future release
+lazy-init = []
+
+[dev-dependencies]
+insta = "1.29.0"
