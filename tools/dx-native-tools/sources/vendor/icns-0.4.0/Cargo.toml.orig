@@ -1,0 +1,19 @@
+[package]
+name = "icns"
+version = "0.4.0"
+authors = ["Matthew D. Steele <mdsteele@alum.mit.edu>"]
+description = "A library for encoding/decoding Apple Icon Image (.icns) files."
+repository = "https://github.com/mdsteele/rust-icns"
+keywords = ["icns", "icon", "image"]
+license = "MIT"
+readme = "README.md"
+
+[dependencies]
+byteorder = "1"
+png = { version = "0.18", optional = true }
+hayro-jpeg2000 = { version = "0.3.1", default-features = false, features = ["std", "simd"], optional = true}
+
+[features]
+default = ["pngio", "jp2io"]
+pngio = ["png"]
+jp2io = ["hayro-jpeg2000"]
