@@ -1,0 +1,1494 @@
+use std::{
+    borrow::Cow,
+    fs,
+    io::{self, Read},
+    path::{Path, PathBuf},
+    str::FromStr,
+};
+
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
+use digest::Digest;
+use num_traits::FromPrimitive;
+
+use crate::{CompressionType, Nevra, constants::*, decompress_stream, errors::*};
+
+#[cfg(feature = "signature-pgp")]
+use crate::signature::pgp::Verifier;
+#[cfg(feature = "signature-meta")]
+use crate::{Timestamp, signature};
+#[cfg(feature = "signature-pgp")]
+use pgp::base64::{Base64Decoder, Base64Reader};
+#[cfg(feature = "signature-meta")]
+use std::fmt::Debug;
+
+use super::Lead;
+use super::headers::*;
+use super::payload;
+
+#[cfg(unix)]
+fn symlink(original: impl AsRef<Path>, link: impl AsRef<Path>) -> Result<(), Error> {
+    std::os::unix::fs::symlink(original, link)?;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn symlink(original: impl AsRef<Path>, link: impl AsRef<Path>) -> Result<(), Error> {
+    let original = original.as_ref();
+
+    let Ok(metadata) = original.metadata() else {
+        // Windows symlink creation requires the target to exist and be accessible.
+        // Relative symlinks (e.g., "../dir") or targets outside the extraction directory
+        // will fail, so we silently skip them to allow extraction to continue.
+        // This matches RPM's behavior where symlinks are informational metadata.
+        return Ok(());
+    };
+
+    if metadata.is_dir() {
+        std::os::windows::fs::symlink_dir(original, link)?;
+    } else {
+        std::os::windows::fs::symlink_file(original, link)?;
+    }
+
+    Ok(())
+}
+
+#[cfg(not(any(unix, windows)))]
+fn symlink(_original: &Path, _link: &Path) -> Result<(), Error> {
+    Err(Error::UnsupportedSymlink)
+}
+
+/// A complete rpm file.
+///
+/// Can either be created using the [`PackageBuilder`](crate::PackageBuilder)
+/// or used with [`parse`](`self::Package::parse`) to obtain from a file.
+#[derive(Clone, Debug)]
+pub struct Package {
+    /// Header and metadata structures.
+    ///
+    /// Contains the constant lead as well as the metadata store.
+    pub metadata: PackageMetadata,
+    /// The compressed or uncompressed files.
+    pub content: Vec<u8>,
+}
+
+impl Package {
+    /// Open and parse a file at the provided path as an RPM package
+    pub fn open(path: impl AsRef<Path>) -> Result<Self, Error> {
+        let rpm_file = fs::File::open(path.as_ref())?;
+        let mut buf_reader = io::BufReader::new(rpm_file);
+        Self::parse(&mut buf_reader)
+    }
+
+    /// Parse an RPM package from an existing buffer
+    pub fn parse(input: &mut impl io::BufRead) -> Result<Self, Error> {
+        let metadata = PackageMetadata::parse(input)?;
+        let mut content = Vec::new();
+        input.read_to_end(&mut content)?;
+        Ok(Package { metadata, content })
+    }
+
+    /// Write the RPM package to a buffer
+    pub fn write(&self, out: &mut impl io::Write) -> Result<(), Error> {
+        self.metadata.write(out)?;
+        out.write_all(&self.content)?;
+        Ok(())
+    }
+
+    /// Write the RPM package to a file
+    pub fn write_file(&self, path: impl AsRef<Path>) -> Result<(), Error> {
+        self.write(&mut io::BufWriter::new(fs::File::create(path)?))
+    }
+
+    /// Write the RPM package to a file or directory
+    ///
+    /// If `path` is an existing directory, the package will be written with an auto-generated
+    /// filename based on the package NEVRA (name-version-release.arch.rpm).
+    /// Otherwise, `path` is treated as a file path (ensuring it has a .rpm extension).
+    ///
+    /// Returns the actual path where the package was written.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let pkg = rpm::PackageBuilder::new("foo", "1.0.0", "MIT", "x86_64", "test").build()?;
+    ///
+    /// // Write to a directory with auto-generated name
+    /// let path = pkg.write_to("/tmp")?;
+    /// // Creates: /tmp/foo-1.0.0-1.x86_64.rpm
+    ///
+    /// // Write to a specific file
+    /// let path = pkg.write_to("/tmp/custom-name.rpm")?;
+    /// // Creates: /tmp/custom-name.rpm
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn write_to(&self, path: impl AsRef<Path>) -> Result<PathBuf, Error> {
+        let path = path.as_ref();
+        let filename = format!("{}.rpm", self.metadata.get_nevra()?.nvra());
+
+        let output_path = if fs::metadata(path).is_ok_and(|m| m.is_dir()) {
+            path.join(filename)
+        } else {
+            path.with_extension("rpm")
+        };
+
+        self.write_file(&output_path)?;
+        Ok(output_path)
+    }
+
+    /// Iterate over the file contents of the package payload
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let package = rpm::Package::open("tests/assets/RPMS/v4/rpm-basic-2.3.4-5.el9.noarch.rpm")?;
+    /// for entry in package.files()? {
+    ///     let file = entry?;
+    ///     // do something with file.content
+    ///     println!("{} is {} bytes", file.metadata.path.display(), file.content.len());
+    /// }
+    /// # Ok(()) }
+    /// ```
+    pub fn files(&self) -> Result<FileIterator<'_>, Error> {
+        let file_entries = self.metadata.get_file_entries()?;
+        let archive = decompress_stream(
+            self.metadata.get_payload_compressor()?,
+            io::Cursor::new(&self.content),
+        )?;
+
+        Ok(FileIterator {
+            file_entries,
+            archive,
+            count: 0,
+        })
+    }
+
+    /// Extract all contents of the package payload to a given directory.
+    ///
+    /// # Implementation
+    ///
+    /// The if the directory is nested, its parent directories must already exist. If the
+    /// directory itself already exists, the operation will fail. All extracted files will be
+    /// dropped relative to the provided directory (it will not install any files).
+    ///
+    /// ## Platform-specific behavior
+    ///
+    /// **Windows**: Symbolic links are only created if their target exists at extraction time.
+    /// Symlinks with relative targets (e.g., `../dir`) or targets outside the extraction
+    /// directory will be silently skipped. This is because Windows symlink creation requires
+    /// the target to exist and be accessible.
+    ///
+    /// **Unix**: All symbolic links are created regardless of whether their target exists.
+    ///
+    /// # Examples
+    ///
+    /// ```text
+    /// let package = rpm::Package::open("tests/assets/RPMS/v4/rpm-basic-2.3.4-5.el9.noarch.rpm")?;
+    /// package.extract(&package.metadata.get_name()?)?;
+    /// ```
+    pub fn extract(&self, dest: impl AsRef<Path>) -> Result<(), Error> {
+        fs::create_dir(&dest)?;
+
+        let dirs = self
+            .metadata
+            .header
+            .get_entry_data_as_string_array(IndexTag::RPMTAG_DIRNAMES)?;
+
+        // pull every base directory name in the package and create the directory in advance
+        for dir in &dirs {
+            let dir_path = dest
+                .as_ref()
+                .join(Path::new(dir).strip_prefix("/").unwrap_or(dest.as_ref()));
+            fs::create_dir_all(&dir_path)?;
+        }
+
+        let mut archive = decompress_stream(
+            self.metadata.get_payload_compressor()?,
+            io::Cursor::new(&self.content),
+        )?;
+        let file_entries = self.metadata.get_file_entries()?;
+
+        for file_entry in file_entries.iter() {
+            // Ghost files are not present in the payload archive and should not be created
+            if file_entry.flags.contains(FileFlags::GHOST) {
+                continue;
+            }
+
+            let mut entry_reader = payload::Reader::new(&mut archive, &file_entries)?;
+            if entry_reader.is_trailer() {
+                return Ok(());
+            }
+            let file_path = dest
+                .as_ref()
+                .join(file_entry.path.strip_prefix("/").unwrap_or(dest.as_ref()));
+            match file_entry.mode.file_type() {
+                FileType::Dir => {
+                    fs::create_dir_all(&file_path)?;
+                    #[cfg(unix)]
+                    {
+                        let perms =
+                            fs::Permissions::from_mode(file_entry.mode.permissions().into());
+                        fs::set_permissions(&file_path, perms)?;
+                    }
+                }
+                FileType::Regular => {
+                    let mut f = fs::File::create(&file_path)?;
+                    io::copy(&mut entry_reader, &mut f)?;
+                    #[cfg(unix)]
+                    {
+                        let perms =
+                            fs::Permissions::from_mode(file_entry.mode.permissions().into());
+                        f.set_permissions(perms)?;
+                    }
+                }
+                FileType::SymbolicLink => {
+                    // broken symlinks (common for debuginfo handling) are perceived as not existing by "exists()"
+                    if file_path.exists() || file_path.symlink_metadata().is_ok() {
+                        fs::remove_file(&file_path)?;
+                    }
+                    symlink(&file_entry.linkto, &file_path)?;
+                }
+                // Skip file types we don't handle (e.g. device nodes, FIFOs, sockets)
+                _ => {}
+            }
+            entry_reader.finish()?;
+        }
+
+        Ok(())
+    }
+
+    /// Generate a fresh, unsigned signature header
+    #[cfg(feature = "signature-meta")]
+    pub fn clear_signatures(&mut self) -> Result<(), Error> {
+        // create a temporary byte repr of the header
+        let mut header_bytes = Vec::<u8>::with_capacity(1024);
+        self.metadata.header.write(&mut header_bytes)?;
+
+        self.metadata.signature = SignatureHeaderBuilder::from_existing(&self.metadata.signature)?
+            .clear_signatures()
+            .calculate_digests(&header_bytes)
+            .build()?;
+
+        Ok(())
+    }
+
+    /// Create package signatures using an external key and add them to the signature header
+    #[cfg(feature = "signature-meta")]
+    pub fn sign<S>(&mut self, signer: S) -> Result<(), Error>
+    where
+        S: signature::Signing<Signature = Vec<u8>>,
+    {
+        self.sign_with_timestamp(signer, Timestamp::now())
+    }
+
+    /// Create package signatures using an external key and provided timestamp.
+    /// Adds generated signatures to the signature header.
+    ///
+    /// This method is usually used for reproducible builds, otherwise you should
+    /// prefer using the [`sign`][Package::sign] method instead.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut package = rpm::Package::open("tests/assets/RPMS/v4/rpm-basic-2.3.4-5.el9.noarch.rpm")?;
+    /// let raw_secret_key = std::fs::read("./tests/assets/signing_keys/v4/rpm-testkey-v4-rsa4096.secret")?;
+    /// let signer = rpm::signature::pgp::Signer::from_asc_bytes(&raw_secret_key)?;
+    /// // It's recommended to use timestamp of last commit in your VCS
+    /// let source_date = 1_600_000_000;
+    /// package.sign_with_timestamp(signer, source_date)?;
+    /// # Ok(()) }
+    /// ```
+    #[cfg(feature = "signature-meta")]
+    pub fn sign_with_timestamp<S>(
+        &mut self,
+        signer: S,
+        t: impl TryInto<Timestamp, Error = impl Debug>,
+    ) -> Result<(), Error>
+    where
+        S: signature::Signing<Signature = Vec<u8>>,
+    {
+        let t = t.try_into().unwrap();
+        // create a temporary byte repr of the header
+        let mut header_bytes = Vec::<u8>::with_capacity(1024);
+        self.metadata.header.write(&mut header_bytes)?;
+
+        let header_signature = signer.sign(header_bytes.as_slice(), t)?;
+        let sig_header = SignatureHeaderBuilder::from_existing(&self.metadata.signature)?
+            .calculate_digests(&header_bytes)
+            .add_openpgp_signature(header_signature)
+            .build()?;
+
+        self.metadata.signature = sig_header;
+        Ok(())
+    }
+
+    /// Parse all PGP signature packets from the package's signature header.
+    #[cfg(feature = "signature-pgp")]
+    fn parse_signature_packets(&self) -> Result<Vec<pgp::packet::Signature>, Error> {
+        let openpgp_sigs = &self
+            .metadata
+            .signature
+            .get_entry_data_as_string_array(IndexSignatureTag::RPMSIGTAG_OPENPGP);
+
+        // If RPMSIGTAG_OPENPGP exists, then the other tags (which should contain the same info) are not checked
+        if let Ok(openpgp_sigs) = openpgp_sigs {
+            let mut packets = Vec::new();
+            for base64_sig in openpgp_sigs.iter() {
+                let mut signature = Vec::new();
+                let mut decoder = Base64Decoder::new(Base64Reader::new(base64_sig.as_bytes()));
+                decoder.read_to_end(&mut signature)?;
+                packets.push(Verifier::parse_signature(&signature)?);
+            }
+            Ok(packets)
+        } else {
+            let rsa_sig = self
+                .metadata
+                .signature
+                .get_entry_data_as_binary(IndexSignatureTag::RPMSIGTAG_RSA);
+            if let Ok(rsa_sig) = rsa_sig {
+                return Ok(vec![Verifier::parse_signature(rsa_sig)?]);
+            }
+
+            let eddsa_sig = self
+                .metadata
+                .signature
+                .get_entry_data_as_binary(IndexSignatureTag::RPMSIGTAG_DSA);
+            if let Ok(eddsa_sig) = eddsa_sig {
+                return Ok(vec![Verifier::parse_signature(eddsa_sig)?]);
+            }
+
+            let rpm_v3_sig = self
+                .metadata
+                .signature
+                .get_entry_data_as_binary(IndexSignatureTag::RPMSIGTAG_PGP);
+            if let Ok(rpm_v3_sig) = rpm_v3_sig {
+                return Ok(vec![Verifier::parse_signature(rpm_v3_sig)?]);
+            }
+
+            Err(Error::NoSignatureFound)
+        }
+    }
+
+    /// Return parsed information about each OpenPGP header signature in the package.
+    ///
+    /// Does not return legacy header + payload signatures (v3 signatures).
+    ///
+    /// Returns an empty `Vec` if the package is unsigned.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let pkg = rpm::Package::open("my-package.rpm")?;
+    ///
+    /// for sig in pkg.signatures()? {
+    ///     println!("Version: {:?}", sig.version());
+    ///     println!("Algorithm: {:?}", sig.algorithm());
+    ///     if let Some(fp) = sig.fingerprint() {
+    ///         println!("Fingerprint: {fp}");
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg(feature = "signature-pgp")]
+    pub fn signatures(&self) -> Result<Vec<signature::pgp::SignatureInfo>, Error> {
+        let packets = match self.parse_signature_packets() {
+            Ok(packets) => packets,
+            Err(Error::NoSignatureFound) => return Ok(Vec::new()),
+            Err(e) => return Err(e),
+        };
+
+        Ok(packets
+            .iter()
+            .map(signature::pgp::SignatureInfo::from_pgp_signature)
+            .collect())
+    }
+
+    // @todo: verify_signature() and verify_digests() don't provide any feedback on whether a signature/digest
+    //        was present and verified or whether it was not present at all.
+    // https://github.com/rpm-rs/rpm/issues/128
+
+    /// Verify the signature as present within the RPM package.
+    #[cfg(feature = "signature-meta")]
+    pub fn verify_signature<V>(&self, verifier: V) -> Result<(), Error>
+    where
+        V: signature::Verifying<Signature = Vec<u8>>,
+    {
+        let mut header_bytes = Vec::<u8>::with_capacity(1024);
+        self.metadata.header.write(&mut header_bytes)?;
+        self.verify_digests()?;
+
+        let openpgp_sigs = &self
+            .metadata
+            .signature
+            .get_entry_data_as_string_array(IndexSignatureTag::RPMSIGTAG_OPENPGP);
+
+        // If RPMSIGTAG_OPENPGP exists, then the other tags (which should contain the same info) are not checked
+        if let Ok(openpgp_signatures) = openpgp_sigs {
+            let mut last_err = None;
+            for base64_sig in openpgp_signatures.iter() {
+                let signature = decode_sig(base64_sig)?;
+                signature::echo_signature("signature_header(header only)", &signature);
+                match verifier.verify(header_bytes.as_slice(), &signature) {
+                    Ok(()) => return Ok(()),
+                    Err(e) => last_err = Some(e),
+                }
+            }
+
+            return Err(last_err.unwrap_or(Error::NoSignatureFound));
+        } else {
+            let rsa_sig = &self
+                .metadata
+                .signature
+                .get_entry_data_as_binary(IndexSignatureTag::RPMSIGTAG_RSA);
+            let eddsa_sig = &self
+                .metadata
+                .signature
+                .get_entry_data_as_binary(IndexSignatureTag::RPMSIGTAG_DSA);
+            let rpm_v3_sig = &self
+                .metadata
+                .signature
+                .get_entry_data_as_binary(IndexSignatureTag::RPMSIGTAG_PGP);
+
+            if !rsa_sig.is_ok() && !eddsa_sig.is_ok() && !rpm_v3_sig.is_ok() {
+                return Err(Error::NoSignatureFound);
+            }
+
+            if let Ok(signature_header_only) = eddsa_sig {
+                signature::echo_signature("signature_header(header only)", signature_header_only);
+                verifier.verify(header_bytes.as_slice(), signature_header_only)?;
+            }
+
+            if let Ok(signature_header_only) = rsa_sig {
+                signature::echo_signature("signature_header(header only)", signature_header_only);
+                verifier.verify(header_bytes.as_slice(), signature_header_only)?;
+            }
+
+            if let Ok(signature_header_and_content) = rpm_v3_sig {
+                signature::echo_signature(
+                    "signature_header(header and content)",
+                    signature_header_and_content,
+                );
+                let header_and_content_cursor =
+                    io::Cursor::new(&header_bytes).chain(io::Cursor::new(&self.content));
+                verifier.verify(header_and_content_cursor, signature_header_and_content)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Verify any digests which may be present in the RPM headers
+    pub fn verify_digests(&self) -> Result<(), Error> {
+        let mut header = Vec::<u8>::with_capacity(1024);
+        // make sure to not hash any previous signatures in the header
+        self.metadata.header.write(&mut header)?;
+
+        let md5_declared = self
+            .metadata
+            .signature
+            .get_entry_data_as_binary(IndexSignatureTag::RPMSIGTAG_MD5);
+        let sha1_declared = self
+            .metadata
+            .signature
+            .get_entry_data_as_string(IndexSignatureTag::RPMSIGTAG_SHA1);
+        let sha256_declared = self
+            .metadata
+            .signature
+            .get_entry_data_as_string(IndexSignatureTag::RPMSIGTAG_SHA256);
+        let sha3_256_declared = self
+            .metadata
+            .signature
+            .get_entry_data_as_string(IndexSignatureTag::RPMSIGTAG_SHA3_256);
+
+        if let Ok(md5_declared) = md5_declared {
+            let header_and_content_digest_md5 = {
+                let mut hasher = md5::Md5::default();
+                hasher.update(&header);
+                hasher.update(&self.content);
+                let hash_result = hasher.finalize();
+                hash_result.to_vec()
+            };
+            if md5_declared != header_and_content_digest_md5 {
+                return Err(Error::DigestMismatchError);
+            }
+        }
+
+        if let Ok(sha1_declared) = sha1_declared {
+            let header_digest_sha1 = hex::encode(sha1::Sha1::digest(header.as_slice()));
+            if sha1_declared != header_digest_sha1 {
+                return Err(Error::DigestMismatchError);
+            }
+        }
+
+        if let Ok(sha256) = sha256_declared {
+            let header_digest_sha256 = hex::encode(sha2::Sha256::digest(header.as_slice()));
+            if sha256 != header_digest_sha256 {
+                return Err(Error::DigestMismatchError);
+            }
+        }
+
+        if let Ok(sha3_256) = sha3_256_declared {
+            let header_digest_sha3_256 = hex::encode(sha3::Sha3_256::digest(header.as_slice()));
+            if sha3_256 != header_digest_sha3_256 {
+                return Err(Error::DigestMismatchError);
+            }
+        }
+
+        let payload_sha256 = self
+            .metadata
+            .header
+            .get_entry_data_as_string_array(IndexTag::RPMTAG_PAYLOADSHA256);
+        let payload_sha3_256 = self
+            .metadata
+            .header
+            .get_entry_data_as_string(IndexTag::RPMTAG_PAYLOAD_SHA3_256);
+        let payload_sha512 = self
+            .metadata
+            .header
+            .get_entry_data_as_string(IndexTag::RPMTAG_PAYLOAD_SHA512);
+
+        if let Ok(payload_sha256) = payload_sha256 {
+            let mut hasher = sha2::Sha256::default();
+            let payload_digest = {
+                hasher.update(self.content.as_slice());
+                hex::encode(hasher.finalize())
+            };
+            if payload_digest != payload_sha256[0] {
+                return Err(Error::DigestMismatchError);
+            }
+        }
+
+        if let Ok(payload_sha3_256) = payload_sha3_256 {
+            let mut hasher = sha3::Sha3_256::default();
+            let payload_digest = {
+                hasher.update(self.content.as_slice());
+                hex::encode(hasher.finalize())
+            };
+            if payload_digest != payload_sha3_256 {
+                return Err(Error::DigestMismatchError);
+            }
+        }
+
+        if let Ok(payload_sha512) = payload_sha512 {
+            let mut hasher = sha2::Sha512::default();
+            let payload_digest = {
+                hasher.update(self.content.as_slice());
+                hex::encode(hasher.finalize())
+            };
+            if payload_digest != payload_sha512 {
+                return Err(Error::DigestMismatchError);
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct PackageMetadata {
+    pub lead: Lead,
+    pub signature: Header<IndexSignatureTag>,
+    pub header: Header<IndexTag>,
+}
+
+impl PackageMetadata {
+    /// Open and parse PackageMetadata from the file at the provided path
+    pub fn open(path: impl AsRef<Path>) -> Result<Self, Error> {
+        let rpm_file = fs::File::open(path.as_ref())?;
+        let mut buf_reader = io::BufReader::new(rpm_file);
+        Self::parse(&mut buf_reader)
+    }
+
+    /// Parse PackageMetadata from the provided reader
+    pub fn parse(input: &mut impl io::BufRead) -> Result<Self, Error> {
+        let mut lead_buffer = [0; LEAD_SIZE as usize];
+        input.read_exact(&mut lead_buffer)?;
+        let lead = Lead::parse(&lead_buffer)?;
+        let signature_header = Header::parse_signature(input)?;
+        let header = Header::parse(input)?;
+
+        Ok(PackageMetadata {
+            lead,
+            signature: signature_header,
+            header,
+        })
+    }
+
+    /// Write the RPM header to a buffer
+    pub fn write(&self, out: &mut impl io::Write) -> Result<(), Error> {
+        self.lead.write(out)?;
+        self.signature.write_signature(out)?;
+        self.header.write(out)?;
+        Ok(())
+    }
+
+    /// Whether this package is a source package, or not
+    #[inline]
+    pub fn is_source_package(&self) -> bool {
+        self.header.entry_is_present(IndexTag::RPMTAG_SOURCEPACKAGE)
+    }
+
+    /// Get the package name
+    #[inline]
+    pub fn get_name(&self) -> Result<&str, Error> {
+        self.header.get_entry_data_as_string(IndexTag::RPMTAG_NAME)
+    }
+
+    /// Get the package epoch
+    #[inline]
+    pub fn get_epoch(&self) -> Result<u32, Error> {
+        self.header.get_entry_data_as_u32(IndexTag::RPMTAG_EPOCH)
+    }
+
+    /// Get the package version (the upstream version string)
+    #[inline]
+    pub fn get_version(&self) -> Result<&str, Error> {
+        self.header
+            .get_entry_data_as_string(IndexTag::RPMTAG_VERSION)
+    }
+
+    /// Get the package release
+    #[inline]
+    pub fn get_release(&self) -> Result<&str, Error> {
+        self.header
+            .get_entry_data_as_string(IndexTag::RPMTAG_RELEASE)
+    }
+
+    /// Get the package architecture
+    #[inline]
+    pub fn get_arch(&self) -> Result<&str, Error> {
+        self.header.get_entry_data_as_string(IndexTag::RPMTAG_ARCH)
+    }
+
+    /// Get the package Nevra
+    ///
+    /// See: [crate::Nevra]
+    #[inline]
+    pub fn get_nevra(&'_ self) -> Result<Nevra<'_>, Error> {
+        // Epoch defaults to 0 if not present
+        let epoch = self.get_epoch().unwrap_or(0);
+        Ok(Nevra::new(
+            Cow::Borrowed(self.get_name()?),
+            Cow::Owned(epoch.to_string()),
+            Cow::Borrowed(self.get_version()?),
+            Cow::Borrowed(self.get_release()?),
+            Cow::Borrowed(self.get_arch()?),
+        ))
+    }
+
+    /// Get the package vendor - the organization that produced the package
+    #[inline]
+    pub fn get_vendor(&self) -> Result<&str, Error> {
+        self.header
+            .get_entry_data_as_string(IndexTag::RPMTAG_VENDOR)
+    }
+
+    /// Get the package URL. Most often this is the upstream project website for the software
+    /// being packaged.
+    #[inline]
+    pub fn get_url(&self) -> Result<&str, Error> {
+        self.header.get_entry_data_as_string(IndexTag::RPMTAG_URL)
+    }
+
+    /// Get the package version control URL (of the upstream project)
+    #[inline]
+    pub fn get_vcs(&self) -> Result<&str, Error> {
+        self.header.get_entry_data_as_string(IndexTag::RPMTAG_VCS)
+    }
+
+    /// Get the package license
+    #[inline]
+    pub fn get_license(&self) -> Result<&str, Error> {
+        self.header
+            .get_entry_data_as_string(IndexTag::RPMTAG_LICENSE)
+    }
+
+    /// Get the package summary (very brief description of the packaged software)
+    #[inline]
+    pub fn get_summary(&self) -> Result<&str, Error> {
+        self.header
+            .get_entry_data_as_i18n_string(IndexTag::RPMTAG_SUMMARY)
+    }
+
+    /// Get the package description (a full description of the packaged software)
+    #[inline]
+    pub fn get_description(&self) -> Result<&str, Error> {
+        self.header
+            .get_entry_data_as_i18n_string(IndexTag::RPMTAG_DESCRIPTION)
+    }
+
+    /// Get the package group (this is deprecated in most packaging guidelines)
+    #[inline]
+    pub fn get_group(&self) -> Result<&str, Error> {
+        self.header
+            .get_entry_data_as_i18n_string(IndexTag::RPMTAG_GROUP)
+    }
+
+    /// Get the packager, the name of the person that produced this package
+    #[inline]
+    pub fn get_packager(&self) -> Result<&str, Error> {
+        self.header
+            .get_entry_data_as_string(IndexTag::RPMTAG_PACKAGER)
+    }
+
+    /// Get the timestamp when this package was built. This is commonly not present.
+    #[inline]
+    pub fn get_build_time(&self) -> Result<u64, Error> {
+        self.header
+            .get_entry_data_as_u32(IndexTag::RPMTAG_BUILDTIME)
+            .map(|x| x as u64)
+    }
+
+    /// Get the build host on which this package was built. This is commonly not present.
+    #[inline]
+    pub fn get_build_host(&self) -> Result<&str, Error> {
+        self.header
+            .get_entry_data_as_string(IndexTag::RPMTAG_BUILDHOST)
+    }
+
+    /// The cookie is a value that can be used for tracking packages built together, e.g.
+    /// packages built in one build operation (from a single source RPM, for example).
+    #[inline]
+    pub fn get_cookie(&self) -> Result<&str, Error> {
+        self.header
+            .get_entry_data_as_string(IndexTag::RPMTAG_COOKIE)
+    }
+
+    /// Get the filename of the source RPM package used to build this package
+    #[inline]
+    pub fn get_source_rpm(&self) -> Result<&str, Error> {
+        self.header
+            .get_entry_data_as_string(IndexTag::RPMTAG_SOURCERPM)
+    }
+
+    /// Get the %pre scriptlet for this package
+    #[inline]
+    pub fn get_pre_install_script(&self) -> Result<Scriptlet, Error> {
+        self.get_scriptlet(PREIN_TAGS)
+    }
+
+    /// Get the %post scriptlet for this package
+    #[inline]
+    pub fn get_post_install_script(&self) -> Result<Scriptlet, Error> {
+        self.get_scriptlet(POSTIN_TAGS)
+    }
+
+    /// Get the %preun scriptlet for this package
+    #[inline]
+    pub fn get_pre_uninstall_script(&self) -> Result<Scriptlet, Error> {
+        self.get_scriptlet(PREUN_TAGS)
+    }
+
+    /// Get the %postun scriptlet for this package
+    #[inline]
+    pub fn get_post_uninstall_script(&self) -> Result<Scriptlet, Error> {
+        self.get_scriptlet(POSTUN_TAGS)
+    }
+
+    /// Get the %pretrans scriptlet for this package
+    #[inline]
+    pub fn get_pre_trans_script(&self) -> Result<Scriptlet, Error> {
+        self.get_scriptlet(PRETRANS_TAGS)
+    }
+
+    /// Get the %posttrans scriptlet for this package
+    #[inline]
+    pub fn get_post_trans_script(&self) -> Result<Scriptlet, Error> {
+        self.get_scriptlet(POSTTRANS_TAGS)
+    }
+
+    /// Get the %preuntrans scriptlet for this package
+    #[inline]
+    pub fn get_pre_untrans_script(&self) -> Result<Scriptlet, Error> {
+        self.get_scriptlet(PREUNTRANS_TAGS)
+    }
+
+    /// Get the %postuntrans scriptlet for this package
+    #[inline]
+    pub fn get_post_untrans_script(&self) -> Result<Scriptlet, Error> {
+        self.get_scriptlet(POSTUNTRANS_TAGS)
+    }
+
+    /// Get the %verifyscript scriptlet for this package
+    #[inline]
+    pub fn get_verify_script(&self) -> Result<Scriptlet, Error> {
+        self.get_scriptlet(VERIFYSCRIPT_TAGS)
+    }
+
+    fn get_dependencies(
+        &self,
+        names_tag: IndexTag,
+        flags_tag: IndexTag,
+        versions_tag: IndexTag,
+    ) -> Result<Vec<Dependency>, Error> {
+        let names = self.header.get_entry_data_as_string_array(names_tag);
+        let flags = self.header.get_entry_data_as_u32_array(flags_tag);
+        let versions = self.header.get_entry_data_as_string_array(versions_tag);
+
+        match (names, flags, versions) {
+            // Return an empty list if the tags are not present
+            (
+                Err(Error::TagNotFound(_)),
+                Err(Error::TagNotFound(_)),
+                Err(Error::TagNotFound(_)),
+            ) => Ok(vec![]),
+            (Ok(names), Ok(flags), Ok(versions)) => {
+                let v = Vec::from_iter(itertools::multizip((names, flags, versions)).map(
+                    |(name, flags, version)| Dependency {
+                        name: name.to_owned(),
+                        flags: DependencyFlags::from_bits_retain(flags),
+                        version: version.to_owned(),
+                    },
+                ));
+                Ok(v)
+            }
+            (names, flags, versions) => {
+                names?;
+                flags?;
+                versions?;
+                unreachable!()
+            }
+        }
+    }
+
+    fn get_scriptlet(&self, tags: ScriptletIndexTags) -> Result<Scriptlet, Error> {
+        let (scriptlet_tag, flags_tag, program_tag) = tags;
+
+        let script = self
+            .header
+            .get_entry_data_as_string(scriptlet_tag)?
+            .to_owned();
+        let flags = self
+            .header
+            .get_entry_data_as_u32(flags_tag)
+            .ok()
+            .map(ScriptletFlags::from_bits_retain);
+        let program = self
+            .header
+            .get_entry_data_as_string_array(program_tag)
+            .ok()
+            .map(|v| v.into_iter().map(|s| s.to_owned()).collect());
+
+        Ok(Scriptlet {
+            script,
+            flags,
+            program,
+        })
+    }
+
+    /// Get package triggers (%triggerin, %triggerun, %triggerpostun, %triggerprein).
+    ///
+    /// Returns an empty list if no package triggers are defined.
+    pub fn get_triggers(&self) -> Result<Vec<Trigger>, Error> {
+        self.get_trigger_entries(TRIGGER_TAGS)
+    }
+
+    /// Get file triggers (%filetriggerin, %filetriggerun, %filetriggerpostun).
+    ///
+    /// Returns an empty list if no file triggers are defined.
+    pub fn get_file_triggers(&self) -> Result<Vec<Trigger>, Error> {
+        self.get_trigger_entries(FILETRIGGER_TAGS)
+    }
+
+    /// Get transaction file triggers (%transfiletriggerin, etc.).
+    ///
+    /// Returns an empty list if no transaction file triggers are defined.
+    pub fn get_trans_file_triggers(&self) -> Result<Vec<Trigger>, Error> {
+        self.get_trigger_entries(TRANSFILETRIGGER_TAGS)
+    }
+
+    fn get_trigger_entries(&self, tags: TriggerIndexTags) -> Result<Vec<Trigger>, Error> {
+        let (
+            scripts_tag,
+            progs_tag,
+            _flags_tag,
+            names_tag,
+            versions_tag,
+            cond_flags_tag,
+            index_tag,
+        ) = tags;
+
+        let scripts = match self.header.get_entry_data_as_string_array(scripts_tag) {
+            Ok(v) => v,
+            Err(Error::TagNotFound(_)) => return Ok(vec![]),
+            Err(e) => return Err(e),
+        };
+
+        let progs = self.header.get_entry_data_as_string_array(progs_tag)?;
+        let names = self.header.get_entry_data_as_string_array(names_tag)?;
+        let versions = self.header.get_entry_data_as_string_array(versions_tag)?;
+        let cond_flags = self.header.get_entry_data_as_u32_array(cond_flags_tag)?;
+        let indices = self.header.get_entry_data_as_u32_array(index_tag)?;
+
+        // Build triggers: group conditions by their script index
+        let num_scripts = scripts.len();
+        let mut triggers: Vec<Trigger> = scripts
+            .into_iter()
+            .zip(progs)
+            .map(|(script, prog)| Trigger {
+                script: script.to_owned(),
+                program: vec![prog.to_owned()],
+                conditions: Vec::new(),
+            })
+            .collect();
+
+        for (name, (version, (flags, idx))) in names.into_iter().zip(
+            versions
+                .into_iter()
+                .zip(cond_flags.into_iter().zip(indices)),
+        ) {
+            let script_idx = idx as usize;
+            if script_idx < num_scripts {
+                triggers[script_idx].conditions.push(TriggerCondition {
+                    name: name.to_owned(),
+                    flags: DependencyFlags::from_bits_retain(flags),
+                    version: version.to_owned(),
+                });
+            }
+        }
+
+        Ok(triggers)
+    }
+
+    /// Get a list of dependencies which this package "provides"
+    ///
+    /// These are aliases or capabilities provided by this package which other packages can reference.
+    pub fn get_provides(&self) -> Result<Vec<Dependency>, Error> {
+        self.get_dependencies(
+            IndexTag::RPMTAG_PROVIDENAME,
+            IndexTag::RPMTAG_PROVIDEFLAGS,
+            IndexTag::RPMTAG_PROVIDEVERSION,
+        )
+    }
+
+    /// Get a list of dependencies which this package "requires"
+    ///
+    /// These are packages or capabilities which must be present in order for the package to be
+    /// installed.
+    pub fn get_requires(&self) -> Result<Vec<Dependency>, Error> {
+        self.get_dependencies(
+            IndexTag::RPMTAG_REQUIRENAME,
+            IndexTag::RPMTAG_REQUIREFLAGS,
+            IndexTag::RPMTAG_REQUIREVERSION,
+        )
+    }
+
+    /// Get a list of dependencies which this package "conflicts" with
+    ///
+    /// These are packages which must not be present in order for the package to be installed.
+    pub fn get_conflicts(&self) -> Result<Vec<Dependency>, Error> {
+        self.get_dependencies(
+            IndexTag::RPMTAG_CONFLICTNAME,
+            IndexTag::RPMTAG_CONFLICTFLAGS,
+            IndexTag::RPMTAG_CONFLICTVERSION,
+        )
+    }
+
+    /// Get a list of dependencies which this package "obsoletes"
+    ///
+    /// These are packages which are superceded by this package - if this package is installed,
+    /// they will be automatically removed if they are present.
+    pub fn get_obsoletes(&self) -> Result<Vec<Dependency>, Error> {
+        self.get_dependencies(
+            IndexTag::RPMTAG_OBSOLETENAME,
+            IndexTag::RPMTAG_OBSOLETEFLAGS,
+            IndexTag::RPMTAG_OBSOLETEVERSION,
+        )
+    }
+
+    /// Get a list of dependencies which this package "recommends"
+    ///
+    /// "rpm" itself will ignore such dependencies, but a dependency solver may elect to treat them
+    /// as though they were "requires".  Unlike "requires" however, if installing a package listed
+    /// as a "recommends" would cause errors, it may be ignored without error.
+    pub fn get_recommends(&self) -> Result<Vec<Dependency>, Error> {
+        self.get_dependencies(
+            IndexTag::RPMTAG_RECOMMENDNAME,
+            IndexTag::RPMTAG_RECOMMENDFLAGS,
+            IndexTag::RPMTAG_RECOMMENDVERSION,
+        )
+    }
+
+    /// Get a list of dependencies which this package "suggests"
+    ///
+    /// "rpm" itself will ignore such dependencies, but a dependency solver may elect to display
+    /// them to the user to be optionally installed.
+    pub fn get_suggests(&self) -> Result<Vec<Dependency>, Error> {
+        self.get_dependencies(
+            IndexTag::RPMTAG_SUGGESTNAME,
+            IndexTag::RPMTAG_SUGGESTFLAGS,
+            IndexTag::RPMTAG_SUGGESTVERSION,
+        )
+    }
+
+    /// Get a list of reverse-dependencies which this package "enhances"
+    ///
+    /// "rpm" itself will ignore such dependencies, but a dependency solver may elect to display
+    /// this package to the user to be optionally installed when a package matching the "enhances"
+    /// dependency is installed.
+    pub fn get_enhances(&self) -> Result<Vec<Dependency>, Error> {
+        self.get_dependencies(
+            IndexTag::RPMTAG_ENHANCENAME,
+            IndexTag::RPMTAG_ENHANCEFLAGS,
+            IndexTag::RPMTAG_ENHANCEVERSION,
+        )
+    }
+
+    /// Get a list of reverse-dependencies which this package "supplements"
+    ///
+    /// "rpm" itself will ignore such dependencies, but a dependency solver may elect to treat this
+    /// package as a "requires" when the matching package is installed. Unlike a "requires" however,
+    /// if installing it would cause errors, it can be ignored without error.
+    pub fn get_supplements(&self) -> Result<Vec<Dependency>, Error> {
+        self.get_dependencies(
+            IndexTag::RPMTAG_SUPPLEMENTNAME,
+            IndexTag::RPMTAG_SUPPLEMENTFLAGS,
+            IndexTag::RPMTAG_SUPPLEMENTVERSION,
+        )
+    }
+
+    /// An RPM package is comprised of several segments - the Lead, Signature Header, Header, and Payload.
+    /// This function returns the computed (byte) boundaries between those segments in the package file
+    /// as if it were written out on-disk.
+    ///
+    /// ```
+    /// # use rpm::Package;
+    /// # let package = Package::open("tests/assets/RPMS/v4/rpm-basic-2.3.4-5.el9.noarch.rpm").unwrap();
+    /// let offsets = package.metadata.get_package_segment_offsets();
+    /// let lead = offsets.lead..offsets.signature_header;
+    /// let sig_header = offsets.signature_header..offsets.header;
+    /// let header = offsets.header..offsets.payload;
+    /// let payload = offsets.payload..;
+    /// ```
+    pub fn get_package_segment_offsets(&self) -> PackageSegmentOffsets {
+        // Lead is 96 bytes.
+
+        // Each Header starts like this (16 bytes)
+        // 3 bytes for the magic
+        // 1 byte RPM version number - always 1
+        // 4 reserved bytes (no meaning, just padding)
+        // 4 bytes for the number of entries in the index (u32)
+        // 4 bytes for the length of the data section (u32)
+
+        // Next comes a series of index entries
+        // Each index entry is 16 bytes
+        // 4 bytes for the tag (u32)
+        // 4 bytes for the tag data type (u32)
+        // 4 bytes for the offset relative to the beginning of the data store
+        // 4 bytes for the count that contains the number of data items pointed to by the index entry
+
+        // After the header entries comes the data section. This stores the data pointed to by
+        // the offsets within each index entry.
+
+        let sig_header_start = LEAD_SIZE;
+        let sig_header_size = self.signature.size();
+        let padding = self.signature.padding_required();
+
+        let header_start = sig_header_start + sig_header_size + padding;
+        let header_size = self.header.size();
+
+        let payload_start = header_start + header_size;
+
+        PackageSegmentOffsets {
+            lead: 0,
+            signature_header: sig_header_start as u64,
+            header: header_start as u64,
+            payload: payload_start as u64,
+        }
+    }
+
+    /// Get the sum of the sizes of all files present in the package payload
+    pub fn get_installed_size(&self) -> Result<u64, Error> {
+        self.header
+            .get_entry_data_as_u64(IndexTag::RPMTAG_LONGSIZE)
+            .or_else(|_e| {
+                self.header
+                    .get_entry_data_as_u32(IndexTag::RPMTAG_SIZE)
+                    .map(|v| v as u64)
+            })
+    }
+
+    #[inline]
+    pub fn get_payload_compressor(&self) -> Result<CompressionType, Error> {
+        self.header
+            .get_entry_data_as_string(IndexTag::RPMTAG_PAYLOADCOMPRESSOR)
+            .map_or_else(
+                |e| {
+                    if matches!(e, Error::TagNotFound(_)) {
+                        Ok(CompressionType::None)
+                    } else {
+                        Err(e)
+                    }
+                },
+                CompressionType::from_str,
+            )
+    }
+
+    /// Extract a the set of contained file names.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let package = rpm::Package::open("tests/assets/RPMS/v4/rpm-basic-2.3.4-5.el9.noarch.rpm")?;
+    /// for path in package.metadata.get_file_paths()? {
+    ///     println!("{}", path.display());
+    /// }
+    /// # Ok(()) }
+    /// ```
+    pub fn get_file_paths(&self) -> Result<Vec<PathBuf>, Error> {
+        // reconstruct the messy de-constructed paths
+        let basenames = self
+            .header
+            .get_entry_data_as_string_array(IndexTag::RPMTAG_BASENAMES);
+        let biject = self
+            .header
+            .get_entry_data_as_u32_array(IndexTag::RPMTAG_DIRINDEXES);
+        let dirs = self
+            .header
+            .get_entry_data_as_string_array(IndexTag::RPMTAG_DIRNAMES);
+
+        // Return an empty list if the tags are not present
+        match (basenames, biject, dirs) {
+            (
+                Err(Error::TagNotFound(_)),
+                Err(Error::TagNotFound(_)),
+                Err(Error::TagNotFound(_)),
+            ) => Ok(vec![]),
+            (Ok(basenames), Ok(biject), Ok(dirs)) => {
+                let n = dirs.len();
+
+                let v = basenames
+                    .iter()
+                    .zip(biject.into_iter())
+                    .try_fold::<Vec<PathBuf>, _, _>(
+                        Vec::<PathBuf>::with_capacity(basenames.len()),
+                        |mut acc, item| {
+                            let (basename, dir_index) = item;
+                            if let Some(dir) = dirs.get(dir_index as usize) {
+                                acc.push(Path::new(dir).join(basename));
+                                Ok(acc)
+                            } else {
+                                Err(Error::InvalidTagIndex {
+                                    tag: IndexTag::RPMTAG_DIRINDEXES.to_string(),
+                                    index: dir_index,
+                                    bound: n as u32,
+                                })
+                            }
+                        },
+                    )?;
+                Ok(v)
+            }
+            (basenames, biject, dirs) => {
+                basenames?;
+                biject?;
+                dirs?;
+                unreachable!()
+            }
+        }
+    }
+
+    /// The digest algorithm used per file.
+    ///
+    /// Note that this is not necessarily the same as the digest used for headers.
+    pub fn get_file_digest_algorithm(&self) -> Result<DigestAlgorithm, Error> {
+        self.header
+            .get_entry_data_as_u32(IndexTag::RPMTAG_FILEDIGESTALGO)
+            .and_then(|x| {
+                DigestAlgorithm::from_u32(x).ok_or_else(|| Error::InvalidTagValueEnumVariant {
+                    tag: IndexTag::RPMTAG_FILEDIGESTALGO.to_string(),
+                    variant: x,
+                })
+            })
+    }
+
+    /// Get a list of metadata about the files in the RPM, without the file contents.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let package = rpm::Package::open("tests/assets/RPMS/v4/rpm-basic-2.3.4-5.el9.noarch.rpm")?;
+    /// for entry in package.metadata.get_file_entries()? {
+    ///     println!("{} is {} bytes", entry.path.display(), entry.size);
+    /// }
+    /// # Ok(()) }
+    /// ```
+    pub fn get_file_entries(&self) -> Result<Vec<FileEntry>, Error> {
+        // rpm does not encode it, if it is the default md5
+        let algorithm = self
+            .get_file_digest_algorithm()
+            .unwrap_or(DigestAlgorithm::Md5);
+        //
+        let modes = self
+            .header
+            .get_entry_data_as_u16_array(IndexTag::RPMTAG_FILEMODES);
+        if let Err(Error::TagNotFound(_)) = modes {
+            return Ok(Vec::new());
+        }
+
+        let users = self
+            .header
+            .get_entry_data_as_string_array(IndexTag::RPMTAG_FILEUSERNAME);
+        let groups = self
+            .header
+            .get_entry_data_as_string_array(IndexTag::RPMTAG_FILEGROUPNAME);
+        let digests = self
+            .header
+            .get_entry_data_as_string_array(IndexTag::RPMTAG_FILEDIGESTS);
+        let mtimes = self
+            .header
+            .get_entry_data_as_u32_array(IndexTag::RPMTAG_FILEMTIMES);
+        let sizes = self
+            .header
+            .get_entry_data_as_u64_array(IndexTag::RPMTAG_LONGFILESIZES)
+            .or_else(|_e| {
+                self.header
+                    .get_entry_data_as_u32_array(IndexTag::RPMTAG_FILESIZES)
+                    .map(|file_sizes| {
+                        file_sizes
+                            .into_iter()
+                            .map(|file_size| file_size as _)
+                            .collect::<Vec<u64>>()
+                    })
+            });
+        let flags = self
+            .header
+            .get_entry_data_as_u32_array(IndexTag::RPMTAG_FILEFLAGS);
+
+        // Look for the file capabilities tag, but it's not required so don't error out if it's not
+        // present
+        let caps = match self
+            .header
+            .get_entry_data_as_string_array(IndexTag::RPMTAG_FILECAPS)
+        {
+            Ok(caps) => Ok(Some(caps)),
+            Err(Error::TagNotFound(_)) => Ok(None),
+            Err(e) => return Err(e),
+        };
+        // TODO: verify this is correct behavior for links?
+        let links = self
+            .header
+            .get_entry_data_as_string_array(IndexTag::RPMTAG_FILELINKTOS);
+        let ima_signatures = match self
+            .signature
+            .get_entry_data_as_string_array(IndexSignatureTag::RPMSIGTAG_FILESIGNATURES)
+        {
+            Ok(ima_signatures) => Ok(Some(ima_signatures)),
+            Err(Error::TagNotFound(_)) => Ok(None),
+            Err(e) => return Err(e),
+        };
+
+        match (
+            modes,
+            users,
+            groups,
+            digests,
+            mtimes,
+            sizes,
+            flags,
+            caps,
+            links,
+            ima_signatures,
+        ) {
+            (
+                Ok(modes),
+                Ok(users),
+                Ok(groups),
+                Ok(digests),
+                Ok(mtimes),
+                Ok(sizes),
+                Ok(flags),
+                Ok(caps),
+                Ok(links),
+                Ok(ima_signatures),
+            ) => {
+                let paths = self.get_file_paths()?;
+                let n = paths.len();
+
+                let v = itertools::multizip((
+                    paths.into_iter(),
+                    users,
+                    groups,
+                    modes,
+                    digests,
+                    mtimes,
+                    sizes,
+                    flags,
+                    links,
+                ))
+                .enumerate()
+                .try_fold::<Vec<FileEntry>, _, Result<_, Error>>(
+                    Vec::with_capacity(n),
+                    |mut acc, (idx, (path, user, group, mode, digest, mtime, size, flags, linkto))| {
+                        let digest = if digest.is_empty() {
+                            None
+                        } else {
+                            Some(FileDigest::new(algorithm, digest)?)
+                        };
+                        let cap = match &caps {
+                            Some(caps) => caps.get(idx).map(|s| (*s).to_owned()),
+                            None => None,
+                        };
+                        let ima_signature: Option<String> = match &ima_signatures {
+                            Some(ima_signatures) => ima_signatures.get(idx).map(|s| (*s).to_owned()),
+                            None => None,
+                        };
+                        acc.push(FileEntry {
+                            path,
+                            ownership: FileOwnership {
+                                user: user.to_owned(),
+                                group: group.to_owned(),
+                            },
+                            mode: mode.into(),
+                            modified_at: crate::Timestamp(mtime),
+                            digest,
+                            flags: FileFlags::from_bits_retain(flags),
+                            size: size as usize,
+                            caps: cap,
+                            linkto: linkto.to_owned(),
+                            ima_signature,
+                        });
+                        Ok(acc)
+                    },
+                )?;
+                Ok(v)
+            }
+            (
+                Err(Error::TagNotFound(_)),
+                Err(Error::TagNotFound(_)),
+                Err(Error::TagNotFound(_)),
+                Err(Error::TagNotFound(_)),
+                Err(Error::TagNotFound(_)),
+                Err(Error::TagNotFound(_)),
+                Err(Error::TagNotFound(_)),
+                Err(Error::TagNotFound(_)),
+                Err(Error::TagNotFound(_)),
+                Err(Error::TagNotFound(_)),
+            ) => Ok(vec![]),
+            (modes, users, groups, digests, mtimes, sizes, flags, caps, links, ima_signatures) => {
+                modes?;
+                users?;
+                groups?;
+                digests?;
+                mtimes?;
+                sizes?;
+                flags?;
+                caps?;
+                links?;
+                ima_signatures?;
+                unreachable!()
+            }
+        }
+    }
+
+    /// Return a list of changelog entries
+    pub fn get_changelog_entries(&self) -> Result<Vec<ChangelogEntry>, Error> {
+        let names = self
+            .header
+            .get_entry_data_as_string_array(IndexTag::RPMTAG_CHANGELOGNAME);
+        let timestamps = self
+            .header
+            .get_entry_data_as_u32_array(IndexTag::RPMTAG_CHANGELOGTIME);
+        let descriptions = self
+            .header
+            .get_entry_data_as_string_array(IndexTag::RPMTAG_CHANGELOGTEXT);
+
+        // Return an empty list if the tags are not present
+        match (names, timestamps, descriptions) {
+            (
+                Err(Error::TagNotFound(_)),
+                Err(Error::TagNotFound(_)),
+                Err(Error::TagNotFound(_)),
+            ) => Ok(vec![]),
+            (Ok(names), Ok(timestamps), Ok(descriptions)) => {
+                let v = Vec::from_iter(itertools::multizip((names, timestamps, descriptions)).map(
+                    |(name, timestamp, description)| ChangelogEntry {
+                        name: name.to_owned(),
+                        timestamp: timestamp as u64,
+                        description: description.to_owned(),
+                    },
+                ));
+                Ok(v)
+            }
+            (name, timestamp, description) => {
+                name?;
+                timestamp?;
+                description?;
+                unreachable!()
+            }
+        }
+    }
+}
+
+pub struct FileIterator<'a> {
+    file_entries: Vec<FileEntry>,
+    archive: Box<dyn io::Read + 'a>,
+    count: usize,
+}
+
+#[derive(Debug)]
+pub struct RpmFile {
+    pub metadata: FileEntry,
+    pub content: Vec<u8>,
+}
+
+impl Iterator for FileIterator<'_> {
+    type Item = Result<RpmFile, Error>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.count >= self.file_entries.len() {
+            return None;
+        }
+
+        // @todo: probably safe to hand out a reference instead of cloning, just a bit more painful
+        let file_entry = self.file_entries[self.count].clone();
+        self.count += 1;
+
+        // Ghost files are not in the payload archive, so return them immediately with empty content
+        if file_entry.flags.contains(FileFlags::GHOST) {
+            return Some(Ok(RpmFile {
+                metadata: file_entry,
+                content: Vec::new(),
+            }));
+        }
+
+        let reader = payload::Reader::new(&mut self.archive, &self.file_entries);
+
+        match reader {
+            Ok(mut entry_reader) => {
+                if entry_reader.is_trailer() {
+                    return None;
+                }
+
+                let mut content = Vec::new();
+
+                if let Err(e) = entry_reader.read_to_end(&mut content) {
+                    return Some(Err(Error::Io(e)));
+                }
+                if let Err(e) = entry_reader.finish() {
+                    return Some(Err(Error::Io(e)));
+                }
+
+                Some(Ok(RpmFile {
+                    metadata: file_entry,
+                    content,
+                }))
+            }
+            Err(e) => Some(Err(Error::Io(e))),
+        }
+    }
+}
+
+impl ExactSizeIterator for FileIterator<'_> {
+    fn len(&self) -> usize {
+        self.file_entries.len() - self.count
+    }
+}
