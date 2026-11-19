@@ -1,0 +1,112 @@
+name: wasm-bindgen-bot
+
+# PRs use pull_request_target, which is safe because the bot only reads PR
+# content and never runs it, and which, unlike pull_request, also runs for PRs
+# with merge conflicts.
+on:
+  pull_request_target:
+    types: [opened, ready_for_review, synchronize, labeled, unlabeled]
+  issues:
+    types: [opened, labeled]
+  issue_comment:
+    types: [created]
+  # Only same-repo PRs, since GitHub gives fork PRs' review comment runs no
+  # secrets. Like approvals, these don't run on PRs with merge conflicts.
+  pull_request_review_comment:
+    types: [created]
+  # Likewise same-repo only: a collaborator's approval enables auto-merge.
+  pull_request_review:
+    types: [submitted]
+  # After merges, flags auto-merge PRs they left conflicting for a rebase.
+  push:
+    branches: [main, master]
+  # Runs a command from the Actions tab.
+  workflow_dispatch:
+    inputs:
+      command:
+        description: Command to run
+        type: choice
+        options: [pr, investigate, triage, review, rebase, issue]
+        default: pr
+      number:
+        description: Issue or PR number, optional for pr
+        required: false
+      request:
+        description: Instructions for the bot
+        required: false
+
+permissions: {}
+
+jobs:
+  analyze:
+    # Pushes to PRs by non-collaborators and commands from non-collaborators
+    # are skipped by the analyze action, which checks repository roles.
+    if: >-
+      (github.event_name == 'pull_request_target' && (
+        (github.event.action == 'labeled' && startsWith(github.event.label.name, 'bot-')) ||
+        (github.event.label.name == 'merge-ready' &&
+          (github.event.action == 'labeled' || github.event.action == 'unlabeled')) ||
+        (github.event.action != 'labeled' && github.event.action != 'unlabeled' &&
+          !github.event.pull_request.draft &&
+          (github.event.pull_request.user.type != 'Bot' ||
+            github.event.pull_request.user.login == 'wasm-bindgen-bot[bot]')))) ||
+      (github.event_name == 'issues' && (
+        (github.event.action == 'opened' && github.event.issue.user.type != 'Bot') ||
+        (github.event.action == 'labeled' && startsWith(github.event.label.name, 'bot-')))) ||
+      ((github.event_name == 'issue_comment' ||
+        (github.event_name == 'pull_request_review_comment' &&
+          github.event.pull_request.head.repo.full_name == github.repository)) &&
+        (contains(github.event.comment.body, '@wasm-bindgen-bot') ||
+          contains(github.event.comment.body, '@wbg-bot'))) ||
+      (github.event_name == 'pull_request_review' &&
+        github.event.review.state == 'approved' &&
+        github.event.review.user.type != 'Bot' &&
+        github.event.pull_request.head.repo.full_name == github.repository) ||
+      github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    concurrency:
+      # Comment, approval and merge-ready runs get their own group rather than
+      # cancelling reviews in progress.
+      group: wasm-bindgen-bot-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}${{ github.event.comment && format('-{0}', github.event.comment.id) || github.event.review && format('-review-{0}', github.event.review.id) || github.event.label.name == 'merge-ready' && '-merge-ready' || '' }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - uses: wasm-bindgen/wasm-bindgen-bot/analyze@main
+        with:
+          cf-aig-token: ${{ secrets.CF_AIG_TOKEN }}
+          cf-account-id: ${{ vars.CF_ACCOUNT_ID }}
+          cf-gateway-id: ${{ vars.CF_GATEWAY_ID }}
+
+  # Removes merge-ready while a review runs.
+  start:
+    if: >-
+      github.event_name == 'pull_request_target' && !github.event.pull_request.draft &&
+      (github.event.action == 'opened' || github.event.action == 'ready_for_review' ||
+        github.event.action == 'synchronize' ||
+        (github.event.action == 'labeled' && github.event.label.name == 'bot-review')) &&
+      (github.event.pull_request.user.type != 'Bot' ||
+        github.event.pull_request.user.login == 'wasm-bindgen-bot[bot]')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - uses: wasm-bindgen/wasm-bindgen-bot/start@main
+        with:
+          app-id: ${{ vars.WASM_BINDGEN_BOT_APP_ID }}
+          private-key: ${{ secrets.WASM_BINDGEN_BOT_PRIVATE_KEY }}
+
+  post:
+    needs: analyze
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - uses: wasm-bindgen/wasm-bindgen-bot/post@main
+        with:
+          app-id: ${{ vars.WASM_BINDGEN_BOT_APP_ID }}
+          private-key: ${{ secrets.WASM_BINDGEN_BOT_PRIVATE_KEY }}
