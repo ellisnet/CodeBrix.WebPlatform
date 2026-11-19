@@ -1,0 +1,47 @@
+================================================================================
+THIRD-PARTY NOTICES: wasm-bindgen, as shipped by CodeBrix.WebPlatform
+================================================================================
+
+This file travels with the `wasm-bindgen` program in the
+CodeBrix.WebPlatform.FrontendBuilder.<Platform> packages (folder
+frontend-tools/<rid>/ of a consuming build). It lists the third-party code
+compiled into that program.
+
+wasm-bindgen itself is the wasm-bindgen-cli crate, version 0.2.130,
+UNMODIFIED, used under the Apache License 2.0 (it is offered under "MIT OR
+Apache-2.0"): see LICENSE-WasmBindgen.txt beside this file. Nothing listed
+below is relicensed: every crate stays under its own license, and anyone who
+takes one out of this program or out of the repository takes it under that
+license. Where a crate offers a choice, its entry says which license it is
+used under here.
+
+ALSO IN THE PROGRAM, and not listed as crates below: the Rust standard
+library of the Rust release that built it (pinned: 1.100.0), "MIT OR
+Apache-2.0", https://github.com/rust-lang/rust - as in every Rust program.
+The C code wasm-bindgen contains is compiled from a crate listed below
+(ring).
+
+CDLA-PERMISSIVE-2.0. The crate webpki-roots (the Mozilla root certificate
+list) is under the Community Data License Agreement - Permissive 2.0; its
+text is in the license texts at the end of this file. No crate compiled into
+wasm-bindgen is under the Mozilla Public License.
+
+The source of every crate listed is in the CodeBrix.WebPlatform repository
+(https://github.com/ellisnet/CodeBrix.WebPlatform), in the tool vendor
+folder named in the section below, unmodified.
+
+ENTRIES WITHOUT "License files". Some crates, as published on crates.io,
+carry no licence file (the entry then has no "License files" line). Their
+declared licence is still the one shown; its standard text - the Apache
+License 2.0, the MIT licence, the BSD 3-Clause licence, the Mozilla Public
+License 2.0 - is among the license texts below, where another crate ships it.
+For those crates no copyright line is known beyond the authors their
+crates.io page names.
+
+THIS FILE IS GENERATED. Everything after this opening is written by
+`LibraryChecker notices --write` (libs/CodeBrix.WebPlatform.LibraryChecker)
+from the license audit of what cargo compiles into wasm-bindgen on each of the
+five platforms; this opening is tools/dx-native-tools/notices/
+notices-header-WasmBindgen.txt. Edit the opening there, never the generated
+part.
+

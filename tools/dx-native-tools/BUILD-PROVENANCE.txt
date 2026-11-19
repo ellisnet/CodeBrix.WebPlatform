@@ -1,0 +1,328 @@
+================================================================================
+tools/dx-native-tools/BUILD-PROVENANCE.txt
+what was actually built, when, by what, and with what result
+================================================================================
+
+WHY THIS FILE EXISTS
+--------------------------------------------------------------------------------
+A program in a package is anonymous. This file is how anyone later can tell
+which executable came from which source, which toolchain and which build
+machine. Every time a program is adopted into ../../native_libraries/<rid>/,
+its section here is updated from that build's output/<rid>/BUILD-INFO.txt and
+the <program>.provenance.txt beside it is written from the same values.
+
+================================================================================
+ADOPTED 2026-11-19 - the current builds: six patches, dx linked to libgit2
+================================================================================
+Adopted into ../../native_libraries/linux-x64 and linux-arm64 on 2026-11-19
+(dx replaced; wasm-bindgen came out byte-identical and was kept; the licence
+and notices files replaced together; dx.provenance.txt rewritten). The
+sections further down describe the programs of 2026-11-18 that these
+replaced; their wasm-bindgen entries are still the shipped files.
+
+What changed in the source (vendoring/dioxus-cli/PATCH-NOTES.txt):
+  * old patch 0002 (no `dx new` / `dx init`, `dx components` running the `git`
+    program) is UNDONE: every dx command is back as upstream wrote it;
+  * new 0002-libgit2-sys-stand-in.patch: dx's Cargo.toml substitutes the
+    declarations-only stand-in sources/codebrix-libgit2-sys (0.18.3+1.9.7,
+    lib.rs sha256 436229454e317351cedda8443e5b94c07167c8602123b9c8b35a44e8c02212ce)
+    for the crates.io libgit2-sys; no C code of libgit2 is compiled;
+  * new 0006-release-build-without-wasm-opt.patch (DX_SKIP_WASM_OPT);
+  * 0004 regenerated (Cargo.lock sha256 e339325cf12c644e37cb04cef34b326f87d4
+    58ea6f72ac81f1b8020e20418f92); 0001, 0003, 0005 keep their content, their
+    "CodeBrix change:" comments now point at PATCH-NOTES.txt;
+  * 75 crates came back into sources/vendor (now 966; licences judged, among
+    them smartstring, MPL-2.0+, accepted by the owner by name as the
+    thirteenth MPL crate in dx).
+libgit2 linked  : libgit2 1.9.7 from CodeBrix.LibGit2.MitLicenseForever
+                  1.0.323.362 (nupkg sha256 0f1365422bbce31348e269fdd555e654
+                  14a18fdb348e61f84a53156fa2f0d87c, downloaded from nuget.org
+                  by linux/fetch-libgit2.sh - it was not in the NuGet cache);
+                  runtimes/linux-x64/native/libgit2-49e408b.so sha256
+                  ee82496311ae9d06534fb400654baeeacaee735911beaabcf14bace1b577840e,
+                  runtimes/linux-arm64/native/libgit2-49e408b.so sha256
+                  8dd298a70646e3a427c13c84933e0e976dfcd8bf76315f4163a81d85431e3b5b;
+                  SONAME libgit2-49e408b.so.1.9; its own glibc floor 2.25;
+                  NEEDED libdl, librt, libpthread, libc (no OpenSSL: it loads
+                  the system's at run time)
+Image           : codebrix-dx-build-x86_64 REBUILT 2026-11-19 (image id
+                  c66c136137d7; the 2026-11-18 one, 6c946181265e, is left
+                  untagged): the same pins plus cpio and the OpenSSL headers
+                  openssl-devel-1.1.1k-17.el8_6 (x86_64 installed; aarch64
+                  unpacked into the sysroot) - read by openssl-sys's build
+                  script only. About 2.5 minutes, the networked step
+Network         : DISABLED during both builds (interfaces: lo)
+
+linux-x64       : built 2026-11-19 07:18:02 UTC (run 7; run 5 at 07:06 gave
+                  byte-identical programs); 118s in the container (dx 98s,
+                  wasm-bindgen 19s), 241s end to end with every gate
+  dx            : 59,518,520 bytes stripped (77,192,208 as linked);
+                  21,799,353 bytes gzip -9 -n
+                  sha256 fd89b04855e604d364b8b8b0c8ce43212af2161a94a6bb54f17f524c3d761865
+                  build-id d03e9dd642319160e797574615db61029bb842f3
+                  NEEDED libdl.so.2 libgit2-49e408b.so.1.9 libgcc_s.so.1
+                  libpthread.so.0 libm.so.6 libc.so.6 ld-linux-x86-64.so.2;
+                  glibc floor 2.28; no OpenSSL symbol imported; 624 packages
+                  compiled in (cargo tree; 551 before)
+  wasm-bindgen  : UNCHANGED - byte-identical to native_libraries/linux-x64
+                  (sha256 0efc609f5c0354d28eb907f211e09e5e104e7875e6e683f1a51dc0a891d9eb9a)
+  gates         : every check PASSED (output/linux-x64/GATE.txt,
+                  HOST-CHECK.txt, FUNCTIONAL-GATE.txt). On the host: --version
+                  with libgit2 on LD_LIBRARY_PATH; WITHOUT it dx does not start
+                  (exit 127, "error while loading shared libraries:
+                  libgit2-49e408b.so.1.9: cannot open shared object file: No
+                  such file or directory"). Functional, on one snapshot of
+                  samples/WorkSite/frontend, network namespace with loopback
+                  only: shrunk .wasm 1,827,964 bytes, 17 site files; the
+                  adopted 2026-11-18 tools build a fresh copy of the same
+                  snapshot at the same path BYTE-IDENTICALLY (all 17 files);
+                  DX_SKIP_WASM_OPT=1 with no wasm-opt anywhere: exit 0, the
+                  "Skipping wasm-opt" line, .wasm 2,069,920 bytes; `dx new
+                  --template file://<local git repo> --branch main --yes --vcs
+                  none` with no git program on PATH: project cloned (libgit2)
+                  and filled in
+linux-arm64     : built 2026-11-19 07:22:19 UTC, cross-compiled as before;
+                  120s in the container (dx 99s, wasm-bindgen 20s), 127s end
+                  to end
+  dx            : 53,254,768 bytes stripped (76,210,680 as linked);
+                  20,227,965 bytes gzip -9 -n
+                  sha256 c955a19e129cea707af889c6960a4386d604d62a3d0d4b24efc393c0b54c6f25
+                  build-id 060311dd7b16156d11e1e431d930de15e9caa565
+                  NEEDED libdl.so.2 libgit2-49e408b.so.1.9 libgcc_s.so.1
+                  libpthread.so.0 libm.so.6 libc.so.6; glibc floor 2.28; no
+                  OpenSSL symbol imported; 624 packages
+  wasm-bindgen  : UNCHANGED - byte-identical to native_libraries/linux-arm64
+                  (sha256 924af54d6bd82843fd0a4e5a99515343d23036343388cc408fae169c7ca2bd26)
+  gates         : every check PASSED; under qemu in the pinned aarch64 image:
+                  --version with libgit2 on LD_LIBRARY_PATH, ldd resolves;
+                  WITHOUT it dx does not start (exit 127). No functional gate
+                  (as before)
+win-x64, osx-*  : scripts updated for the six patches and libgit2, STILL NEVER
+                  RUN
+
+
+Common to every entry below (the programs of 2026-11-18: dx REPLACED on 2026-11-19, wasm-bindgen still shipped)
+--------------------------------------------------------------------------------
+  Source          : the folder TOOL_SOURCES_DIR in linux/pins.env, read
+                    only - since 2026-11-19 tools/dx-native-tools/sources
+                    (the builds of 2026-11-18 below read the same trees at
+                    samples/WorkSite/tools, before they were moved):
+                      dioxus-cli/        dioxus-cli 0.7.10 (crates.io; upstream
+                                         commit 57d6794ad60b949e5bd8aa282f6f8c3d
+                                         c97a365e) + the repository's five
+                                         patches (tools/dx-native-tools/
+                                         vendoring/dioxus-cli/PATCH-NOTES.txt);
+                                         Cargo.lock sha256 f8b98535cb297263d671
+                                         5b35201284cd58c46cb0473be590024f7de18f
+                                         a70819
+                      wasm-bindgen-cli/  0.2.130, unpatched; Cargo.lock sha256
+                                         653f29ed961fa8ea7264a9e28bc096e4badf258e
+                                         86d1764e35c1ddf3cdd63f8a
+                      vendor/            891 vendored crates
+  Patches applied : the five dioxus-cli patches only; no patch was added
+  Command         : cargo +1.100.0 build --release --locked --offline
+                    --target <triple>; dx with --features
+                    no-downloads,disable-telemetry (the sample's former command,
+                    plus --target)
+  Rust            : rustc 1.100.0 (0ef1bc386 2026-11-09), cargo 1.100.0
+                    (3acc79c0c 2026-11-05) - the same build as the laptop's
+  `--version`     : "dioxus 0.7.10 (57d6794)" and "wasm-bindgen 0.2.130".
+                    DIOXUS_CLI_GIT_SHA is set from pins.env: without it dx's
+                    build.rs takes the commit of the first .git folder above
+                    the source - THIS repository's (a working-copy build printed
+                    "dioxus 0.7.10 (b0c0f1e)", our own commit)
+  Shipped files   : dx, wasm-bindgen (.exe on Windows), stripped; beside them
+                    LICENSE-Dioxus.txt, LICENSE-WasmBindgen.txt,
+                    THIRD-PARTY-NOTICES-Dioxus.txt (504 crates),
+                    THIRD-PARTY-NOTICES-WasmBindgen.txt (149 crates)
+  C code compiled : ring 0.17.14 (both programs) and the zstd library bundled
+  in                in zstd-sys 2.0.16+zstd.1.5.7 (dx), by the image's GCC
+                    (x64) or clang (aarch64 cross); nothing else - no OpenSSL,
+                    no libgit2, no zlib-sys
+
+
+================================================================================
+Linux (the two linux-* entries)
+================================================================================
+  Route           : linux/build.sh <arch> -> container-build.sh, in
+                    codebrix-dx-build-x86_64 (Containerfile.x86_64: the
+                    digest-pinned manylinux_2_28_x86_64 base + clang/lld/llvm
+                    22.1.8 + `file` + Rust 1.100.0 + the aarch64 sysroot of
+                    the pinned manylinux_2_28_aarch64 image), --network none,
+                    tool sources mounted read-only at /src, cargo's target in
+                    the container's /tmp
+  Flags           : RUSTFLAGS --remap-path-prefix (/src, target, CARGO_HOME)
+                    -C link-arg=-Wl,--build-id=sha1; CFLAGS_<triple>
+                    -ffile-prefix-map; then llvm-strip --strip-all
+  Image           : built once on 2026-11-18 (the one networked step, about
+                    3 minutes, image id 6c946181265e)
+  First-run fixes : NONE to the build. Fixes to the tooling while writing it:
+                    build.sh's file check ran before functional-gate.sh
+                    existed; the functional gate needed absolute paths, checks
+                    the glue file (dx's index.html names only the glue .js,
+                    which loads the .wasm), and now builds in a copy whose path
+                    has the real frontend's length (a longer path added 4,274
+                    bytes of embedded panic-location paths to the .wasm)
+  Reproducible    : YES, both RIDs - run 1 (2026-11-19 04:31 UTC x64, 04:34
+                    arm64) and run 2 (04:41 / 04:44) byte-identical (cmp)
+  Moved sources   : 2026-11-19, after the tool sources moved from
+                    samples/WorkSite/tools to tools/dx-native-tools/sources
+                    (TOOL_SOURCES_DIR changed; nothing else), linux-x64 was
+                    rebuilt twice from the new place - 05:21 UTC (functional
+                    gate skipped) and 05:45 UTC (every gate, the functional
+                    gate included, network namespace with loopback only) -
+                    and both times dx and wasm-bindgen were BYTE-IDENTICAL
+                    (cmp) to the committed native_libraries/linux-x64/
+                    programs. The container mounts the sources at /src
+                    wherever they are on the host, so their place is not in
+                    the binary. linux-arm64 was NOT rebuilt: the same image,
+                    pins and sources, cross-built the same way; the x64
+                    result is taken as the proof for both.
+                    The notices files beside the programs were regenerated
+                    (their openings name the new paths) and copied into both
+                    native_libraries/<rid>/ folders; the programs themselves
+                    were not replaced.
+
+
+================================================================================
+linux-x64                                                         BUILT + PASSED
+================================================================================
+Built            : 2026-11-19 04:41:49 UTC (run 2)
+Build host       : Dell Precision 7770, LMDE 7, x86_64, 24 cores, podman 5.4.2
+                   - native
+Duration         : 105s in the container (dx 85s, wasm-bindgen 19s); 153s end
+                   to end with the host check and the functional gate
+Network          : DISABLED during the build (interfaces: lo)
+Base image       : quay.io/pypa/manylinux_2_28_x86_64:2026.07.19-1
+                   @sha256:a61875a2f84cab7df8de222ff12cabc08ff86eb4ad402ac90ba7bdaed9600cca
+Container OS     : AlmaLinux 8.10, ldd (GNU libc) 2.28
+Linker / C       : cc (GCC) 14.2.1 20250110 (Red Hat 14.2.1-11), GNU ld 2.41
+
+dx               : 51,937,336 bytes stripped (66,784,728 as linked);
+                   19,137,993 bytes gzip -9 -n
+                   sha256 59e22efb9bdcf8887ec219b0d7e7f1ea5781ad3915d029d01f546c3e89fbd4be
+                   build-id 30d6fbcf8655a138b50b32cf7ed50ca4cab3c40f
+                   ELF64 x86-64, PIE; NEEDED libdl.so.2 libgcc_s.so.1
+                   libpthread.so.0 libm.so.6 libc.so.6 ld-linux-x86-64.so.2;
+                   glibc floor 2.28; 551 packages compiled in (cargo tree)
+wasm-bindgen     : 6,070,256 bytes stripped (8,509,464 as linked);
+                   2,396,294 bytes gzip -9 -n
+                   sha256 0efc609f5c0354d28eb907f211e09e5e104e7875e6e683f1a51dc0a891d9eb9a
+                   build-id d65f242c5fad356e3c7cb3718870a4b7c9f0116d
+                   ELF64 x86-64, PIE; NEEDED libgcc_s.so.1 libpthread.so.0
+                   libdl.so.2 libc.so.6 ld-linux-x86-64.so.2; glibc floor 2.28;
+                   157 packages compiled in
+libgcc_s         : NEEDED by both (Rust's unwinder; GCC_3.0 / 3.3 / 4.2.0
+                   symbol versions) - the base-system GCC runtime library
+Build paths      : none of ours; 120 (dx) / 71 (wasm-bindgen) /rustc/<commit>/
+                   standard-library paths (rustc's own remapping) and, in dx,
+                   the string /usr/include/ (from a C header)
+Gate             : every check PASSED (output/linux-x64/GATE.txt), inside the
+                   container and on the HOST (LMDE 7, Debian GLIBC 2.41: both
+                   --version lines correct, ldd resolves from
+                   /lib/x86_64-linux-gnu)
+Functional gate  : PASSED - dx build --platform web --release --debug-symbols
+                   false on a scratch copy of samples/WorkSite/frontend, network
+                   namespace with loopback only, WasmShrink's wasm-opt 133:
+                   dx exit 0 after about 40s, no "wasm-opt failed", 17 site
+                   files (index.html, one .wasm, one glue .js, Tailwind CSS
+                   64,880 bytes, 7 snippet files, the images), the same file
+                   list as the reference build. .wasm 1,818,014 bytes; the
+                   reference build in samples/WorkSite/frontend/target (dx built
+                   from source, 2026-11-18 18:25, frontend unchanged since)
+                   is 1,818,034 bytes. The 20-byte difference is in names derived
+                   from the frontend's ABSOLUTE path: dx's asset symbols
+                   (__ASSETS__ / __MANGANIS__ + a path hash, 7 pairs) and the
+                   frontend crate's hash inside three mangled closure names -
+                   the only printable strings that differ (strings-diff.txt)
+Adopted          : YES, 2026-11-18, into native_libraries/linux-x64/; dx REPLACED
+                   2026-11-19 by the build in the ADOPTED section at the top
+Re-checked       : 2026-11-19 05:45 UTC, from tools/dx-native-tools/sources:
+                   byte-identical programs; functional gate PASSED on the
+                   materialized frontend (it now carries the platform's crates
+                   in platform/vendor): 17 site files, .wasm 1,827,142 bytes
+                   against the reference build's 1,827,140 (dx built by the
+                   host-tools package; the frontend's .wasm grew by 621 bytes
+                   from the 2026-11-18 figure above because the crates' source
+                   path is now 18 characters longer - panic locations embed
+                   it; built from a folder of the old path's length it is
+                   1,826,529 bytes)
+
+
+================================================================================
+linux-arm64                                                       BUILT + PASSED
+================================================================================
+Built            : 2026-11-19 04:44:22 UTC (run 2)
+Build host       : the same x86_64 laptop - CROSS-compiled (see linux/README.txt,
+                   WHY linux-arm64 IS CROSS-COMPILED)
+Duration         : 110s in the container (dx 89s, wasm-bindgen 20s); 115s end
+                   to end with the qemu run
+Network          : DISABLED during the build (interfaces: lo)
+Image            : the same codebrix-dx-build-x86_64; sysroot exported from
+                   quay.io/pypa/manylinux_2_28_aarch64:2026.07.19-1
+                   @sha256:162c81dfd3efc710732a571717d3c916a6945ebf279e879ddee3243af96fe46f
+                   (glibc 2.28, GCC 14 support files)
+Linker / C       : aarch64-linux-gnu-gcc = clang 22.1.8 --target=
+                   aarch64-redhat-linux --sysroot=/opt/sysroot/aarch64
+                   -fuse-ld=lld (LLD 22.1.8)
+
+dx               : 46,555,568 bytes stripped (65,955,040 as linked);
+                   17,844,061 bytes gzip -9 -n
+                   sha256 693547689cad8a0e9ed45ca17867eae0ae610707d06646f5e5ba27acace812a9
+                   build-id b53f8449e7ef638be83bbd848102512f3925a4b0
+                   ELF64 AArch64, PIE; NEEDED libdl.so.2 libgcc_s.so.1
+                   libpthread.so.0 libm.so.6 libc.so.6 (interpreter
+                   /lib/ld-linux-aarch64.so.1); glibc floor 2.28; 551 packages
+wasm-bindgen     : 5,363,200 bytes stripped (8,577,912 as linked);
+                   2,171,251 bytes gzip -9 -n
+                   sha256 924af54d6bd82843fd0a4e5a99515343d23036343388cc408fae169c7ca2bd26
+                   build-id 03deaeef464e7e2258feab461704739a6ea4ee47
+                   ELF64 AArch64, PIE; NEEDED libgcc_s.so.1 libpthread.so.0
+                   libdl.so.2 libc.so.6; glibc floor 2.28; 157 packages
+Gate             : every check PASSED (output/linux-arm64/GATE.txt); then both
+                   programs RUN in the pinned aarch64 image under qemu-user,
+                   --network none: "dioxus 0.7.10 (57d6794)", "wasm-bindgen
+                   0.2.130", ldd resolves every library from /lib64
+                   (QEMU-RUN.txt)
+Note             : qemu is not silicon, and no functional gate ran for arm64;
+                   run the host-tools tests and a frontend build on real arm64
+                   hardware before a release
+Adopted          : YES, 2026-11-18, into native_libraries/linux-arm64/; dx REPLACED
+                   2026-11-19 by the build in the ADOPTED section at the top
+
+
+================================================================================
+win-x64                                       PENDING - script written, NOT RUN
+================================================================================
+Route            : windows/build.dx.ps1 - written 2026-11-18 on Linux, NEVER
+                   RUN. MSVC + rustup 1.100.0, x86_64-pc-windows-msvc, static
+                   CRT (+crt-static), /PDBALTPATH:%_PDB%; gate: PE machine,
+                   OS-only imports, no build paths, --version, the functional
+                   gate in PowerShell (needs WasmShrink's win-x64 wasm-opt.exe)
+Binary           : NONE. native_libraries/win-x64/ does not exist yet
+To do            : the owner runs it on his Windows x64 machine
+                   (windows/README.txt, STEP BY STEP), adopts the result and
+                   replaces this section
+
+================================================================================
+osx-arm64                                     PENDING - script written, NOT RUN
+================================================================================
+Route            : macos/build.sh arm64 - written 2026-11-18 on Linux, NEVER
+                   RUN. rustup 1.100.0, aarch64-apple-darwin,
+                   MACOSX_DEPLOYMENT_TARGET=11.0 (enforced: minos), strip +
+                   ad-hoc codesign; gate: thin slice, system-only links, no
+                   LC_RPATH, minos, codesign --verify, no build paths,
+                   --version, linux/functional-gate.sh
+Binary           : NONE. native_libraries/osx-arm64/ does not exist yet
+To do            : run on the owner's Apple Silicon Mac (macos/README.txt)
+
+================================================================================
+osx-x64                                       PENDING - script written, NOT RUN
+================================================================================
+Route            : macos/build.sh x64 - as osx-arm64 with x86_64-apple-darwin and
+                   MACOSX_DEPLOYMENT_TARGET=10.15, cross-built on the Apple
+                   Silicon Mac; --version and the functional gate run under
+                   Rosetta 2
+Binary           : NONE. native_libraries/osx-x64/ does not exist yet
+To do            : as osx-arm64
+================================================================================

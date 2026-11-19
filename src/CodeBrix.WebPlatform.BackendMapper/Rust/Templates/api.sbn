@@ -1,0 +1,54 @@
+{{ marker }} from {{ assembly_name }}. Do not edit: this file is rewritten on every build.
+//
+// One function per REST endpoint, grouped in one module per controller. Every function goes
+// through the shared client, which adds the headers, refreshes an expired session once and turns
+// an error answer into an `ApiError`.
+
+use {{ shared_crate }}::api::client::{self, Auth, Method};
+use {{ shared_crate }}::api::ApiResult;
+use {{ shared_crate }}::query::{encode, QueryString};
+{{~ for used in api_imports ~}}
+use {{ used }};
+{{~ end ~}}
+
+use super::models::*;
+{{~ for c in controllers ~}}
+
+/// `{{ c.clr_name }}`
+pub mod {{ c.module }} {
+    use super::*;
+{{~ for q in c.query_structs ~}}
+
+    /// {{ q.doc }}
+    #[derive(Clone, Debug, Default, PartialEq)]
+    pub struct {{ q.name }} {
+{{~ for f in q.fields ~}}
+        pub {{ f.name }}: {{ f.type }},
+{{~ end ~}}
+    }
+{{~ end ~}}
+{{~ for f in c.functions ~}}
+
+    /// {{ f.doc }}
+{{~ if f.is_file ~}}
+    pub fn {{ f.name }}({{ f.parameters }}) -> String {
+{{~ if f.query_statement != "" ~}}
+        {{ f.query_statement }}
+{{~ end ~}}
+        {{ f.path }}
+    }
+{{~ else ~}}
+    pub async fn {{ f.name }}({{ f.parameters }}) -> ApiResult<{{ f.return_type }}> {
+{{~ if f.query_statement != "" ~}}
+        {{ f.query_statement }}
+{{~ end ~}}
+{{~ if f.has_response ~}}
+        client::send_json(Method::{{ f.method }}, {{ if f.path | string.starts_with "format!" }}&{{ end }}{{ f.path }}, {{ f.body }}, {{ f.auth }}).await
+{{~ else ~}}
+        client::send_empty(Method::{{ f.method }}, {{ if f.path | string.starts_with "format!" }}&{{ end }}{{ f.path }}, {{ f.body }}, {{ f.auth }}).await
+{{~ end ~}}
+    }
+{{~ end ~}}
+{{~ end ~}}
+}
+{{~ end ~}}

@@ -1,0 +1,9 @@
+# Only for running `cargo test --offline` on this crate inside the CodeBrix.WebPlatform
+# repository: the crates come from the platform's vendored folder beside this crate (../vendor),
+# never from the network. This file is not part of the crate that ships (the FrontendBuilder
+# project leaves the .cargo folder out).
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "../vendor"

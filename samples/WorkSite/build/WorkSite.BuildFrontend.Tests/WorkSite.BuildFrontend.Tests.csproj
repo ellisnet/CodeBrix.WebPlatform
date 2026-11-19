@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>WorkSite.BuildFrontend.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\WorkSite.BuildFrontend\WorkSite.BuildFrontend.csproj" />
+    <!-- The real backend, so a test can prove that its contract is fully declared (WorkSiteFrontendTests). -->
+    <ProjectReference Include="..\..\backend\WorkSite.Api\WorkSite.Api.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="xunit.v3" Version="4.0.3" />
+    <PackageReference Include="SilverAssertions.ApacheLicenseForever" Version="1.0.320.258" />
+  </ItemGroup>
+
+</Project>

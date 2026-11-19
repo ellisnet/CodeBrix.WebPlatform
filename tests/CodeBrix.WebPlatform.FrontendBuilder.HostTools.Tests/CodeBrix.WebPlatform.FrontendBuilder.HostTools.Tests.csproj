@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+  <!--
+    All five host-tools packages, so every platform's folder is copied into this project's output
+    (frontend-tools/<rid>/) and the tests can check the one for the machine they run on.
+  -->
+  <!--
+    The FrontendBuilder library, so the programs are started the way a build starts them: dx does
+    not start without libgit2, which the library supplies from the CodeBrix.LibGit2 package it
+    depends on (its native file lands in this project's output, under runtimes/<rid>/native/).
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CodeBrix.WebPlatform.FrontendBuilder\CodeBrix.WebPlatform.FrontendBuilder.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CodeBrix.WebPlatform.FrontendBuilder.LinuxX64\CodeBrix.WebPlatform.FrontendBuilder.LinuxX64.csproj" />
+    <ProjectReference Include="..\..\src\CodeBrix.WebPlatform.FrontendBuilder.LinuxArm64\CodeBrix.WebPlatform.FrontendBuilder.LinuxArm64.csproj" />
+    <ProjectReference Include="..\..\src\CodeBrix.WebPlatform.FrontendBuilder.WindowsX64\CodeBrix.WebPlatform.FrontendBuilder.WindowsX64.csproj" />
+    <ProjectReference Include="..\..\src\CodeBrix.WebPlatform.FrontendBuilder.MacOSArm64\CodeBrix.WebPlatform.FrontendBuilder.MacOSArm64.csproj" />
+    <ProjectReference Include="..\..\src\CodeBrix.WebPlatform.FrontendBuilder.MacOSX64\CodeBrix.WebPlatform.FrontendBuilder.MacOSX64.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="xunit.v3" Version="4.0.3" />
+    <PackageReference Include="SilverAssertions.ApacheLicenseForever" Version="1.0.320.258" />
+  </ItemGroup>
+
+</Project>

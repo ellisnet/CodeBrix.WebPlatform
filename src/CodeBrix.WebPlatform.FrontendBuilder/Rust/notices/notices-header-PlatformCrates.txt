@@ -1,0 +1,78 @@
+================================================================================
+THIRD-PARTY NOTICES: what the CodeBrix.WebPlatform platform compiles into an
+application's WebAssembly file
+================================================================================
+
+This file travels with the CodeBrix.WebPlatform.FrontendBuilder package
+(tools/frontend-crates/THIRD-PARTY-NOTICES-PlatformCrates.txt; a build program
+finds it beside itself as frontend-crates/THIRD-PARTY-NOTICES-PlatformCrates.txt
+and reads it with PlatformCrates.ReadNotices). It covers what the platform puts
+into every platform frontend:
+
+  - the shared Rust crate codebrix-webplatform, written for CodeBrix.WebPlatform
+    and licensed under the Apache License 2.0, except for the third-party code
+    in its SignalR client, whose notice is the first entry below;
+  - the platform's crates: the Rust crates the package carries (as
+    platform-crates.zip) and writes into the application's frontend. Part 1
+    lists those compiled into a platform application's WebAssembly file;
+    Part 2 those that are carried but not compiled in.
+
+Each third-party component stays under its own license; none is relicensed.
+Where a crate offers a choice of licenses ("MIT OR Apache-2.0"), the entry
+says which one is used.
+
+An application that serves its site should serve this text with it, after
+its own notices: the crates and tools the application adds are the
+application's to record. Parts 1 and 2 are generated from the crates in the
+CodeBrix.WebPlatform repository (src/CodeBrix.WebPlatform.FrontendBuilder/
+Rust/vendor) by its maintainer tool; never edit them by hand.
+
+
+--------------------------------------------------------------------------------
+Third-party code in the shared crate
+--------------------------------------------------------------------------------
+
+signalr-client 0.3.2 - the starting point of the shared crate's SignalR client
+
+  Where:    the module `signalr` of the shared Rust crate, which ships inside
+            the CodeBrix.WebPlatform.FrontendBuilder assembly and is compiled
+            into every platform frontend. In this repository:
+            src/CodeBrix.WebPlatform.FrontendBuilder/Rust/codebrix-webplatform/
+            src/signalr. The files protocol.rs and connection.rs carry a
+            header naming their origin; the other files of the module were
+            written for this project.
+  Origin:   the signalr-client crate, version 0.3.2,
+            https://crates.io/crates/signalr-client
+            (https://github.com/danielleiszen/rust_signalr_client)
+  License:  MIT
+  Changes:  this is NOT the crate. Its source was taken as the starting point
+            of a module of our own and reworked: the JSON hub protocol,
+            invocation, streaming and reconnection logic were kept and
+            adapted; the native transport, MessagePack and the crate's
+            dependencies were dropped; the WebAssembly transport was replaced
+            by an event-driven one on the browser's WebSocket; handlers and
+            the session refresh run inside the application's Dioxus runtime.
+  License text of the original:
+
+            MIT License
+
+            Copyright (c) 2025 Dániel Leiszen
+
+            Permission is hereby granted, free of charge, to any person obtaining a copy
+            of this software and associated documentation files (the "Software"), to deal
+            in the Software without restriction, including without limitation the rights
+            to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+            copies of the Software, and to permit persons to whom the Software is
+            furnished to do so, subject to the following conditions:
+
+            The above copyright notice and this permission notice shall be included in all
+            copies or substantial portions of the Software.
+
+            THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+            IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+            FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+            AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+            LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+            OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+            SOFTWARE.
+

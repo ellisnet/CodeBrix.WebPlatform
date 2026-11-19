@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <!--
+      wwwroot holds the built frontend, which FrontendBuilder copies in. It is served as plain
+      files from the published wwwroot folder. The SDK's static-web-assets layer is switched off
+      so that a development or test host serves exactly its own web root and nothing from this
+      project folder.
+    -->
+    <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
+    <RootNamespace>WorkSite.Api</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\libs\WorkSite.Core\WorkSite.Core.csproj" />
+    <ProjectReference Include="..\libs\WorkSite.DataAccess\WorkSite.DataAccess.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.15" />
+  </ItemGroup>
+
+</Project>

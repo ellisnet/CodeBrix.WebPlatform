@@ -1,0 +1,71 @@
+wasm-bindgen -- Linux ARM64 (linux-arm64)
+================================================================================
+This program was BUILT HERE, from the source in this repository, by:
+
+    tools/dx-native-tools/linux/build.sh arm64   (-> container-build.sh)
+
+inside a digest-pinned manylinux container with the network DISABLED. Nothing
+was downloaded: every crate came from the vendored tool crates. It was built
+twice from scratch on 2026-11-18 with byte-identical results.
+
+Source            : wasm-bindgen-cli 0.2.130, unpatched
+Folder            : samples/WorkSite/tools/wasm-bindgen-cli (TOOL_SOURCES_DIR in
+                    tools/dx-native-tools/linux/pins.env), read-only
+Moved             : on 2026-11-19 the same source moved to
+                    tools/dx-native-tools/sources (patches: tools/dx-native-tools/
+                    vendoring); the linux-x64 rebuild from there was
+                    byte-identical; this RID was not rebuilt (BUILD-PROVENANCE.txt)
+--version         : "wasm-bindgen 0.2.130"
+
+Built             : 2026-11-19 04:44:22 UTC (run 2; run 1 about ten minutes earlier,
+                    identical bytes)
+Build time        : 20s for this program (cargo, inside the container)
+Build host        : Dell Precision 7770 laptop, LMDE 7, x86_64, podman 5.4.2
+                    (CROSS-compiled for aarch64 on the x86_64 laptop)
+Network           : DISABLED during this build (interfaces: lo)
+Derived image     : codebrix-dx-build-x86_64
+Base image        : quay.io/pypa/manylinux_2_28_x86_64@sha256:a61875a2f84cab7df8de222ff12cabc08ff86eb4ad402ac90ba7bdaed9600cca
+Container OS      : AlmaLinux 8.10 (Cerulean Leopard)
+Toolchain         : rustc 1.100.0 (0ef1bc386 2026-11-09)
+                    cargo 1.100.0 (3acc79c0c 2026-11-05)
+                    aarch64-linux-gnu-gcc = clang --target=aarch64-redhat-linux --sysroot=/opt/sysroot/aarch64 -fuse-ld=lld (cross)
+                    clang version 22.1.8 ( 22.1.8-2.module_el8.10.0+4359+f07421b9)
+Command           : cargo build --release --locked --offline --target
+                    aarch64-unknown-linux-gnu 
+                    RUSTFLAGS: --remap-path-prefix for /src, the target folder and
+                    CARGO_HOME; -C link-arg=-Wl,--build-id=sha1
+                    DIOXUS_CLI_GIT_SHA=57d6794ad60b949e5bd8aa282f6f8c3dc97a365e
+                    then llvm-strip --strip-all
+
+File             : wasm-bindgen
+Size (as linked) : 8577912 bytes (not kept)
+Size (stripped)  : 5363200 bytes  <- the shipped file
+Size (gzip -9 -n): 2171251 bytes
+SHA256           : 924af54d6bd82843fd0a4e5a99515343d23036343388cc408fae169c7ca2bd26
+Build-id (sha1)  : 03deaeef464e7e2258feab461704739a6ea4ee47
+ELF              : ELF64, AArch64, DYN (Position-Independent Executable file)
+NEEDED           : libgcc_s.so.1 libpthread.so.0 libdl.so.2 libc.so.6
+glibc floor      : 2.28 (allowed <= 2.28)
+GLIBC versions   : 2.17 2.18 2.25 2.28
+Compiled in       : 157 packages for this target, the tool included (cargo tree
+                    -e normal; tools/dx-native-tools/output/linux-arm64/compiled-in-wasm-bindgen-cli.txt)
+
+Gate              : ELF class/machine, stripped, no RPATH/RUNPATH/TEXTREL,
+                    NEEDED glibc + libgcc_s.so.1 only (OpenSSL, zlib, zstd,
+                    libgit2, libstdc++ forbidden), glibc floor <= 2.28, no build
+                    paths, `--version`, licence and notices files present;
+                    RUN (--version) in the pinned manylinux_2_28_aarch64 image under qemu-user
+                    emulation (QEMU-RUN.txt) - ALL PASSED. qemu is not silicon: run the managed
+                    tests on real arm64 hardware before a release
+
+LICENCE AND NOTICES FILES BESIDE THIS ONE:
+  LICENSE-Dioxus.txt              dx's licence (Apache-2.0 text; dioxus-cli is
+                                  MIT OR Apache-2.0)
+  LICENSE-WasmBindgen.txt         wasm-bindgen-cli's LICENSE-APACHE, verbatim
+  THIRD-PARTY-NOTICES-Dioxus.txt  every crate compiled into dx, with licence
+                                  texts (generated: LibraryChecker notices --write)
+  THIRD-PARTY-NOTICES-WasmBindgen.txt  the same for wasm-bindgen
+Rebuilt         : 2026-11-19, with dx's six-patch sources, in the rebuilt
+                    image (OpenSSL headers added): this program came out
+                    BYTE-IDENTICAL, so this file was kept as it is.
+See tools/dx-native-tools/BUILD-PROVENANCE.txt.

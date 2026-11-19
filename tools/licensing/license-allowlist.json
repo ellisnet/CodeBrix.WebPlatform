@@ -1,0 +1,60 @@
+{
+  "comment": "The licenses this repository accepts in the third-party code it carries outside samples/ (the platform's crates the FrontendBuilder package ships, and the tool sources and the distributed dx and wasm-bindgen), as approved by the repository owner. Only the owner adds to this file. The maintainer tool (libs/CodeBrix.WebPlatform.LibraryChecker) fails for anything else. Identifiers are SPDX license identifiers.",
+
+  "everywhere": [
+    "Apache-2.0", "MIT", "BSD-2-Clause", "BSD-3-Clause", "CC0-1.0", "ISC", "PostgreSQL",
+    "Unicode-3.0", "Unicode-DFS-2016", "Zlib"
+  ],
+
+  "vendoredButNotCompiledIntoTheApplication": [
+    "CDLA-Permissive-2.0", "BSL-1.0"
+  ],
+
+  "toolingOnly": [
+    "MPL-2.0", "NCSA", "CC-BY-4.0", "Artistic-1.0-Perl"
+  ],
+
+  "toolingOnlyExceptions": [
+    "LLVM-exception"
+  ],
+
+  "compiledIntoTheDistributedTools": {
+    "comment": "dx and wasm-bindgen are distributed as programs (the CodeBrix.WebPlatform.FrontendBuilder.<Platform> packages), so every crate compiled into them - on any of the five platforms - must satisfy the 'everywhere' tier, plus the exceptions below, plus a license accepted here for that crate BY NAME. PROVISIONAL, OWNER TO CONFIRM: 'exceptions' and 'bundledLicenseOverrides' below carry over, unchanged in effect, what the tooling tier accepted for these crates before the tools were distributed - LLVM-exception (target-lexicon, wasm-encoder 0.214, wasmparser 0.214 are 'Apache-2.0 WITH LLVM-exception' only) and the CC-BY-4.0 file in browserslist-rs.",
+    "exceptions": [
+      "LLVM-exception"
+    ],
+    "bundledLicenseOverrides": {
+      "browserslist-rs": "The crate's vendor/caniuse folder (the caniuse database, CC-BY-4.0, Copyright Alexis Deveria) is not compiled: the crate has no build script and includes none of it. The browser data dx uses is compiled in from browserslist-data (declared MIT), which was generated from that same caniuse database - credited in THIRD-PARTY-NOTICES-Dioxus.txt."
+    },
+    "namedCrates": [
+      {
+        "license": "MPL-2.0",
+        "tools": ["dioxus-cli"],
+        "crates": [
+          "lightningcss", "lightningcss-derive", "parcel_selectors", "cssparser", "cssparser-color",
+          "cssparser-macros", "dtoa-short", "static-self", "static-self-derive", "nucleo",
+          "nucleo-matcher", "option-ext", "smartstring"
+        ],
+        "reason": "Approved by the owner 2026-11-18: MPL-2.0 is accepted inside the distributed dx binary for exactly these crates, as an explicit exception, with a notice (THIRD-PARTY-NOTICES-Dioxus.txt) that says where their source is - the vendored, unmodified copy in this repository's tool vendor folder. The first twelve were approved 2026-11-18; smartstring (declared MPL-2.0+, pulled in by cargo-generate through rhai when dx's project templates came back) was approved 2026-11-19 as the thirteenth, on the same terms."
+      },
+      {
+        "license": "CDLA-Permissive-2.0",
+        "tools": ["dioxus-cli", "wasm-bindgen-cli"],
+        "crates": ["webpki-roots"],
+        "reason": "Approved by the owner 2026-11-18: CDLA-Permissive-2.0 is accepted for the crate webpki-roots only, by name (the Mozilla root certificate data, compiled into both tools)."
+      }
+    ]
+  },
+
+  "preferredWhenACrateOffersAChoice": [
+    "Apache-2.0", "MIT"
+  ],
+
+  "bundledLicenseOverrides": {
+    "application": {},
+    "tooling": {
+      "zstd-sys": "The bundled zstd C library is offered under BSD-3-Clause OR GPL-2.0-only; BSD-3-Clause is elected. The GPL-2.0 text file in the crate is the other side of that choice and is not relied on.",
+      "petgraph": "The crate's assets folder holds unused logo artwork under CC-BY-SA-4.0. No code is under that license and nothing compiles or displays the images."
+    }
+  }
+}

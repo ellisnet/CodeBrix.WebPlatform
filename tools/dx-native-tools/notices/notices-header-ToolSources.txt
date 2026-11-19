@@ -1,0 +1,54 @@
+================================================================================
+THIRD-PARTY NOTICES: the build tools' source in the CodeBrix.WebPlatform
+repository (tools/dx-native-tools/sources)
+================================================================================
+
+This file is a REPOSITORY record; it is not part of any package. It covers
+the third-party source the repository carries to build its two distributed
+programs, dx and wasm-bindgen:
+
+Dioxus CLI ("dx"), modified
+  Where:    tools/dx-native-tools/sources/dioxus-cli
+  Origin:   the dioxus-cli crate, version 0.7.10,
+            https://crates.io/crates/dioxus-cli
+            (https://github.com/DioxusLabs/dioxus); the pristine archive is in
+            tools/dx-native-tools/vendoring/dioxus-cli
+  License:  MIT OR Apache-2.0; used under Apache-2.0
+  Changes:  this copy is MODIFIED. The changes are the six numbered patch
+            files in tools/dx-native-tools/vendoring/dioxus-cli and are
+            described in PATCH-NOTES.txt there. Each changed place in the
+            source carries a comment that starts "CodeBrix change:".
+
+libgit2-sys stand-in, ours (declarations taken from upstream)
+  Where:    tools/dx-native-tools/sources/codebrix-libgit2-sys
+  Origin:   the repository's own crate. Its lib.rs is lib.rs of the
+            crates.io crate libgit2-sys 0.18.3+1.9.2
+            (https://github.com/rust-lang/git2-rs), with three changes marked
+            "CodeBrix change:"; nothing else of that crate was taken - in
+            particular not its libgit2/ folder (libgit2's C source), which
+            this repository never carries. README.txt there is its notice.
+  License:  MIT OR Apache-2.0 (upstream's LICENSE-MIT and LICENSE-APACHE,
+            verbatim, beside it)
+
+wasm-bindgen CLI, unmodified
+  Where:    tools/dx-native-tools/sources/wasm-bindgen-cli
+  Origin:   the wasm-bindgen-cli crate, version 0.2.130,
+            https://crates.io/crates/wasm-bindgen-cli
+            (https://github.com/wasm-bindgen/wasm-bindgen); the pristine
+            archive is in tools/dx-native-tools/vendoring/wasm-bindgen-cli
+  License:  MIT OR Apache-2.0; used under Apache-2.0
+
+The Rust crates the two are built from, every one of them, are listed below
+with their licenses. They are in tools/dx-native-tools/sources/vendor, exactly
+as crates.io published them. None of this code is relicensed: every crate
+stays under its own license, and anyone who copies one out of the repository
+takes it under that license. Not every crate listed is compiled into a
+distributed program; what is, on each of the five platforms, is recorded in
+THIRD-PARTY-NOTICES-Dioxus.txt and THIRD-PARTY-NOTICES-WasmBindgen.txt beside
+this file, which travel with the programs.
+
+THIS FILE IS GENERATED. Everything after this opening is written by
+`LibraryChecker notices --write` (libs/CodeBrix.WebPlatform.LibraryChecker)
+from the license audit of the vendored tree; this opening is
+tools/dx-native-tools/notices/notices-header-ToolSources.txt. Edit the opening
+there, never the generated part.

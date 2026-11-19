@@ -1,0 +1,17 @@
+<Project>
+
+  <!--
+    Copies the platform's crates that ship in this package (tools/frontend-crates/: the archive
+    platform-crates.zip and THIRD-PARTY-NOTICES-PlatformCrates.txt, the notices for those crates)
+    into the output folder of the project that references it - directly or through another
+    package - as frontend-crates/. CodeBrix.WebPlatform.FrontendBuilder looks for them there and
+    writes the crates into the application's frontend when it is materialized.
+  -->
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)..\tools\frontend-crates\**\*"
+          Link="frontend-crates\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest"
+          Visible="false" />
+  </ItemGroup>
+
+</Project>

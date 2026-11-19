@@ -1,0 +1,168 @@
+using CodeBrix.WebPlatform.FrontendBuilder.Prerequisites;
+using CodeBrix.WebPlatform.FrontendBuilder.Tests.Helpers;
+using CodeBrix.WebPlatform.FrontendBuilder.Tools;
+using SilverAssertions;
+using Xunit;
+
+namespace CodeBrix.WebPlatform.FrontendBuilder.Tests.Prerequisites;
+
+public class PrerequisiteRulesTests
+{
+    [Fact]
+    public void CreateRustRequirements_asks_for_the_minimum_rust_and_the_webassembly_target_but_no_c_compiler()
+    {
+        //Act
+        var requirements = PrerequisiteRules.CreateRustRequirements();
+
+        //Assert
+        PrerequisiteRules.VersionText(requirements.MinimumRustVersion).Should().Be(FrontendRequirements.MinimumRustVersion);
+        requirements.RequiredTargets.Should().Contain("wasm32-unknown-unknown");
+        requirements.RequireCCompiler.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("4.3.5", "4.3.5")]
+    [InlineData("4.3.6", "4.3.5")]
+    [InlineData("4.10.0", "4.3.5")]
+    [InlineData("5.0.0", "4.3.5")]
+    public void EvaluateTailwind_accepts_the_minimum_or_later(string found, string minimum)
+    {
+        //Act
+        var item = PrerequisiteRules.EvaluateTailwind(found, minimum);
+
+        //Assert
+        item.Kind.Should().Be(PrerequisiteKind.Tailwind);
+        item.Status.Should().Be(PrerequisiteStatus.Ok);
+        item.Message.Should().Contain(found);
+    }
+
+    [Fact]
+    public void EvaluateTailwind_refuses_an_older_release()
+    {
+        //Act
+        var item = PrerequisiteRules.EvaluateTailwind("4.3.4", "4.3.5");
+
+        //Assert
+        item.Status.Should().Be(PrerequisiteStatus.Missing);
+        item.Message.Should().Contain("version 4.3.4").And.Contain("4.3.5 or later");
+    }
+
+    [Fact]
+    public void EvaluateTailwind_says_how_to_fix_a_missing_program()
+    {
+        //Act
+        var item = PrerequisiteRules.EvaluateTailwind(null, "4.3.5");
+
+        //Assert
+        item.Status.Should().Be(PrerequisiteStatus.Missing);
+        item.Message.Should().Contain("not found on PATH").And.Contain("`tailwindcss`").And.Contain("4.3.5 or later");
+    }
+
+    [Fact]
+    public void EvaluateTailwind_reports_a_minimum_that_is_not_a_version()
+        => PrerequisiteRules.EvaluateTailwind("4.3.5", "latest").Message.Should().Contain("'latest' is not a version");
+
+    [Fact]
+    public void DescribeWasmOpt_says_where_wasm_opt_comes_from()
+    {
+        //Act
+        var package = PrerequisiteRules.DescribeWasmOpt(WasmOptSource.Package, "linux-x64");
+        var installed = PrerequisiteRules.DescribeWasmOpt(WasmOptSource.Installed, "win-x64");
+        var missing = PrerequisiteRules.DescribeWasmOpt(WasmOptSource.Missing, "osx-x64");
+
+        //Assert
+        package.Status.Should().Be(PrerequisiteStatus.Ok);
+        package.Message.Should().Contain("CodeBrix.WebPlatform.WasmShrink package");
+        installed.Status.Should().Be(PrerequisiteStatus.Note);
+        installed.Message.Should().Contain("'win-x64'").And.Contain("installed on PATH");
+        missing.Status.Should().Be(PrerequisiteStatus.Missing);
+        missing.Message.Should().Contain("'osx-x64'");
+    }
+
+    [Fact]
+    public void DescribeHostTools_names_the_package_or_the_options_paths()
+    {
+        //Arrange
+        using var folder = new TempFolder();
+        folder.Write("app/frontend-tools/linux-x64/dx", "dx");
+        folder.Write("app/frontend-tools/linux-x64/wasm-bindgen", "wasm-bindgen");
+        var dx = folder.Write("own/dx", "dx");
+        var bindgen = folder.Write("own/wasm-bindgen", "wasm-bindgen");
+        HostToolsLocator.TryLocate(folder.Combine("app"), "linux-x64", null, null, out var packaged);
+        HostToolsLocator.TryLocate(folder.Combine("none"), "linux-x64", dx, bindgen, out var named);
+
+        //Act
+        var fromPackage = PrerequisiteRules.DescribeHostTools(packaged, null);
+        var fromOptions = PrerequisiteRules.DescribeHostTools(named, null);
+        var missing = PrerequisiteRules.DescribeHostTools(null, "not found");
+
+        //Assert
+        fromPackage.Message.Should().Contain("CodeBrix.WebPlatform.FrontendBuilder.LinuxX64.ApacheLicenseForever");
+        fromOptions.Message.Should().Contain(dx);
+        missing.Status.Should().Be(PrerequisiteStatus.Missing);
+        missing.Message.Should().Be("not found");
+    }
+
+    private static Libgit2Supply PreparedSupply(TempFolder folder, string stored)
+    {
+        folder.Write("app/dx", "\0" + stored + "\0");
+        folder.Write("app/runtimes/linux-x64/native/libgit2-49e408b.so", "\0libgit2-49e408b.so.1.9\0");
+        Libgit2Supply.Prepare(folder.Combine("app/dx"), "linux-x64", folder.Combine("app"), folder.Combine("supply"), "49e408b", "1.0.323.362", out var supply);
+        return supply;
+    }
+
+    [Fact]
+    public void DescribeLibgit2_says_where_the_library_comes_from_when_dx_started_with_it()
+    {
+        //Arrange
+        using var folder = new TempFolder();
+        var supply = PreparedSupply(folder, "libgit2-49e408b.so.1.9");
+
+        //Act
+        var item = PrerequisiteRules.DescribeLibgit2(supply, null, null);
+
+        //Assert
+        item.Kind.Should().Be(PrerequisiteKind.Libgit2);
+        item.Status.Should().Be(PrerequisiteStatus.Ok);
+        item.Message.Should().Contain("libgit2-49e408b.so.1.9");
+        item.Message.Should().Contain(Libgit2Supply.PackageId + " package 1.0.323.362");
+        item.Message.Should().Contain("LD_LIBRARY_PATH");
+    }
+
+    [Fact]
+    public void DescribeLibgit2_reports_a_dx_that_did_not_start()
+    {
+        //Arrange
+        using var folder = new TempFolder();
+        var supply = PreparedSupply(folder, "libgit2-49e408b.so.1.9");
+
+        //Act
+        var item = PrerequisiteRules.DescribeLibgit2(supply, null, "    error while loading shared libraries");
+
+        //Assert
+        item.Status.Should().Be(PrerequisiteStatus.Missing);
+        item.Message.Should().Contain("dx did not start");
+        item.Message.Should().Contain("error while loading shared libraries");
+    }
+
+    [Fact]
+    public void DescribeLibgit2_passes_on_the_problem_and_notes_what_was_not_checked()
+    {
+        //Arrange
+        using var folder = new TempFolder();
+        var notLinked = PreparedSupply(folder, "libc.so.6");
+
+        //Act
+        var missing = PrerequisiteRules.DescribeLibgit2(null, "dx does not start without libgit2", null);
+        var notChecked = PrerequisiteRules.DescribeLibgit2(null, "not checked: dx was not found.", null);
+        var older = PrerequisiteRules.DescribeLibgit2(notLinked, null, null);
+
+        //Assert
+        missing.Status.Should().Be(PrerequisiteStatus.Missing);
+        missing.Message.Should().Be("dx does not start without libgit2");
+        notChecked.Status.Should().Be(PrerequisiteStatus.Note);
+        notChecked.Message.Should().Be("libgit2 not checked: dx was not found.");
+        older.Status.Should().Be(PrerequisiteStatus.Note);
+        older.Message.Should().Contain("does not link libgit2");
+    }
+}

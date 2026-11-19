@@ -1,0 +1,7 @@
+# Settings for `dx` (the Dioxus build tool). Only the page title is set here (it fills
+# `{app_title}` in index.html); everything else keeps dx's defaults.
+[application]
+name = "WorkSite"
+
+[web.app]
+title = "WorkSite"

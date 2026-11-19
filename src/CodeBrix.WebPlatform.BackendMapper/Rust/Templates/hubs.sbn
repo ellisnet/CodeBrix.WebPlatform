@@ -1,0 +1,106 @@
+{{ marker }} from {{ assembly_name }}. Do not edit: this file is rewritten on every build.
+//
+// One type per SignalR hub: a function for each method the frontend can call, and for each
+// message the hub sends a way to register a handler (`on_...`) and a hook that always holds the
+// most recent message (`use_...`). When to connect, and what to do with what arrives, is the
+// application's own code.
+
+use dioxus::prelude::ReadSignal;
+use serde_json::Value;
+{{~ for used in hub_imports ~}}
+use {{ used }};
+{{~ end ~}}
+
+use {{ signalr_module }}::{self as signalr, arg, to_arg, ConnectionState, HubConnection, HubDescriptor, HubError, HubStream, Subscription};
+
+use super::models::*;
+{{~ for h in hubs ~}}
+
+/// Where `{{ h.clr_name }}` is served, and who may connect ({{ h.sign_in_doc }}).
+pub static {{ h.descriptor }}: HubDescriptor = HubDescriptor {
+    name: "{{ h.name }}",
+    path: "{{ h.path }}",
+    requires_sign_in: {{ h.requires_sign_in }},
+};
+{{~ for m in h.messages ~}}
+{{~ if m.has_args_struct ~}}
+
+/// The arguments of the `{{ m.wire_name }}` message of `{{ h.name }}`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct {{ m.payload_type }} {
+{{~ for f in m.args_fields ~}}
+    pub {{ f.name }}: {{ f.type }},
+{{~ end ~}}
+}
+{{~ end ~}}
+
+fn {{ m.decoder }}({{ if m.payload_type == "()" }}_args{{ else }}args{{ end }}: &[Value]) -> Option<{{ m.payload_type }}> {
+    {{ m.decode }}
+}
+{{~ end ~}}
+
+/// `{{ h.clr_name }}` ({{ h.sign_in_doc }}). Cloning is cheap: every clone shares the one connection.
+#[derive(Clone)]
+pub struct {{ h.name }} {
+    connection: HubConnection,
+}
+
+impl {{ h.name }} {
+    /// Takes a share of the hub's connection, opening it when this is the first. The connection
+    /// closes when the last share is dropped. Inside a component, prefer [`{{ h.name }}::use_hub`].
+    pub fn connect() -> Self {
+        {{ h.name }} { connection: signalr::connect(&{{ h.descriptor }}) }
+    }
+
+    /// A hook: holds the hub's connection for as long as the calling component is mounted.
+    pub fn use_hub() -> Self {
+        {{ h.name }} { connection: signalr::use_hub(&{{ h.descriptor }}) }
+    }
+
+    /// The connection underneath, for anything this type does not offer.
+    pub fn connection(&self) -> &HubConnection {
+        &self.connection
+    }
+
+    /// Whether the hub is connected right now.
+    pub fn state(&self) -> ConnectionState {
+        self.connection.state()
+    }
+
+    /// A hook: the connection's state, re-rendering the calling component when it changes.
+    pub fn use_state(&self) -> ReadSignal<ConnectionState> {
+        signalr::use_connection_state(&self.connection)
+    }
+{{~ for m in h.methods ~}}
+
+{{~ if m.is_stream ~}}
+    /// Calls `{{ m.wire_name }}` and reads the items it streams back. Dropping the stream cancels it.
+    pub fn {{ m.name }}({{ m.parameters }}) -> HubStream<{{ m.result_type }}> {
+        self.connection.stream("{{ m.wire_name }}", {{ m.arguments }})
+    }
+{{~ else ~}}
+    /// Calls `{{ m.wire_name }}` and waits for its answer.
+    pub async fn {{ m.name }}({{ m.parameters }}) -> Result<{{ m.result_type }}, HubError> {
+        self.connection.invoke("{{ m.wire_name }}", {{ m.arguments }}).await
+    }
+{{~ end ~}}
+{{~ end ~}}
+{{~ for m in h.messages ~}}
+
+    /// Runs `handler` each time the hub sends `{{ m.wire_name }}`, until the returned subscription is dropped.
+    pub fn on_{{ m.name }}(&self, handler: impl Fn({{ m.payload_type }}) + 'static) -> Subscription {
+        self.connection.on("{{ m.wire_name }}", move |args| {
+            if let Some(message) = {{ m.decoder }}(args) {
+                handler(message);
+            }
+        })
+    }
+
+    /// A hook: the most recent `{{ m.wire_name }}` message, or `None` before the first arrives. It
+    /// holds the hub's connection for as long as the calling component is mounted.
+    pub fn use_{{ m.name }}() -> ReadSignal<Option<{{ m.payload_type }}>> {
+        signalr::use_hub_message(&{{ h.descriptor }}, "{{ m.wire_name }}", {{ m.decoder }})
+    }
+{{~ end ~}}
+}
+{{~ end ~}}

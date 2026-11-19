@@ -1,0 +1,8 @@
+# Only for resolving and auditing the platform's crate set inside the CodeBrix.WebPlatform
+# repository: the crates come from the vendored folder beside this one, never from the network.
+# The maintainer tool's `vendor` command re-takes that folder from crates.io without this file.
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "../vendor"

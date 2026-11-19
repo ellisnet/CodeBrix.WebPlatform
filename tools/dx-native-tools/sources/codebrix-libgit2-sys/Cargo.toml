@@ -1,0 +1,36 @@
+# The CodeBrix stand-in for the crates.io crate libgit2-sys 0.18.3+1.9.2: the same crate name,
+# the same 0.18.3 version, the same features and the same public Rust API (lib.rs), but no C
+# source and nothing compiled. It only declares libgit2's functions and types, and links the
+# prebuilt libgit2 1.9.7 of the CodeBrix.LibGit2.MitLicenseForever package (build.rs). The Dioxus
+# CLI's Cargo.toml substitutes it for the crates.io crate with [patch.crates-io] (patch
+# 0002-libgit2-sys-stand-in.patch). The build metadata "+1.9.7" names the libgit2 release it
+# links; cargo ignores build metadata when it matches versions. See README.txt.
+
+[package]
+edition = "2021"
+name = "libgit2-sys"
+version = "0.18.3+1.9.7"
+build = "build.rs"
+links = "git2"
+publish = false
+description = "Declarations-only stand-in for libgit2-sys: links the prebuilt libgit2 of the CodeBrix.LibGit2 package, builds no C code"
+license = "MIT OR Apache-2.0"
+readme = false
+
+[lib]
+name = "libgit2_sys"
+path = "lib.rs"
+
+[dependencies]
+libc = "0.2"
+
+# The features upstream offers, kept so that git2's and cargo-generate's feature requests still
+# resolve. Each is EMPTY: upstream uses them to compile libgit2's C source (vendored), to pull in
+# openssl-sys (https, vendored-openssl), libssh2-sys (ssh) or libz-sys (zlib-ng-compat). The
+# prebuilt library already has what they select.
+[features]
+https = []
+ssh = []
+vendored = []
+vendored-openssl = []
+zlib-ng-compat = []

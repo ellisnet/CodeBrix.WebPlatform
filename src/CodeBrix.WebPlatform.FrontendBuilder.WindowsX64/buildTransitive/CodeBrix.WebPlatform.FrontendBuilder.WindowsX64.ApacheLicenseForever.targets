@@ -1,0 +1,16 @@
+<Project>
+
+  <!--
+    Copies the win-x64 build tools that ship in this package (tools/frontend-tools/win-x64/: dx.exe,
+    wasm-bindgen.exe and their licence and notices files) into the output folder of the project
+    that references it - directly or through another package - as frontend-tools/win-x64/.
+    CodeBrix.WebPlatform.FrontendBuilder looks for them there.
+  -->
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)..\tools\frontend-tools\**\*"
+          Link="frontend-tools\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest"
+          Visible="false" />
+  </ItemGroup>
+
+</Project>

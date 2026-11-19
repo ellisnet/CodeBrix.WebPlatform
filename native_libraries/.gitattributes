@@ -1,0 +1,6 @@
+# The programs here have no file extension on Linux and macOS, so the root
+# .gitattributes' *.dll / *.so rules do not reach them. Declared, not left to
+# git's heuristic: a program with newline translation applied is corrupt.
+dx            binary
+wasm-bindgen  binary
+*.exe         binary

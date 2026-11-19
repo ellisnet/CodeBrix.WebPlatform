@@ -1,0 +1,49 @@
+delete-file sha256:56caad809ee911bd80f96e85fe5fe63b347f3926f155b4b6382073186a9d83a4 a/assets/android/prebuilt/openssl-1.1.1q-beta-1.tar.gz
+diff -ruN a/src/build/android.rs b/src/build/android.rs
+--- a/src/build/android.rs
++++ b/src/build/android.rs
+@@ -1326,10 +1326,6 @@
+         }) as _
+     }
+ 
+-    pub(crate) fn openssl_prebuilt_aar() -> &'static [u8] {
+-        include_bytes!("../../assets/android/prebuilt/openssl-1.1.1q-beta-1.tar.gz")
+-    }
+-
+     pub(crate) fn openssl_prebuilt_dest() -> PathBuf {
+         crate::Workspace::dioxus_data_dir()
+             .join("prebuilt")
+@@ -1352,27 +1348,13 @@
+         Self::openssl_prebuilt_dest().join("ssl").join("include")
+     }
+ 
+-    /// Unzip the prebuilt OpenSSL AAR file into the `.dx/prebuilt/openssl-<version>` directory
++    // CodeBrix change: upstream compiles a prebuilt OpenSSL archive into `dx` and unpacks it
++    // here for Android builds. This repository does not carry that archive, so there is
++    // nothing to unpack. An Android application that links OpenSSL must name its own with
++    // OPENSSL_LIB_DIR and OPENSSL_INCLUDE_DIR. See
++    // tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt.
+     pub(crate) fn unpack_prebuilt_openssl() -> Result<()> {
+-        let raw_aar = AndroidTools::openssl_prebuilt_aar();
+-        let aar_dest = AndroidTools::openssl_prebuilt_dest();
+-
+-        if aar_dest.exists() {
+-            tracing::trace!("Prebuilt OpenSSL already exists at {:?}", aar_dest);
+-            return Ok(());
+-        }
+-
+-        std::fs::create_dir_all(aar_dest.parent().context("no parent for aar")?)
+-            .context("failed to create prebuilt OpenSSL directory")?;
+-
+-        // Unpack the entire tar.gz file into the destination directory
+-        let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(raw_aar as &[u8]));
+-        archive
+-            .unpack(aar_dest.parent().context("no parent for aar dest")?)
+-            .context("failed to unpack prebuilt OpenSSL archive")?;
+-
+-        tracing::debug!("Unpacked prebuilt OpenSSL to {:?}", aar_dest);
+-
++        tracing::trace!("No prebuilt OpenSSL is carried; set OPENSSL_LIB_DIR and OPENSSL_INCLUDE_DIR to link one");
+         Ok(())
+     }
+ 

@@ -1,0 +1,218 @@
+THIRD-PARTY SOFTWARE NOTICES AND INFORMATION
+
+CodeBrix.WebPlatform is a set of libraries for building web applications with
+a .NET backend and a Rust frontend compiled to WebAssembly: the
+CodeBrix.WebPlatform.Core, CodeBrix.WebPlatform.BackendMapper and
+CodeBrix.WebPlatform.FrontendBuilder assemblies, the shared Rust crate
+(codebrix-webplatform) that ships inside the FrontendBuilder assembly, and the
+five host-tools packages (CodeBrix.WebPlatform.FrontendBuilder.<Platform>).
+The assemblies incorporate one piece of third-party source code: the shared
+crate's SignalR client is derived from the signalr-client crate (MIT License);
+its notice is the first entry below. Two packages also CARRY third-party
+software, listed after it with where its generated notices are: the
+FrontendBuilder package carries the platform's Rust crates, and each
+host-tools package carries the dx and wasm-bindgen programs.
+
+CodeBrix.WebPlatform.FrontendBuilder depends on other packages that are
+distributed separately under their own licenses and are not part of it:
+CodeBrix.WebPlatform.WasmShrink (which carries the wasm-opt program and the
+notices for it) and CodeBrix.RustTools.
+
+The Rust code that CodeBrix.WebPlatform.BackendMapper writes for an
+application is produced from templates written for this project and from the
+application's own backend; it is the application's code. Crates an
+application adds of its own are the application's to record.
+
+This file covers the libraries and their NuGet packages. The repository also
+holds the source the two distributed programs are built from
+(tools/dx-native-tools/sources: the dioxus-cli and wasm-bindgen-cli sources
+and the crates they are built from), which is not part of any package and is
+recorded in tools/dx-native-tools/notices/THIRD-PARTY-NOTICES-ToolSources.txt;
+and a sample application, samples/WorkSite, which is not part of any package
+and has a notices file of its own (samples/WorkSite/THIRD-PARTY-NOTICES.txt).
+
+Jeremy Ellis and contributors license the CodeBrix.WebPlatform project
+to you under the terms set forth in the LICENSE file, which is located at
+the root of this repository.
+
+If you have any questions about any third-party code or services referenced
+here, or if you believe that any third-party code has been included in
+CodeBrix.WebPlatform in error, please open a new issue at:
+https://github.com/ellisnet/CodeBrix.WebPlatform/issues
+
+================================================================================
+
+signalr-client 0.3.2 - the starting point of the shared crate's SignalR client
+
+  Where:    the module `signalr` of the shared Rust crate, which ships inside
+            the CodeBrix.WebPlatform.FrontendBuilder assembly and is compiled
+            into every platform frontend. In this repository:
+            src/CodeBrix.WebPlatform.FrontendBuilder/Rust/codebrix-webplatform/
+            src/signalr. The files protocol.rs and connection.rs carry a
+            header naming their origin; the other files of the module were
+            written for this project.
+  Origin:   the signalr-client crate, version 0.3.2,
+            https://crates.io/crates/signalr-client
+            (https://github.com/danielleiszen/rust_signalr_client)
+  License:  MIT
+  Changes:  this is NOT the crate. Its source was taken as the starting point
+            of a module of our own and reworked: the JSON hub protocol,
+            invocation, streaming and reconnection logic were kept and
+            adapted; the native transport, MessagePack and the crate's
+            dependencies were dropped; the WebAssembly transport was replaced
+            by an event-driven one on the browser's WebSocket; handlers and
+            the session refresh run inside the application's Dioxus runtime.
+  License text of the original:
+
+            MIT License
+
+            Copyright (c) 2025 Dániel Leiszen
+
+            Permission is hereby granted, free of charge, to any person obtaining a copy
+            of this software and associated documentation files (the "Software"), to deal
+            in the Software without restriction, including without limitation the rights
+            to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+            copies of the Software, and to permit persons to whom the Software is
+            furnished to do so, subject to the following conditions:
+
+            The above copyright notice and this permission notice shall be included in all
+            copies or substantial portions of the Software.
+
+            THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+            IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+            FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+            AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+            LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+            OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+            SOFTWARE.
+
+================================================================================
+
+The platform's Rust crates - carried by CodeBrix.WebPlatform.FrontendBuilder
+
+  Where:    in the package, tools/frontend-crates/platform-crates.zip (one
+            archive; a consuming build gets it beside the build program as
+            frontend-crates/platform-crates.zip, and the build writes the
+            crates into the application's frontend). In this repository:
+            src/CodeBrix.WebPlatform.FrontendBuilder/Rust/vendor.
+  What:     every crate a platform frontend may use without adding crates of
+            its own (dioxus, reqwest, serde, serde_json, web-sys, js-sys,
+            wasm-bindgen and the crates they depend on), each EXACTLY as
+            crates.io published it, unmodified, with its own license files.
+  Licenses: each crate keeps its own permissive license (Apache-2.0, MIT,
+            BSD, Unicode and the like; many offer a choice, such as "MIT OR
+            Apache-2.0"), within the licence allowlist the repository's
+            maintainer gate enforces (tools/licensing). Every crate, with its declared license, the license
+            it is used under, its origin, its checksum and the text of its
+            license files, is listed in the GENERATED file
+            THIRD-PARTY-NOTICES-PlatformCrates.txt, which travels with the
+            package (tools/frontend-crates/; beside the build program as
+            frontend-crates/THIRD-PARTY-NOTICES-PlatformCrates.txt). Part 1
+            of it lists the crates compiled into a platform application's
+            WebAssembly file, Part 2 the rest. It also carries the
+            signalr-client notice above, so that it is complete for a built
+            site: an application serves it with its own notices.
+            In this repository:
+            src/CodeBrix.WebPlatform.FrontendBuilder/Rust/notices.
+
+================================================================================
+
+dx - the Dioxus CLI, MODIFIED - carried by the host-tools packages
+
+  Where:    in each CodeBrix.WebPlatform.FrontendBuilder.<Platform> package,
+            tools/frontend-tools/<rid>/dx[.exe] (a consuming build gets it
+            beside the build program as frontend-tools/<rid>/). A build tool:
+            it runs on the developer's machine and is not part of a built
+            application.
+  Origin:   the dioxus-cli crate, version 0.7.10,
+            https://crates.io/crates/dioxus-cli
+            (https://github.com/DioxusLabs/dioxus)
+  License:  MIT OR Apache-2.0; used under Apache-2.0 (LICENSE-Dioxus.txt
+            beside the program)
+  Changes:  MODIFIED by this repository's six patches
+            (tools/dx-native-tools/vendoring/dioxus-cli, described in
+            PATCH-NOTES.txt there; each changed place in the source carries a
+            comment that starts "CodeBrix change:"): the image encoders
+            without imagequant and mozjpeg; the libgit2-sys stand-in (below);
+            web builds without esbuild; the regenerated lock file; no
+            prebuilt OpenSSL archive; DX_SKIP_WASM_OPT, an unshrunk release
+            build on request. Built from tools/dx-native-tools/sources/
+            dioxus-cli.
+  libgit2:  dx LINKS libgit2 (GPL-2.0 with a linking exception)
+            DYNAMICALLY, as a shared library that the operating system loads
+            when dx starts. No libgit2 code is compiled into dx, and libgit2
+            is NOT distributed by this repository or by any of its packages:
+            the library itself is distributed only by its own package,
+            CodeBrix.LibGit2.MitLicenseForever, which carries libgit2's
+            licence files beside it. The FrontendBuilder package depends on
+            that package and hands the library to dx when it starts it.
+  Notices:  every crate compiled into dx, on any of the five platforms, with
+            the license texts: THIRD-PARTY-NOTICES-Dioxus.txt beside the
+            program (generated; in this repository
+            tools/dx-native-tools/notices). ACCEPTED EXCEPTIONS, stated
+            there in full:
+              - thirteen crates under the Mozilla Public License 2.0,
+                accepted by name: lightningcss, lightningcss-derive,
+                parcel_selectors, cssparser, cssparser-color,
+                cssparser-macros, dtoa-short, static-self,
+                static-self-derive, nucleo, nucleo-matcher, option-ext and
+                smartstring (declared "MPL-2.0+", used under 2.0; it came
+                with dx's project templates). Ten are compiled in; the three
+                "-macros" / "-derive" crates are procedural macros used while
+                dx is compiled. dx contains them unmodified; their source is
+                in this repository, tools/dx-native-tools/sources/vendor, one
+                folder per crate and version, and on crates.io;
+              - webpki-roots (the Mozilla root certificate list), under the
+                Community Data License Agreement - Permissive 2.0, accepted by
+                name (also in wasm-bindgen);
+              - target-lexicon, wasm-encoder and wasmparser, under Apache-2.0
+                WITH LLVM-exception;
+              - the caniuse browser-support data, Copyright (C) 2020 Alexis
+                Deveria, Creative Commons Attribution 4.0 International,
+                compiled in through the MIT-declared crate browserslist-data;
+                accepted with attribution, which the notices give;
+              - C code compiled in from the crates ring and zstd-sys (the
+                zstd library, BSD-3-Clause elected).
+
+================================================================================
+
+libgit2-sys declarations - in the stand-in compiled into dx
+
+  Where:    tools/dx-native-tools/sources/codebrix-libgit2-sys (in this
+            repository; compiled into dx, listed in
+            THIRD-PARTY-NOTICES-Dioxus.txt as libgit2-sys 0.18.3+1.9.7).
+  Origin:   the repository's own declarations-only stand-in for the crate
+            libgit2-sys. Its lib.rs - Rust declarations of libgit2's
+            functions and types, no C code - is lib.rs of the crates.io crate
+            libgit2-sys 0.18.3+1.9.2 (https://github.com/rust-lang/git2-rs),
+            Copyright (c) 2014 Alex Crichton, with three changes marked
+            "CodeBrix change:". Nothing else of that crate was taken; in
+            particular not its libgit2/ folder (libgit2's C source), which
+            this repository never carries.
+  License:  MIT OR Apache-2.0; upstream's LICENSE-MIT and LICENSE-APACHE
+            are beside it, verbatim, and its README.txt is the full notice.
+
+================================================================================
+
+wasm-bindgen - the wasm-bindgen CLI, unmodified - carried by the host-tools
+packages
+
+  Where:    in each CodeBrix.WebPlatform.FrontendBuilder.<Platform> package,
+            tools/frontend-tools/<rid>/wasm-bindgen[.exe]. A build tool. The
+            JavaScript glue file it writes for an application is output of
+            the tool and of the platform's crates.
+  Origin:   the wasm-bindgen-cli crate, version 0.2.130,
+            https://crates.io/crates/wasm-bindgen-cli
+            (https://github.com/wasm-bindgen/wasm-bindgen)
+  License:  MIT OR Apache-2.0; used under Apache-2.0 (LICENSE-WasmBindgen.txt
+            beside the program: the crate's own LICENSE-APACHE)
+  Changes:  none; built from tools/dx-native-tools/sources/wasm-bindgen-cli.
+  Notices:  every crate compiled into wasm-bindgen, with the license texts:
+            THIRD-PARTY-NOTICES-WasmBindgen.txt beside the program
+            (generated; in this repository tools/dx-native-tools/notices).
+            webpki-roots (CDLA-Permissive-2.0) and C code from ring are
+            compiled in.
+
+================================================================================
+
+END OF THIRD-PARTY SOFTWARE NOTICES AND INFORMATION

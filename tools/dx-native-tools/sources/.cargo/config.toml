@@ -1,0 +1,8 @@
+# Every crate the two build tools (dioxus-cli and wasm-bindgen-cli, beside this folder) need comes
+# from vendor/ beside them, never from the network. Written from the output of `cargo vendor`; see
+# tools/dx-native-tools/README.txt and the root MAINTAINER-README.txt.
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor"

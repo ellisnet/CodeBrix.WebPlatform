@@ -1,0 +1,7 @@
+# native_libraries/ holds the committed programs that go into the
+# CodeBrix.WebPlatform.FrontendBuilder.<Platform> packages (dx, wasm-bindgen,
+# their licence and notices files and their *.provenance.txt build records).
+# NOTHING in the root .gitignore may hide a file here, so everything is
+# re-included. The root .gitignore is deliberately left as it is.
+!*
+!*/

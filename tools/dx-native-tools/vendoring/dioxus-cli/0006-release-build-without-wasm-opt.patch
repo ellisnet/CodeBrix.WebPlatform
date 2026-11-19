@@ -1,0 +1,26 @@
+diff -ruN a/src/build/web.rs b/src/build/web.rs
+--- a/src/build/web.rs
++++ b/src/build/web.rs
+@@ -254,7 +254,21 @@
+         }
+ 
+         // Make sure to optimize the main wasm file if requested or if bundle splitting
+-        if should_bundle_split || self.release {
++        //
++        // CodeBrix change: a release build leaves the main module unshrunk when the caller sets
++        // the environment variable DX_SKIP_WASM_OPT to anything but an empty value, "0" or
++        // "false". wasm-opt is then neither looked for nor run, so the build needs none. A build
++        // with bundle splitting is not affected: it runs wasm-opt as upstream does. See
++        // tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt.
++        let skip_wasm_opt = !should_bundle_split
++            && std::env::var("DX_SKIP_WASM_OPT").is_ok_and(|value| {
++                let value = value.trim();
++                !value.is_empty() && value != "0" && !value.eq_ignore_ascii_case("false")
++            });
++        if skip_wasm_opt && self.release {
++            tracing::info!("Skipping wasm-opt at the caller's request (DX_SKIP_WASM_OPT is set): the WebAssembly is not shrunk");
++        }
++        if (should_bundle_split || self.release) && !skip_wasm_opt {
+             ctx.status_optimizing_wasm();
+             wasm_opt::optimize(&post_bindgen_wasm, &post_bindgen_wasm, &wasm_opt_options).await?;
+         }

@@ -1,0 +1,202 @@
+================================================================================
+PATCH NOTES: dioxus-cli (the `dx` build tool)
+================================================================================
+
+tools/dx-native-tools/sources/dioxus-cli is the dioxus-cli crate exactly as
+published on crates.io (the archive beside this file, whose checksum is in the
+.sha256 file) with the numbered patches in this folder applied in order.
+Nothing else may differ: `LibraryChecker patches` rebuilds the source from the
+archive and the patches and compares it with that folder byte for byte.
+
+Every patch was written against the dioxus-cli version named by the archive
+beside this file. When the tool is upgraded, each patch is re-applied to the
+new source (see UPGRADE-README.txt) and this file is brought up to date.
+
+Each changed place in the source carries a comment that starts "CodeBrix
+change:" and points at this file, so the changes can be found with a search.
+
+The patches, in the order they apply:
+  0001-image-crate-encoders.patch           image encoders without imagequant
+                                            and mozjpeg
+  0002-libgit2-sys-stand-in.patch           libgit2-sys -> the declarations-only
+                                            stand-in (prebuilt libgit2)
+  0003-build-without-esbuild.patch          web builds without esbuild
+  0004-regenerated-cargo-lock.patch         the lock file for 0001 + 0002
+  0005-no-prebuilt-openssl.patch            no prebuilt OpenSSL archive
+  0006-release-build-without-wasm-opt.patch DX_SKIP_WASM_OPT: an unshrunk
+                                            release build on request
+
+
+0001-image-crate-encoders.patch
+-------------------------------
+What:   src/opt/image.rs - compress_png and compress_jpg are rewritten to use
+        the `image` crate's own PNG and JPEG encoders. Cargo.toml - the
+        `imagequant` and `mozjpeg` dependencies are removed.
+Why:    `imagequant` is licensed GPL-3.0-or-later and `mozjpeg` /
+        `mozjpeg-sys` under the IJG license, neither of which this
+        repository accepts. Both were used only to make image assets smaller.
+Effect: image assets processed by `dx` are larger: PNG files keep full
+        colour instead of being reduced to a 256-colour palette, and JPEG
+        files are encoded at quality 85 by a simpler encoder. Nothing else
+        changes. `nasm` is no longer needed to build the tool.
+Drop when: upstream stops depending on `imagequant` and `mozjpeg`, or puts
+        them behind a cargo feature that can be left off.
+
+
+0002-libgit2-sys-stand-in.patch
+-------------------------------
+What:   Cargo.toml - a [patch.crates-io.libgit2-sys] section that replaces the
+        crates.io crate libgit2-sys with the repository's own crate in
+        tools/dx-native-tools/sources/codebrix-libgit2-sys (path
+        "../codebrix-libgit2-sys"). Nothing else: `dx new`, `dx init` and the
+        libgit2-based `dx components` are upstream's, unchanged, and so are
+        the `git2` and `cargo-generate` dependencies.
+Why:    git2 (which dx uses directly, and through cargo-generate and
+        auth-git2) builds on libgit2-sys, which carries libgit2's C source
+        (GPL-2.0 with a linking exception) and compiles it. This repository
+        never carries libgit2's source. The stand-in has the same crate name,
+        version (0.18.3), features and public Rust API as libgit2-sys
+        0.18.3+1.9.2 but no C code: it declares libgit2's functions (its lib.rs
+        is upstream's, with three marked changes) and links the PREBUILT
+        libgit2 1.9.7 of the published package CodeBrix.LibGit2.MitLicenseForever
+        as a shared library (see its README.txt). Because of the substitution,
+        cargo vendor never takes the crates.io libgit2-sys, nor libssh2-sys or
+        libz-sys.
+Effect: every dx command is there again. dx LINKS libgit2 and does not start
+        without it (tools/dx-native-tools/README.txt, "dx NEEDS libgit2 TO
+        START"). The build needs CODEBRIX_LIBGIT2_LIB_DIR naming the folder
+        with the library to link (the build scripts set it). On Linux the
+        build also needs the OpenSSL development headers, for a reason that
+        is not this patch's: cargo-generate turns on git2's `https` feature,
+        which makes git2 depend on openssl-sys on Linux; git2 never calls it,
+        so nothing from OpenSSL is linked into dx, but openssl-sys's build
+        script reads the headers (linux/pins.env, OPENSSL_DEVEL_VERSION).
+        `dx components add` downloads third-party source into a project's own
+        src folder, outside the vendored snapshots and the license gate.
+History: until 2026-11-19 patch 0002 was "host-git-no-project-templates": it
+        deleted `dx new` and `dx init`, removed the cargo-generate and git2
+        dependencies and made `dx components` run the `git` program. The
+        repository owner had that undone, all of dx's functionality put back,
+        and this patch put in its place.
+Drop when: never while this repository may not carry libgit2's source; on an
+        upgrade, re-check that the stand-in's version still matches the
+        libgit2-sys that dx's git2 asks for.
+
+
+0003-build-without-esbuild.patch
+--------------------------------
+What:   - src/build/web.rs - a missing `esbuild` no longer stops a web build.
+        - src/opt/js.rs - when a JavaScript module is copied without esbuild,
+          the `snippets` folder that wasm-bindgen writes beside it is copied
+          beside the output file.
+Why:    upstream requires the `esbuild` program for every web build and, when
+        it is absent, downloads it from the npm registry. This repository
+        installs no JavaScript tooling and its `dx` is built with downloads
+        switched off. esbuild's job here is to fold the small JavaScript
+        files that Dioxus and wasm-bindgen generate into one file and minify
+        it; the application works the same without that.
+Effect: the generated JavaScript is served as it was generated: one glue
+        file plus a few module files under assets/snippets, not minified.
+        `dx` prints "esbuild binary path not set. Copying JS without
+        processing." on every build; that is expected. If an `esbuild`
+        program IS on PATH, `dx` uses it as upstream does.
+Drop when: upstream makes esbuild optional.
+Status: kept by the repository owner's decision. The alternative, installing
+        an `esbuild` program, was considered and declined.
+
+
+0004-regenerated-cargo-lock.patch
+---------------------------------
+What:   - Cargo.lock - regenerated by cargo after the Cargo.toml edits of
+          patches 0001 and 0002, starting from upstream's own Cargo.lock.
+          Packages that nothing depends on any more are removed (imagequant,
+          mozjpeg and their trees, and libgit2-sys 0.18.3+1.9.2 with
+          libssh2-sys and libz-sys); the stand-in libgit2-sys 0.18.3+1.9.7 is
+          added as a local package; no other package is added and none
+          changes version.
+        - .gitignore - the `Cargo.lock` line is removed.
+Why:    the lock file must match the manifest, and the upstream .gitignore
+        would make git ignore the lock file, so a clone of this repository
+        could not build the tool with `--locked`.
+Effect: none on behaviour.
+Regenerate, do not re-apply: on an upgrade this patch is not carried
+        forward. After the other patches are applied to the new source, run
+        `cargo metadata` in the dioxus-cli source once with network access (or
+        `cargo vendor`, which resolves against crates.io) so cargo prunes
+        the lock file. cargo keeps the locked crates.io libgit2-sys and
+        reports the patch as unused until it is told once to switch:
+        `cargo update -p libgit2-sys@<the locked version>` (it then removes
+        that crate with libssh2-sys and libz-sys and changes nothing else).
+        Then write a new patch from the result.
+
+
+0005-no-prebuilt-openssl.patch
+------------------------------
+What:   - assets/android/prebuilt/openssl-1.1.1q-beta-1.tar.gz is deleted (a
+          `delete-file` line; see PATCHES in the root MAINTAINER-README.txt).
+        - src/build/android.rs - `openssl_prebuilt_aar` is removed and
+          `unpack_prebuilt_openssl` no longer unpacks anything.
+Why:    the archive is a prebuilt binary build of OpenSSL 1.1.1 for Android
+        (under the old OpenSSL license) that upstream compiles into `dx` and
+        unpacks for Android builds. This repository carries source it can
+        account for, not prebuilt binaries, and builds nothing for Android.
+        The file cannot simply be removed: the source embeds it at compile
+        time, so the tool would not build.
+Effect: none on a web build. An Android build made with this `dx` gets no
+        OpenSSL from the tool; an application that links OpenSSL must name
+        its own with OPENSSL_LIB_DIR and OPENSSL_INCLUDE_DIR. The README.md
+        in assets/android/prebuilt is upstream's and is left as it is; it
+        describes the archive that is no longer there.
+Drop when: upstream stops shipping the archive inside the crate.
+Numbered after 0004 because it was added later; it does not touch Cargo.toml
+        or the lock file, so on an upgrade it is re-applied with 0001 to 0003,
+        before 0004 is regenerated.
+
+
+0006-release-build-without-wasm-opt.patch
+-----------------------------------------
+What:   src/build/web.rs - where a web build runs wasm-opt on the main
+        WebAssembly module, the environment variable DX_SKIP_WASM_OPT is read:
+        when it is set to anything but an empty value, "0" or "false" (any
+        case), the step is skipped and dx prints one line, "Skipping wasm-opt
+        at the caller's request (DX_SKIP_WASM_OPT is set): the WebAssembly is
+        not shrunk".
+Why:    upstream runs wasm-opt on EVERY release web build and has no way to
+        skip it; with no wasm-opt available a release build fails ("Missing
+        wasm-opt"). The platform's rule is that shrinking is on for release
+        builds and off for debug builds, with one documented override either
+        way. Shrinking a debug build needs nothing from dx (the
+        FrontendBuilder library runs wasm-opt after dx); the other direction -
+        an unshrunk release build - needs this. An environment variable rather
+        than a command-line flag, so nothing in dx's argument parsing or its
+        configuration schema changes.
+Effect: unset (or "0" / "false"): exactly upstream's behaviour. Set: a
+        release build neither looks for nor runs wasm-opt for the main
+        module, so it succeeds with no wasm-opt on the machine, and the
+        .wasm is the larger file wasm-bindgen wrote. A debug build is
+        unaffected either way (dx never shrinks one). BUNDLE SPLITTING
+        (`--wasm-split`) keeps its own behaviour: it needs wasm-opt for the
+        split modules, which dx shrinks as it writes them, and for the main
+        module, so with bundle splitting the variable is IGNORED and wasm-opt
+        runs as upstream does.
+Drop when: upstream offers a way to skip wasm-opt for a release build.
+Does not touch Cargo.toml or the lock file; on an upgrade it is re-applied
+        with 0001 to 0003 and 0005, before 0004 is regenerated.
+
+
+BUILD SWITCHES (not a patch)
+----------------------------
+The native build (tools/dx-native-tools, DX_FEATURES in linux/pins.env)
+builds the tool with the cargo features `no-downloads` and
+`disable-telemetry`, both of which upstream provides:
+  - no-downloads: `dx` never downloads a tool. It uses the `wasm-bindgen`,
+    `tailwindcss` and `wasm-opt` it finds on PATH (the FrontendBuilder library
+    puts the packaged wasm-bindgen and wasm-opt first there).
+  - disable-telemetry: upstream `dx` uploads usage data. With this feature
+    its "is telemetry disabled" check always answers yes, so no reporter is
+    enrolled, and every upload path needs a reporter and stops without one.
+    Nothing is written to the tool's statistics folder either.
+
+================================================================================
+END OF PATCH NOTES
+================================================================================

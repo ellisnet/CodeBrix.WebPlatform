@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/Tests/">
+    <Project Path="backend/tests/WorkSite.Api.Tests/WorkSite.Api.Tests.csproj" />
+    <Project Path="backend/tests/WorkSite.Core.Tests/WorkSite.Core.Tests.csproj" />
+    <Project Path="backend/tests/WorkSite.DataAccess.Tests/WorkSite.DataAccess.Tests.csproj" />
+    <Project Path="build/WorkSite.BuildFrontend.Tests/WorkSite.BuildFrontend.Tests.csproj" />
+  </Folder>
+  <Project Path="backend/libs/WorkSite.Core/WorkSite.Core.csproj" />
+  <Project Path="backend/libs/WorkSite.DataAccess/WorkSite.DataAccess.csproj" />
+  <Project Path="backend/WorkSite.Api/WorkSite.Api.csproj" />
+  <Folder Name="/Build/">
+    <Project Path="build/WorkSite.BuildFrontend/WorkSite.BuildFrontend.csproj" />
+  </Folder>
+</Solution>

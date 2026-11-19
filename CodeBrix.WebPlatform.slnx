@@ -1,0 +1,33 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".gitignore" />
+    <File Path="AGENT-README.txt" />
+    <File Path="EXTRAS-README.txt" />
+    <File Path="global.json" />
+    <File Path="icon-codebrix-128.png" />
+    <File Path="LICENSE" />
+    <File Path="MAINTAINER-README.txt" />
+    <File Path="nuget.config" />
+    <File Path="README-INDEX.txt" />
+    <File Path="README.md" />
+    <File Path="THIRD-PARTY-NOTICES.txt" />
+  </Folder>
+  <Folder Name="/Tests/">
+    <Project Path="tests/CodeBrix.WebPlatform.BackendMapper.Tests/CodeBrix.WebPlatform.BackendMapper.Tests.csproj" />
+    <Project Path="tests/CodeBrix.WebPlatform.BackendMapper.Tests.BrokenBackend/CodeBrix.WebPlatform.BackendMapper.Tests.BrokenBackend.csproj" />
+    <Project Path="tests/CodeBrix.WebPlatform.BackendMapper.Tests.SampleBackend/CodeBrix.WebPlatform.BackendMapper.Tests.SampleBackend.csproj" />
+    <Project Path="tests/CodeBrix.WebPlatform.Core.Tests/CodeBrix.WebPlatform.Core.Tests.csproj" />
+    <Project Path="tests/CodeBrix.WebPlatform.FrontendBuilder.HostTools.Tests/CodeBrix.WebPlatform.FrontendBuilder.HostTools.Tests.csproj" />
+    <Project Path="tests/CodeBrix.WebPlatform.FrontendBuilder.Tests/CodeBrix.WebPlatform.FrontendBuilder.Tests.csproj" />
+    <Project Path="tests/CodeBrix.WebPlatform.LibraryChecker.Tests/CodeBrix.WebPlatform.LibraryChecker.Tests.csproj" />
+  </Folder>
+  <Project Path="src/CodeBrix.WebPlatform.BackendMapper/CodeBrix.WebPlatform.BackendMapper.csproj" />
+  <Project Path="src/CodeBrix.WebPlatform.Core/CodeBrix.WebPlatform.Core.csproj" />
+  <Project Path="libs/CodeBrix.WebPlatform.LibraryChecker/CodeBrix.WebPlatform.LibraryChecker.csproj" />
+  <Project Path="src/CodeBrix.WebPlatform.FrontendBuilder/CodeBrix.WebPlatform.FrontendBuilder.csproj" />
+  <Project Path="src/CodeBrix.WebPlatform.FrontendBuilder.LinuxArm64/CodeBrix.WebPlatform.FrontendBuilder.LinuxArm64.csproj" />
+  <Project Path="src/CodeBrix.WebPlatform.FrontendBuilder.LinuxX64/CodeBrix.WebPlatform.FrontendBuilder.LinuxX64.csproj" />
+  <Project Path="src/CodeBrix.WebPlatform.FrontendBuilder.MacOSArm64/CodeBrix.WebPlatform.FrontendBuilder.MacOSArm64.csproj" />
+  <Project Path="src/CodeBrix.WebPlatform.FrontendBuilder.MacOSX64/CodeBrix.WebPlatform.FrontendBuilder.MacOSX64.csproj" />
+  <Project Path="src/CodeBrix.WebPlatform.FrontendBuilder.WindowsX64/CodeBrix.WebPlatform.FrontendBuilder.WindowsX64.csproj" />
+</Solution>

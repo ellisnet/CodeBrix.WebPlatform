@@ -1,0 +1,31 @@
+# THE PLATFORM'S CRATE SET. This manifest is never built into anything: it names every crate a
+# platform frontend may use without adding crates of its own - the shared crate's dependencies
+# and the Dioxus features an application may switch on - so that `cargo vendor` takes exactly
+# those crates into ../vendor, which the CodeBrix.WebPlatform.FrontendBuilder package ships and
+# writes into each application's frontend. Its Cargo.lock beside it fixes their versions; an
+# application's own Cargo.lock resolves to the same ones from the materialized folder.
+#
+# Repository-only (not in the package). Re-vendoring and the licence gate are the maintainer
+# tool's (libs/CodeBrix.WebPlatform.LibraryChecker; see MAINTAINER-README.txt at the root).
+[package]
+name = "codebrix-webplatform-crates"
+version = "1.0.0"
+edition = "2021"
+publish = false
+description = "The crate set of the CodeBrix.WebPlatform platform: what every platform frontend may use offline."
+license = "Apache-2.0"
+
+[dependencies]
+codebrix-webplatform = { path = "../codebrix-webplatform" }
+# The Dioxus features an application may switch on. Not offered (and not vendored): fullstack,
+# server, ssr, liveview, desktop, mobile, native - the server is ASP.NET and the frontend talks
+# REST.
+dioxus = { version = "=0.7.10", default-features = false, features = ["minimal", "web", "router", "document", "mounted", "asset"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+web-sys = "0.3"
+js-sys = "0.3"
+
+[features]
+# Hot reload for `dx serve` (an application's own `devtools` feature turns this on).
+devtools = ["dioxus/devtools"]

@@ -1,0 +1,84 @@
+dx -- Linux x64 (linux-x64)
+================================================================================
+This program was BUILT HERE, from the source in this repository, by:
+
+    tools/dx-native-tools/linux/build.sh x64   (-> container-build.sh)
+
+inside a digest-pinned manylinux container with the network DISABLED. Nothing
+was downloaded during the build: every crate came from the vendored tool
+crates. It was built twice from scratch on 2026-11-19 with byte-identical results.
+
+Source            : dioxus-cli 0.7.10 (upstream commit 57d6794ad60b949e5bd8aa282f6f8c3dc97a365e) with the
+                    repository's six patches (tools/dx-native-tools/vendoring/
+                    dioxus-cli/PATCH-NOTES.txt); every dx command is there
+Folder            : tools/dx-native-tools/sources/dioxus-cli (TOOL_SOURCES_DIR in
+                    tools/dx-native-tools/linux/pins.env), read-only
+libgit2-sys       : the declarations-only stand-in tools/dx-native-tools/sources/
+                    codebrix-libgit2-sys 0.18.3+1.9.7 - no libgit2 code is in dx
+LINKS libgit2     : libgit2 1.9.7 as a SHARED LIBRARY, NEEDED as
+                    libgit2-49e408b.so.1.9, linked against the library of the
+                    published package CodeBrix.LibGit2.MitLicenseForever 1.0.323.362
+                    (runtimes/linux-x64/native/libgit2-49e408b.so). dx DOES NOT START
+                    without it on the loader path; it is NOT in this folder - it
+                    reaches a build through that package
+--version         : "dioxus 0.7.10 (57d6794)" (with the library on LD_LIBRARY_PATH)
+
+Built             : 2026-11-19 07:18:02 UTC
+Build time        : 98s for this program (cargo, inside the container)
+Build host        : Dell Precision 7770 laptop, LMDE 7, x86_64, podman 5.4.2
+                    (the x86_64 laptop itself - native)
+Network           : DISABLED during this build (interfaces: lo)
+Derived image     : codebrix-dx-build-x86_64 (rebuilt 2026-11-19 with the OpenSSL
+                    headers openssl-devel-1.1.1k-17.el8_6, read by openssl-sys's
+                    build script only - nothing of OpenSSL is linked)
+Base image        : quay.io/pypa/manylinux_2_28_x86_64@sha256:a61875a2f84cab7df8de222ff12cabc08ff86eb4ad402ac90ba7bdaed9600cca
+Container OS      : AlmaLinux 8.10 (Cerulean Leopard)
+Toolchain         : rustc 1.100.0 (0ef1bc386 2026-11-09)
+                    cargo 1.100.0 (3acc79c0c 2026-11-05)
+                    cc (the image's GCC 14, native)
+Command           : cargo build --release --locked --offline --target
+                    x86_64-unknown-linux-gnu --features no-downloads,disable-telemetry
+                    with CODEBRIX_LIBGIT2_LIB_DIR (the package's library) and
+                    CODEBRIX_LIBGIT2_LINK_NAME=git2-49e408b
+                    RUSTFLAGS: --remap-path-prefix for /src, the target folder and
+                    CARGO_HOME; -C link-arg=-Wl,--build-id=sha1
+                    DIOXUS_CLI_GIT_SHA=57d6794ad60b949e5bd8aa282f6f8c3dc97a365e
+                    then llvm-strip --strip-all
+
+File             : dx
+Size (as linked) : 77192208 bytes (not kept)
+Size (stripped)  : 59518520 bytes  <- the shipped file
+Size (gzip -9 -n): 21799353 bytes
+SHA256           : fd89b04855e604d364b8b8b0c8ce43212af2161a94a6bb54f17f524c3d761865
+Build-id (sha1)  : d03e9dd642319160e797574615db61029bb842f3
+ELF              : ELF64, Advanced Micro Devices X86-64, DYN (Position-Independent Executable file)
+NEEDED           : libdl.so.2 libgit2-49e408b.so.1.9 libgcc_s.so.1 libpthread.so.0 libm.so.6 libc.so.6 ld-linux-x86-64.so.2
+glibc floor      : 2.28 (allowed <= 2.28)
+GLIBC versions   : 2.2.5 2.3 2.3.2 2.3.4 2.4 2.5 2.6 2.7 2.9 2.10 2.12 2.14 2.15 2.16 2.17 2.18 2.25 2.27 2.28
+Compiled in       : 624 packages for this target, the tool included (cargo tree
+                    -e normal; tools/dx-native-tools/output/linux-x64/compiled-in-dioxus-cli.txt)
+
+Gate              : ELF class/machine, stripped, no RPATH/RUNPATH/TEXTREL,
+                    NEEDED glibc + libgcc_s.so.1 + libgit2-49e408b.so.1.9 only
+                    (OpenSSL, zlib, zstd, libssh2, any other libgit2, libstdc++
+                    forbidden), no OpenSSL symbol imported, glibc floor <= 2.28
+                    (libgit2's own: 2.25), no build paths, `--version`, licence and
+                    notices files present;
+                    RUN on the build host (LMDE 7, glibc 2.41) with libgit2 on LD_LIBRARY_PATH, and
+                    WITHOUT it (does not start: exit 127, the loader names
+                    libgit2-49e408b.so.1.9); the functional gate: the new dx + wasm-bindgen
+                    built a scratch copy of the WorkSite frontend (.wasm 1,827,964 bytes, 17
+                    site files), the adopted 2026-11-18 tools built a fresh copy of the same
+                    snapshot at the same path BYTE-IDENTICALLY, a DX_SKIP_WASM_OPT release
+                    build with no wasm-opt succeeded (.wasm 2,069,920 bytes), and `dx new`
+                    from a local git template with no git program on PATH succeeded - ALL PASSED
+
+LICENCE AND NOTICES FILES BESIDE THIS ONE:
+  LICENSE-Dioxus.txt              dx's licence (Apache-2.0 text; dioxus-cli is
+                                  MIT OR Apache-2.0)
+  LICENSE-WasmBindgen.txt         wasm-bindgen-cli's LICENSE-APACHE, verbatim
+  THIRD-PARTY-NOTICES-Dioxus.txt  every crate compiled into dx, with licence
+                                  texts (generated: LibraryChecker notices --write)
+  THIRD-PARTY-NOTICES-WasmBindgen.txt  the same for wasm-bindgen
+libgit2's own licence travels with the library, in its package.
+See tools/dx-native-tools/BUILD-PROVENANCE.txt.

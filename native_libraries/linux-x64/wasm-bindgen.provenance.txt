@@ -1,0 +1,71 @@
+wasm-bindgen -- Linux x64 (linux-x64)
+================================================================================
+This program was BUILT HERE, from the source in this repository, by:
+
+    tools/dx-native-tools/linux/build.sh x64   (-> container-build.sh)
+
+inside a digest-pinned manylinux container with the network DISABLED. Nothing
+was downloaded: every crate came from the vendored tool crates. It was built
+twice from scratch on 2026-11-18 with byte-identical results.
+
+Source            : wasm-bindgen-cli 0.2.130, unpatched
+Folder            : samples/WorkSite/tools/wasm-bindgen-cli (TOOL_SOURCES_DIR in
+                    tools/dx-native-tools/linux/pins.env), read-only
+Moved             : on 2026-11-19 the same source moved to
+                    tools/dx-native-tools/sources (patches: tools/dx-native-tools/
+                    vendoring); a linux-x64 rebuild from there gave this
+                    program byte for byte (BUILD-PROVENANCE.txt)
+--version         : "wasm-bindgen 0.2.130"
+
+Built             : 2026-11-19 04:41:49 UTC (run 2; run 1 about ten minutes earlier,
+                    identical bytes)
+Build time        : 19s for this program (cargo, inside the container)
+Build host        : Dell Precision 7770 laptop, LMDE 7, x86_64, podman 5.4.2
+                    (the x86_64 laptop itself - native)
+Network           : DISABLED during this build (interfaces: lo)
+Derived image     : codebrix-dx-build-x86_64
+Base image        : quay.io/pypa/manylinux_2_28_x86_64@sha256:a61875a2f84cab7df8de222ff12cabc08ff86eb4ad402ac90ba7bdaed9600cca
+Container OS      : AlmaLinux 8.10 (Cerulean Leopard)
+Toolchain         : rustc 1.100.0 (0ef1bc386 2026-11-09)
+                    cargo 1.100.0 (3acc79c0c 2026-11-05)
+                    cc (the image's GCC 14, native)
+                    cc (GCC) 14.2.1 20250110 (Red Hat 14.2.1-11)
+Command           : cargo build --release --locked --offline --target
+                    x86_64-unknown-linux-gnu 
+                    RUSTFLAGS: --remap-path-prefix for /src, the target folder and
+                    CARGO_HOME; -C link-arg=-Wl,--build-id=sha1
+                    DIOXUS_CLI_GIT_SHA=57d6794ad60b949e5bd8aa282f6f8c3dc97a365e
+                    then llvm-strip --strip-all
+
+File             : wasm-bindgen
+Size (as linked) : 8509464 bytes (not kept)
+Size (stripped)  : 6070256 bytes  <- the shipped file
+Size (gzip -9 -n): 2396294 bytes
+SHA256           : 0efc609f5c0354d28eb907f211e09e5e104e7875e6e683f1a51dc0a891d9eb9a
+Build-id (sha1)  : d65f242c5fad356e3c7cb3718870a4b7c9f0116d
+ELF              : ELF64, Advanced Micro Devices X86-64, DYN (Position-Independent Executable file)
+NEEDED           : libgcc_s.so.1 libpthread.so.0 libdl.so.2 libc.so.6 ld-linux-x86-64.so.2
+glibc floor      : 2.28 (allowed <= 2.28)
+GLIBC versions   : 2.2.5 2.3 2.3.4 2.12 2.14 2.16 2.17 2.18 2.25 2.28
+Compiled in       : 157 packages for this target, the tool included (cargo tree
+                    -e normal; tools/dx-native-tools/output/linux-x64/compiled-in-wasm-bindgen-cli.txt)
+
+Gate              : ELF class/machine, stripped, no RPATH/RUNPATH/TEXTREL,
+                    NEEDED glibc + libgcc_s.so.1 only (OpenSSL, zlib, zstd,
+                    libgit2, libstdc++ forbidden), glibc floor <= 2.28, no build
+                    paths, `--version`, licence and notices files present;
+                    RUN on the build host (LMDE 7, glibc 2.41) outside the container, and the
+                    functional gate: the new dx + wasm-bindgen built a scratch copy of the
+                    WorkSite frontend (.wasm 1,818,014 bytes, 17 site files) - ALL PASSED
+
+LICENCE AND NOTICES FILES BESIDE THIS ONE:
+  LICENSE-Dioxus.txt              dx's licence (Apache-2.0 text; dioxus-cli is
+                                  MIT OR Apache-2.0)
+  LICENSE-WasmBindgen.txt         wasm-bindgen-cli's LICENSE-APACHE, verbatim
+  THIRD-PARTY-NOTICES-Dioxus.txt  every crate compiled into dx, with licence
+                                  texts (generated: LibraryChecker notices --write)
+  THIRD-PARTY-NOTICES-WasmBindgen.txt  the same for wasm-bindgen
+Rebuilt         : 2026-11-19, with dx's six-patch sources, in the rebuilt
+                    image (OpenSSL headers added): this program came out
+                    BYTE-IDENTICAL, so this file was kept as it is.
+See tools/dx-native-tools/BUILD-PROVENANCE.txt.

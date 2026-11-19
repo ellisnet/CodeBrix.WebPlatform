@@ -1,0 +1,87 @@
+================================================================================
+THIRD-PARTY NOTICES: dx, the Dioxus CLI, as shipped by CodeBrix.WebPlatform
+================================================================================
+
+This file travels with the `dx` program in the
+CodeBrix.WebPlatform.FrontendBuilder.<Platform> packages (folder
+frontend-tools/<rid>/ of a consuming build). It lists the third-party code
+compiled into that program.
+
+dx itself is the dioxus-cli crate, version 0.7.10, MODIFIED by six patches
+and used under the Apache License 2.0 (it is offered under "MIT OR
+Apache-2.0"): see LICENSE-Dioxus.txt beside this file. Nothing listed below
+is relicensed: every crate stays under its own license, and anyone who takes
+one out of this program or out of the repository takes it under that
+license. Where a crate offers a choice, its entry says which license it is
+used under here.
+
+ALSO IN THE PROGRAM, and not listed as crates below: the Rust standard
+library of the Rust release that built it (pinned: 1.100.0), "MIT OR
+Apache-2.0", https://github.com/rust-lang/rust - as in every Rust program.
+The C code dx contains is compiled from crates listed below (ring, and the
+zstd library bundled in zstd-sys, used under BSD-3-Clause).
+
+LIBGIT2 IS NOT IN THE PROGRAM. dx links libgit2 1.9.7 as a SHARED LIBRARY
+that it loads when it starts (libgit2-49e408b.so.1.9 on Linux,
+libgit2-49e408b.1.9.dylib on macOS, git2-49e408b.dll on Windows); dx does not
+start without it. That library is not part of this program or of this file:
+it comes from the NuGet package CodeBrix.LibGit2.MitLicenseForever, which
+carries libgit2's own licence (GPL-2.0 with the linking exception, and the
+licences of the code bundled in it) beside the library. The crate
+libgit2-sys listed below is the CodeBrix.WebPlatform repository's own
+DECLARATIONS-ONLY stand-in (tools/dx-native-tools/sources/
+codebrix-libgit2-sys): Rust declarations of libgit2's functions taken from
+the crates.io crate libgit2-sys 0.18.3+1.9.2 ("MIT OR Apache-2.0"), with no
+C code. Nothing from OpenSSL is compiled into or linked by dx: the
+openssl-sys crate below is a dependency of git2 on Linux that the program
+never uses (its declarations are not linked in), and libgit2 loads the
+system's OpenSSL itself when it needs it.
+
+MOZILLA PUBLIC LICENSE 2.0. Thirteen crates dx is built from are under the
+Mozilla Public License 2.0 (smartstring declares "MPL-2.0+", version 2.0 or
+later, and is used here under 2.0), whose full text is in the license texts at
+the end of this file. Ten are compiled into dx and are listed below:
+cssparser, cssparser-color, dtoa-short, lightningcss, nucleo, nucleo-matcher,
+option-ext, parcel_selectors, smartstring and static-self. The other three -
+cssparser-macros, lightningcss-derive and static-self-derive - are procedural
+macros: they run while dx is compiled and generate code that is compiled into
+it, but their own code is not in the program. dx contains all of this code in executable form,
+UNMODIFIED. Their Source Code Form is available, unmodified and at no charge, in
+the CodeBrix.WebPlatform repository
+(https://github.com/ellisnet/CodeBrix.WebPlatform), in the tool vendor folder
+named in the section below, one folder per crate and version
+(<crate>-<version>/); it is also published on crates.io at the "Source" address
+given in each entry. You may obtain it from either place.
+
+CDLA-PERMISSIVE-2.0. The crate webpki-roots (the Mozilla root certificate
+list) is under the Community Data License Agreement - Permissive 2.0; its
+text is in the license texts at the end of this file.
+
+THE CANIUSE DATABASE. dx contains browser-support data generated from the
+caniuse database (https://github.com/Fyrd/caniuse, Copyright (C) 2020
+Alexis Deveria, licensed under the Creative Commons Attribution 4.0
+International licence, https://creativecommons.org/licenses/by/4.0/),
+compiled in through the crate browserslist-data (which declares MIT and
+records, in its src/generated/info.txt, that it was generated from caniuse
+commit 7421f82105232274626207ff23f9ee03e6a7421c). The data was converted
+into Rust tables by browserslist-data; CodeBrix.WebPlatform did not change
+it.
+
+APACHE-2.0 WITH LLVM-EXCEPTION. target-lexicon, wasm-encoder 0.214.0 and
+wasmparser 0.214.0 are under the Apache License 2.0 with the LLVM Exception,
+which only adds permissions to the Apache License 2.0.
+
+ENTRIES WITHOUT "License files". Some crates, as published on crates.io,
+carry no licence file (the entry then has no "License files" line). Their
+declared licence is still the one shown; its standard text - the Apache
+License 2.0, the MIT licence, the BSD 3-Clause licence, the Mozilla Public
+License 2.0 - is among the license texts below, where another crate ships it.
+For those crates no copyright line is known beyond the authors their
+crates.io page names.
+
+THIS FILE IS GENERATED. Everything after this opening is written by
+`LibraryChecker notices --write` (libs/CodeBrix.WebPlatform.LibraryChecker)
+from the license audit of what cargo compiles into dx on each of the five
+platforms; this opening is tools/dx-native-tools/notices/
+notices-header-Dioxus.txt. Edit the opening there, never the generated part.
+

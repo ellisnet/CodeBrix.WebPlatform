@@ -1,0 +1,130 @@
+================================================================================
+THIRD-PARTY NOTICES: the WorkSite sample application (CodeBrix.WebPlatform)
+================================================================================
+
+This file covers the WorkSite sample application under samples/WorkSite. The
+notices for the CodeBrix.WebPlatform libraries and their NuGet packages are
+in THIRD-PARTY-NOTICES.txt at the root of the repository.
+
+The LICENSE file at the root of this repository (Apache License 2.0) covers
+the code written for CodeBrix.WebPlatform itself, the WorkSite sample
+included.
+
+The sample is built with, and its built application contains, software
+written by other people; none of it is kept in the sample's folder. That
+software is NOT relicensed: every component listed below stays under its own
+license.
+
+Where a component offers a choice of licenses ("MIT OR Apache-2.0"), the
+entry says which one this project uses it under.
+
+What the CodeBrix.WebPlatform platform compiles into the application - its
+shared Rust crate and the Rust crates it provides, every one of which the
+WorkSite frontend builds from - is recorded by the platform, in the notices
+file the CodeBrix.WebPlatform.FrontendBuilder package carries
+(THIRD-PARTY-NOTICES-PlatformCrates.txt, generated in the repository at
+src/CodeBrix.WebPlatform.FrontendBuilder/Rust/notices). WorkSite adds no Rust
+crate of its own, so this file records only what is WorkSite's beyond the
+platform. It is written by hand.
+
+The site serves this file followed by the platform's notices, as one file at
+/THIRD-PARTY-NOTICES.txt (WorkSite's build program writes it into the
+backend's wwwroot), because the compiled application contains third-party
+code. It is shipped inside the WorkSite container image.
+
+
+--------------------------------------------------------------------------------
+Components WorkSite uses beyond the platform
+--------------------------------------------------------------------------------
+
+Tailwind CSS
+  Where:    not in this repository. The standalone `tailwindcss` program is
+            installed on the developer's machine and run by `dx`.
+  Origin:   https://tailwindcss.com, https://github.com/tailwindlabs/tailwindcss
+  License:  MIT
+  Use:      generates the WorkSite stylesheet. The generated stylesheet that
+            the site serves contains Tailwind's base styles and utility
+            classes, which are:
+              Copyright (c) Tailwind Labs, Inc.
+              Permission is hereby granted, free of charge, to any person
+              obtaining a copy of this software and associated documentation
+              files (the "Software"), to deal in the Software without
+              restriction, including without limitation the rights to use,
+              copy, modify, merge, publish, distribute, sublicense, and/or
+              sell copies of the Software, and to permit persons to whom the
+              Software is furnished to do so, subject to the following
+              conditions: The above copyright notice and this permission
+              notice shall be included in all copies or substantial portions
+              of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT
+              WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
+              LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+              PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+              AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+              OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+              OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+              SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+NuGet packages
+  Where:    not in this repository. They are referenced by the .NET projects
+            under samples/WorkSite and restored from https://www.nuget.org at
+            build time. The ones the backend references are compiled into the
+            published application and its container image.
+  Backend (in the application):
+    CodeBrix.WebPlatform.Core.ApacheLicenseForever - Apache-2.0
+        built from this repository (src/CodeBrix.WebPlatform.Core)
+    CodeBrix.PostgresClient.PostgreSqlLicenseForever - PostgreSQL License
+        https://github.com/ellisnet/CodeBrix.PostgresClient
+        (a port of Npgsql, https://github.com/npgsql/npgsql, PostgreSQL License)
+    Microsoft.* and System.* packages, and the .NET runtime and ASP.NET Core -
+        MIT License, Copyright (c) .NET Foundation and Contributors
+        https://github.com/dotnet
+  Build program (build/WorkSite.BuildFrontend; developer's machine only):
+    CodeBrix.WebPlatform.FrontendBuilder.ApacheLicenseForever - Apache-2.0
+        built from this repository (src/CodeBrix.WebPlatform.FrontendBuilder);
+        the library build/WorkSite.BuildFrontend calls to build the frontend.
+        It carries the platform's shared Rust crate, codebrix-webplatform, and
+        the platform's Rust crates, which ARE compiled into the WorkSite
+        frontend; their notices (with the shared crate's SignalR client,
+        derived from the signalr-client crate, MIT License) are in its
+        THIRD-PARTY-NOTICES-PlatformCrates.txt, which the site serves after
+        this file.
+    CodeBrix.WebPlatform.FrontendBuilder.<Platform>.ApacheLicenseForever -
+        Apache-2.0; built from this repository; the dx and wasm-bindgen
+        programs for the build machine, with their licence and notices files
+        (dx is dioxus-cli, MIT OR Apache-2.0, modified; wasm-bindgen is
+        wasm-bindgen-cli, MIT OR Apache-2.0). Build tools only: the
+        JavaScript glue file wasm-bindgen generates for the application is
+        output of the tool and of the platform's crates.
+    CodeBrix.WebPlatform.WasmShrink.ApacheLicenseForever - Apache-2.0
+        https://github.com/ellisnet/CodeBrix.WebPlatform.WasmShrink; brings
+        the wasm-opt program (binaryen) and its notices
+    CodeBrix.LibGit2.MitLicenseForever - MIT
+        https://github.com/ellisnet/CodeBrix.LibGit2; brings the libgit2
+        library (GPL-2.0 with a linking exception, with its licence files),
+        which dx loads as a shared library when it starts; dx contains no
+        libgit2 code
+    CodeBrix.WebPlatform.BackendMapper.ApacheLicenseForever - Apache-2.0
+        built from this repository (src/CodeBrix.WebPlatform.BackendMapper)
+    CodeBrix.Templating.BsdLicenseForever - BSD-2-Clause
+        https://github.com/ellisnet/CodeBrix.Templating
+        (a port of Scriban, https://github.com/scriban/scriban, BSD-2-Clause)
+    System.Reflection.MetadataLoadContext - MIT (a Microsoft .NET package)
+    CodeBrix.RustTools.MitLicenseForever - MIT
+    CodeBrix.TomlParse.BsdLicenseForever - BSD-2-Clause
+  Tests only:
+    xunit.v3 and xunit.runner.visualstudio - Apache-2.0
+    SilverAssertions.ApacheLicenseForever - Apache-2.0
+    CodeBrix.Docker.MitLicenseForever - MIT
+    Microsoft.NET.Test.Sdk, Microsoft.AspNetCore.Mvc.Testing - MIT
+
+Container images
+  Where:    not in this repository and not distributed by it. The files under
+            samples/WorkSite/docker name them, and Docker pulls them on the
+            machine that runs the sample.
+    mcr.microsoft.com/dotnet/aspnet - the ASP.NET Core runtime on a Linux
+        base image; https://github.com/dotnet/dotnet-docker
+    postgres - the PostgreSQL database server; https://www.postgresql.org
+  Like any Linux image, both contain operating-system components under many
+  licenses, including the GNU General Public License. They are run, not
+  redistributed, by this sample.
+

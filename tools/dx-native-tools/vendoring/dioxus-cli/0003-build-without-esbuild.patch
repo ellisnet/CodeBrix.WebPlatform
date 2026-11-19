@@ -1,0 +1,60 @@
+diff -ruN a/src/build/web.rs b/src/build/web.rs
+--- a/src/build/web.rs
++++ b/src/build/web.rs
+@@ -61,7 +61,14 @@
+         WasmBindgen::verify_install(&krate_bindgen_version).await?;
+ 
+         // esbuild is used for JS asset processing
+-        let _esbuild_path = crate::esbuild::Esbuild::get_or_install().await?;
++        //
++        // CodeBrix change: a missing esbuild no longer stops the build. Without it the asset
++        // pipeline copies the generated JavaScript as it is, with wasm-bindgen's snippets
++        // folder beside it (see opt/js.rs), so the JavaScript is neither bundled into one file
++        // nor minified. See tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt.
++        if let Err(err) = crate::esbuild::Esbuild::get_or_install().await {
++            tracing::debug!("esbuild is not available; JavaScript will not be minified: {err}");
++        }
+ 
+         Ok(())
+     }
+diff -ruN a/src/opt/js.rs b/src/opt/js.rs
+--- a/src/opt/js.rs
++++ b/src/opt/js.rs
+@@ -35,6 +35,37 @@
+         )
+     })?;
+ 
++    // CodeBrix change: esbuild would have bundled the `snippets/` folder that wasm-bindgen
++    // writes beside the glue file into the glue file itself. Without esbuild the glue file is
++    // copied as it is and still imports `./snippets/...`, so the folder is copied beside the
++    // output file. See tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt.
++    if js_options.is_module() || lexer::js_is_module(js_options, source) {
++        if let (Some(source_dir), Some(output_dir)) = (source.parent(), output_path.parent()) {
++            let snippets = source_dir.join("snippets");
++            if snippets.is_dir() {
++                copy_dir_recursive(&snippets, &output_dir.join("snippets"))?;
++            }
++        }
++    }
++
++    Ok(())
++}
++
++/// Copy a folder and everything in it
++fn copy_dir_recursive(from: &Path, to: &Path) -> anyhow::Result<()> {
++    std::fs::create_dir_all(to)
++        .with_context(|| format!("Failed to create directory: {}", to.display()))?;
++    for entry in std::fs::read_dir(from)? {
++        let entry = entry?;
++        let target = to.join(entry.file_name());
++        if entry.file_type()?.is_dir() {
++            copy_dir_recursive(&entry.path(), &target)?;
++        } else {
++            std::fs::copy(entry.path(), &target)
++                .with_context(|| format!("Failed to copy JS snippet to: {}", target.display()))?;
++        }
++    }
++
+     Ok(())
+ }
+ 

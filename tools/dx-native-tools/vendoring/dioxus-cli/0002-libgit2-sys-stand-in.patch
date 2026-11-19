@@ -1,0 +1,14 @@
+diff -ruN a/Cargo.toml b/Cargo.toml
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -517,3 +517,10 @@
+ [target.'cfg(target_env = "musl")'.dependencies.git2]
+ version = "0.20.2"
+ features = ["vendored-libgit2"]
++
++# CodeBrix change: the crates.io crate libgit2-sys (which git2 builds on) carries libgit2's C
++# source and compiles it. It is replaced by the repository's declarations-only stand-in, which
++# compiles no C code and links the prebuilt libgit2 of the CodeBrix.LibGit2 package. See
++# tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt.
++[patch.crates-io.libgit2-sys]
++path = "../codebrix-libgit2-sys"

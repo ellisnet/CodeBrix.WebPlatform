@@ -1,0 +1,94 @@
+{{ marker }} from {{ assembly_name }}. Do not edit: this file is rewritten on every build.
+//
+// The backend's contract classes and enums, as they are written to and read from JSON.
+
+use serde::{Deserialize, Serialize};
+{{~ for used in model_imports ~}}
+use {{ used }};
+{{~ end ~}}
+{{~ for s in structs ~}}
+
+/// `{{ s.clr_name }}`
+#[derive({{ s.derives }})]
+#[serde(rename_all = "camelCase")]
+pub struct {{ s.name }} {
+{{~ for f in s.fields ~}}
+{{~ for a in f.attributes ~}}
+    {{ a }}
+{{~ end ~}}
+    pub {{ f.name }}: {{ f.type }},
+{{~ end ~}}
+}
+{{~ end ~}}
+{{~ for e in enums ~}}
+
+/// `{{ e.clr_name }}`
+{{~ if e.as_text ~}}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+{{~ else ~}}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+{{~ end ~}}
+pub enum {{ e.name }} {
+{{~ for m in e.members ~}}
+{{~ if m.is_first ~}}
+    #[default]
+{{~ end ~}}
+    {{ m.name }},
+{{~ end ~}}
+}
+
+impl {{ e.name }} {
+    /// Every member, in declaration order.
+    pub const ALL: [{{ e.name }}; {{ e.count }}] = [{{ for m in e.members }}{{ e.name }}::{{ m.name }}{{ if !for.last }}, {{ end }}{{ end }}];
+
+    /// The member's name, as the backend spells it.
+    pub fn as_str(self) -> &'static str {
+        match self {
+{{~ for m in e.members ~}}
+            {{ e.name }}::{{ m.name }} => "{{ m.wire_name }}",
+{{~ end ~}}
+        }
+    }
+
+    /// The member's number.
+    pub fn value(self) -> i64 {
+        match self {
+{{~ for m in e.members ~}}
+            {{ e.name }}::{{ m.name }} => {{ m.value }},
+{{~ end ~}}
+        }
+    }
+
+    /// The member with this number, if there is one.
+    pub fn from_value(value: i64) -> Option<{{ e.name }}> {
+        match value {
+{{~ for m in e.distinct_members ~}}
+            {{ m.value }} => Some({{ e.name }}::{{ m.name }}),
+{{~ end ~}}
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for {{ e.name }} {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+{{~ if !e.as_text ~}}
+
+impl Serialize for {{ e.name }} {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_i64(self.value())
+    }
+}
+
+impl<'de> Deserialize<'de> for {{ e.name }} {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<{{ e.name }}, D::Error> {
+        let value = i64::deserialize(deserializer)?;
+        {{ e.name }}::from_value(value)
+            .ok_or_else(|| serde::de::Error::custom(format!("{value} is not a {{ e.name }}")))
+    }
+}
+{{~ end ~}}
+{{~ end ~}}

@@ -1,0 +1,44 @@
+# ==============================================================================
+# tools/dx-native-tools/.gitignore
+# ==============================================================================
+#
+# THE FIRST RULE BELOW ("!*") IS LOAD-BEARING - DO NOT DELETE IT.
+#
+# The repository-root .gitignore is the standard Visual Studio / .NET one. It
+# ignores names that also occur in this folder, for example:
+#
+#     *.env                     -> linux/pins.env
+#     *.log  [Oo]ut/  [Ll]og/  [Dd]ebug/  [Rr]elease/ ...
+#
+# Without the "!*" below, such files would be silently left out of every
+# commit, and the build pins would not be there for the next person who cloned
+# this repository. A nested .gitignore takes precedence over the ones above it,
+# so re-including everything here and then re-ignoring only what this folder
+# genuinely produces keeps the root .gitignore untouched. (Same rule, same
+# reason, as CodeBrix.WebPlatform.WasmShrink's binaryen-native-tools/.gitignore.)
+#
+# Verify at any time with:
+#     git status --ignored --porcelain -- tools/dx-native-tools
+#         -> should list only output/ contents
+# ==============================================================================
+
+# Re-include everything under this folder, overriding the root .gitignore.
+!*
+!*/
+
+# --- what this folder really does produce, and must not commit ---------------
+
+# Built programs, gate runs, logs, the image build context, SHA256SUMS, and
+# output/libgit2/ (the libgit2 package and the library taken out of it, which
+# must never be committed). ONE tree, shared by every platform build. The
+# leading slash matters.
+/output/
+
+# cargo's output, if anyone builds a tool in place (the scripts never do: they put the target
+# folder outside the source tree). Everything else under sources/ is committed.
+/sources/dioxus-cli/target/
+/sources/wasm-bindgen-cli/target/
+/sources/codebrix-libgit2-sys/target/
+
+# Finder droppings (the "!*" above would otherwise re-include them).
+.DS_Store

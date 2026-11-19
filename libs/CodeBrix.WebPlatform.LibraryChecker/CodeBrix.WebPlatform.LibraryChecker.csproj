@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The repository's maintainer tool: the licence and vendoring gate over what the repository
+    holds outside samples/, the re-vendoring commands and the Node-free proof build. It is NOT
+    published and is no part of any package.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>LibraryChecker</AssemblyName>
+    <RootNamespace>CodeBrix.WebPlatform.LibraryChecker</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      The FrontendBuilder library (dx's build arguments; it brings the WasmShrink package, whose
+      Linux wasm-opt the proof build copies into its container), and the two Linux host-tools
+      packages, whose dx and wasm-bindgen the proof build copies in: both copy their programs into
+      this project's output (frontend-tools/linux-x64/, frontend-tools/linux-arm64/).
+    -->
+    <ProjectReference Include="..\..\src\CodeBrix.WebPlatform.FrontendBuilder\CodeBrix.WebPlatform.FrontendBuilder.csproj" />
+    <ProjectReference Include="..\..\src\CodeBrix.WebPlatform.FrontendBuilder.LinuxX64\CodeBrix.WebPlatform.FrontendBuilder.LinuxX64.csproj" />
+    <ProjectReference Include="..\..\src\CodeBrix.WebPlatform.FrontendBuilder.LinuxArm64\CodeBrix.WebPlatform.FrontendBuilder.LinuxArm64.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CodeBrix.RustTools.MitLicenseForever" Version="1.0.323.391" />
+    <PackageReference Include="CodeBrix.RustTools.Docker.MitLicenseForever" Version="1.0.323.391" />
+  </ItemGroup>
+
+</Project>

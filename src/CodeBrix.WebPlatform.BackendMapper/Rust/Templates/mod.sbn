@@ -1,0 +1,64 @@
+{{ marker }} from {{ assembly_name }}. Do not edit: this file is rewritten on every build.
+//
+// The client code for the backend's REST endpoints and SignalR hubs, and what the backend declares
+// about itself (its request marker and where an expired session is renewed). Not every
+// application calls every endpoint, so unused items here are expected and are not reported.
+#![allow(dead_code, unused_imports)]
+
+pub mod models;
+{{~ if has_api ~}}
+pub mod api;
+{{~ end ~}}
+{{~ if has_hubs ~}}
+pub mod hubs;
+{{~ end ~}}
+
+use std::rc::Rc;
+
+use {{ shared_crate }}::PlatformConfig;
+{{~ for used in setup_imports ~}}
+use {{ used }};
+{{~ end ~}}
+{{~ if setup_uses_models ~}}
+
+use self::models::*;
+{{~ end ~}}
+{{~ if has_request_marker ~}}
+
+/// The value the backend demands in `X-Requested-With` on every request that changes state
+/// (its `[assembly: WireRequestMarker]`).
+pub const REQUEST_MARKER: &str = "{{ request_marker }}";
+{{~ end ~}}
+{{~ if has_session_refresh ~}}
+
+/// Where an expired session is renewed: `{{ session_refresh_action }}` (`[WireSessionRefresh]`).
+pub const SESSION_REFRESH_PATH: &str = "{{ session_refresh_path }}";
+
+/// Sets up the platform's REST and SignalR clients for this backend, in one call: the request
+/// marker, where an expired session is renewed, and what the application does when that happens.
+/// Call it once, on the application's first render (for example in `use_hook`), before any
+/// request. Both hooks run inside the application's Dioxus runtime.
+///
+/// - `on_session_refreshed` is handed the answer of a successful refresh{{ if session_refresh_answer != "" }} (`{{ session_refresh_answer }}`){{ end }}.
+/// - `on_session_ended` is called when a request that needs sign-in is still refused after one
+///   refresh: the session is gone.
+pub fn configure_platform({{ setup_parameters }}) {
+    {{ shared_crate }}::configure(PlatformConfig {
+        request_marker: {{ if has_request_marker }}Some(REQUEST_MARKER.to_string()){{ else }}None{{ end }},
+        session_refresh_path: Some(SESSION_REFRESH_PATH.to_string()),
+        on_session_refreshed: Some({{ session_refreshed_hook }}),
+        on_session_ended: Some(Rc::new(on_session_ended)),
+    });
+}
+{{~ else ~}}
+
+/// Sets up the platform's REST and SignalR clients for this backend, in one call. Nothing of the
+/// backend needs sign-in, so there is no session to renew. Call it once, on the application's
+/// first render (for example in `use_hook`), before any request.
+pub fn configure_platform() {
+    {{ shared_crate }}::configure(PlatformConfig {
+        request_marker: {{ if has_request_marker }}Some(REQUEST_MARKER.to_string()){{ else }}None{{ end }},
+        ..PlatformConfig::default()
+    });
+}
+{{~ end ~}}

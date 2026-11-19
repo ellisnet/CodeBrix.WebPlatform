@@ -1,0 +1,134 @@
+# =============================================================================================
+# Containerfile.x86_64 - the dx / wasm-bindgen build machine for linux-x64 AND (cross) linux-arm64
+# =============================================================================================
+#
+# WHAT THIS IS, AND WHY IT IS A SEPARATE STEP
+#   The rule this folder exists for says the BUILD may not reach outside this repository. Tools
+#   installed on a build machine are the one allowed exception - and this file IS that
+#   installation, written down and version-pinned. It takes the digest-pinned
+#   manylinux_2_28_x86_64 image (AlmaLinux 8, gcc-toolset-14 = GCC 14.2.1, glibc 2.28) and adds:
+#     * clang, lld and llvm from the distribution (dnf): the aarch64 cross compiler / linker for
+#       the C code dx contains (ring, zstd) and llvm-strip;
+#     * `file`, for the gate, and cpio, to unpack the aarch64 OpenSSL headers (below);
+#     * the OpenSSL DEVELOPMENT HEADERS, exactly OPENSSL_DEVEL_VERSION (pins.env): openssl-devel
+#       for x86_64 (dnf), and the same release's aarch64 openssl-devel + openssl-libs unpacked
+#       into the cross sysroot. dx's project templates (cargo-generate) turn on git2's `https`
+#       feature, which on Linux makes git2 depend on the openssl-sys crate; git2 never calls it,
+#       so nothing from OpenSSL is linked into dx (the gate proves it), but openssl-sys's build
+#       script reads these headers and stops without them;
+#     * rustup and EXACTLY the pinned Rust toolchain (RUST_TOOLCHAIN in pins.env, profile
+#       minimal) with the aarch64-unknown-linux-gnu target, under CARGO_HOME=/usr/local/cargo
+#       and RUSTUP_HOME=/usr/local/rustup;
+#     * the aarch64 CROSS SYSROOT: glibc + kernel headers + GCC support files of the pinned
+#       manylinux_2_28_aarch64 image (sysroot-aarch64.tar, made by export-sysroot.sh from that
+#       image), so an executable linked here for aarch64 has exactly the glibc floor a native
+#       build in that image would have (2.28);
+#     * aarch64-linux-gnu-gcc / -g++ / -ar wrappers that run clang --target=aarch64-redhat-linux
+#       --sysroot=/opt/sysroot/aarch64 -fuse-ld=lld.
+#   It then PROBES everything (a C program cross-linked for aarch64; a Rust program built for
+#   both targets) and records the versions in /usr/local/share/codebrix-dx-build/toolchain.txt,
+#   which every BUILD-INFO.txt copies.
+#
+#   Building this image is the ONLY step that uses the network. The tool builds afterwards run
+#   with `--network none` and cannot reach anything even if they wanted to.
+#
+#   build.sh builds this image the first time it is needed and reuses it after that.
+#   To rebuild deliberately:   FORCE_IMAGE_REBUILD=1 ./build.sh x64
+#
+# Modelled on CodeBrix.WebGpu's wgpu-native-tools/linux/Containerfile.x86_64. The default ARGs
+# exist only so a hand-run build works; build.sh always passes them from pins.env.
+# =============================================================================================
+
+ARG BASE_IMAGE=quay.io/pypa/manylinux_2_28_x86_64@sha256:a61875a2f84cab7df8de222ff12cabc08ff86eb4ad402ac90ba7bdaed9600cca
+FROM ${BASE_IMAGE}
+ARG RUST_TOOLCHAIN=1.100.0
+ARG OPENSSL_DEVEL_VERSION=1.1.1k-17.el8_6
+
+LABEL org.opencontainers.image.title="codebrix-dx-build-x86_64"
+LABEL org.opencontainers.image.description="dx / wasm-bindgen build machine: manylinux_2_28_x86_64 + clang/lld/llvm + Rust + the aarch64 cross sysroot"
+LABEL org.opencontainers.image.source="CodeBrix.WebPlatform/tools/dx-native-tools/linux/Containerfile.x86_64"
+
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH \
+    CARGO_TERM_COLOR=never \
+    RUSTUP_AUTO_INSTALL=0
+
+# --- 1. distribution tools (network) --------------------------------------------------------------
+RUN set -eu; \
+    command -v dnf > /dev/null 2>&1 || { echo "ERROR: no dnf in this image." >&2; exit 1; }; \
+    dnf install -y --setopt=install_weak_deps=False clang lld llvm file cpio \
+        "openssl-devel-${OPENSSL_DEVEL_VERSION}" "openssl-libs-${OPENSSL_DEVEL_VERSION}"; \
+    rpm -q "openssl-devel-${OPENSSL_DEVEL_VERSION}" "openssl-libs-${OPENSSL_DEVEL_VERSION}"; \
+    dnf clean all; rm -rf /var/cache/dnf
+
+# --- 2. Rust, exactly RUST_TOOLCHAIN (network) ------------------------------------------------------
+RUN set -eu; \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh; \
+    sh /tmp/rustup-init.sh -y --no-modify-path --profile minimal --default-toolchain "${RUST_TOOLCHAIN}"; \
+    rm -f /tmp/rustup-init.sh; \
+    rustup target add --toolchain "${RUST_TOOLCHAIN}" aarch64-unknown-linux-gnu; \
+    chmod -R a+rwX /usr/local/cargo /usr/local/rustup
+
+# --- 3. the aarch64 cross sysroot + GNU-named cross wrappers (no network) ---------------------------
+ADD sysroot-aarch64.tar /opt/sysroot/aarch64/
+RUN set -eu; \
+    a=aarch64; \
+    ln -sfn usr/lib /opt/sysroot/$a/lib; ln -sfn usr/lib64 /opt/sysroot/$a/lib64; \
+    for t in gcc g++; do \
+        drv=clang; [ "$t" = "g++" ] && drv=clang++; \
+        printf '#!/bin/sh\n# %s cross %s for the pinned manylinux_2_28_%s userland (Containerfile.x86_64)\nexec %s --target=%s-redhat-linux --sysroot=/opt/sysroot/%s -fuse-ld=lld "$@"\n' \
+            "$a" "$t" "$a" "$drv" "$a" "$a" > /usr/local/bin/$a-linux-gnu-$t; \
+        chmod 755 /usr/local/bin/$a-linux-gnu-$t; \
+    done; \
+    ln -sfn /usr/bin/llvm-ar /usr/local/bin/$a-linux-gnu-ar; \
+    ln -sfn /usr/bin/llvm-ranlib /usr/local/bin/$a-linux-gnu-ranlib
+
+# --- 3b. the aarch64 OpenSSL headers, into the cross sysroot (network) -------------------------------
+# The distribution's own aarch64 packages, at the same release as the x86_64 ones, unpacked (not
+# installed: rpm2cpio | cpio) under /opt/sysroot/aarch64. Read by openssl-sys's build script only.
+RUN set -eu; \
+    mkdir -p /tmp/rpm-aarch64; \
+    dnf download -q --forcearch=aarch64 --arch=aarch64 --destdir /tmp/rpm-aarch64 \
+        "openssl-devel-${OPENSSL_DEVEL_VERSION}" "openssl-libs-${OPENSSL_DEVEL_VERSION}"; \
+    for r in /tmp/rpm-aarch64/*.rpm; do \
+        echo "unpacking $(rpm -qp --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}' "$r" 2>/dev/null) into the aarch64 sysroot"; \
+        ( cd /opt/sysroot/aarch64 && rpm2cpio "$r" | cpio -idm --quiet ); \
+    done; \
+    test -f /opt/sysroot/aarch64/usr/include/openssl/opensslv.h; \
+    rm -rf /tmp/rpm-aarch64 /var/cache/dnf
+
+# --- 4. probe: everything above works, versions recorded --------------------------------------------
+RUN set -eu; \
+    for t in cc clang lld llvm-ar llvm-strip cargo rustc rustup file readelf strings sha256sum gzip; do \
+        command -v "$t" > /dev/null 2>&1 || { echo "ERROR: $t is missing from the image." >&2; exit 1; }; \
+    done; \
+    printf '#include <stdio.h>\n#include <math.h>\nint main(void){ printf("%%d\\n", (int)sqrt(16.0)); return 0; }\n' > /tmp/p.c; \
+    aarch64-linux-gnu-gcc -O1 -o /tmp/p-aarch64 /tmp/p.c -lm; file /tmp/p-aarch64; \
+    mkdir -p /tmp/probe/src; \
+    printf '[package]\nname = "probe"\nversion = "0.1.0"\nedition = "2021"\n' > /tmp/probe/Cargo.toml; \
+    printf 'fn main() { println!("rust probe"); }\n' > /tmp/probe/src/main.rs; \
+    ( cd /tmp/probe && cargo build --release --offline --target x86_64-unknown-linux-gnu -q && ./target/x86_64-unknown-linux-gnu/release/probe ); \
+    ( cd /tmp/probe && CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc cargo build --release --offline --target aarch64-unknown-linux-gnu -q && file target/aarch64-unknown-linux-gnu/release/probe ); \
+    mkdir -p /usr/local/share/codebrix-dx-build; \
+    out=/usr/local/share/codebrix-dx-build/toolchain.txt; \
+    { \
+      echo "os        : $(grep -m1 PRETTY_NAME /etc/os-release | cut -d= -f2- | tr -d '\"')"; \
+      echo "machine   : $(uname -m)"; \
+      echo "cc        : $(cc --version | sed -n 1p)"; \
+      echo "ld        : $(ld --version | sed -n 1p)"; \
+      echo "glibc     : $(ldd --version | sed -n 1p)"; \
+      echo "clang     : $(clang --version | sed -n 1p)"; \
+      echo "lld       : $(ld.lld --version | sed -n 1p)"; \
+      echo "llvm-strip: $(llvm-strip --version | grep -i version | sed -n 1p | sed 's/^ *//')"; \
+      echo "rustup    : $(rustup --version 2>/dev/null | sed -n 1p)"; \
+      echo "rustc     : $(rustc --version)"; \
+      echo "cargo     : $(cargo --version)"; \
+      echo "targets   : $(rustup target list --installed | tr '\n' ' ')"; \
+      echo "openssl   : headers only (nothing linked): x86_64 $(rpm -q openssl-devel), aarch64 $(grep -h 'define OPENSSL_VERSION_TEXT' /opt/sysroot/aarch64/usr/include/openssl/opensslv.h | sed 's/.*\"\(.*\)\".*/\1/')"; \
+      echo "sysroot   : aarch64 glibc $(ls /opt/sysroot/aarch64/usr/lib64/libc-*.so 2>/dev/null | sed 's/.*libc-//; s/\.so//' | sed -n 1p) (manylinux_2_28_aarch64), gcc $(ls /opt/sysroot/aarch64/usr/lib/gcc/aarch64-redhat-linux/)"; \
+    } > "$out"; \
+    cat "$out"; rm -rf /tmp/p.c /tmp/p-aarch64 /tmp/probe; \
+    echo "toolchain: ok"
+
+WORKDIR /work

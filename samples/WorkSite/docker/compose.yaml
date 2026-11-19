@@ -1,0 +1,55 @@
+# The two containers of the WorkSite demo. Start and stop them with
+# `WorkSite.BuildFrontend run` and `WorkSite.BuildFrontend stop` (samples/WorkSite/build), which also build
+# what the web container needs; plain `docker compose` works too once that has been done.
+# Every value marked ${...} comes from samples/WorkSite/.env (see .env.example).
+name: worksite
+
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: worksite
+      POSTGRES_PASSWORD: ${WORKSITE_DB_PASSWORD:?set WORKSITE_DB_PASSWORD in .env}
+      POSTGRES_DB: postgres
+    volumes:
+      - worksite-db:/var/lib/postgresql
+    # Nothing is published to the host: only the web container, on the private network below,
+    # can reach the database.
+    networks: [worksite]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U worksite -d postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  web:
+    image: worksite-web:local
+    build:
+      context: ../artifacts/publish
+      dockerfile: ../../docker/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: https://+:8443
+      ASPNETCORE_Kestrel__Certificates__Default__Path: /https/worksite-dev.pfx
+      ASPNETCORE_Kestrel__Certificates__Default__Password: ${WORKSITE_CERT_PASSWORD:?set WORKSITE_CERT_PASSWORD in .env}
+      ConnectionStrings__WorkSite: Host=db;Port=5432;Database=worksite;Username=worksite;Password=${WORKSITE_DB_PASSWORD};SSL Mode=Disable
+      Jwt__SigningKey: ${WORKSITE_JWT_SIGNING_KEY:?set WORKSITE_JWT_SIGNING_KEY in .env}
+      Demo__Enabled: ${WORKSITE_DEMO_ENABLED:-false}
+      Demo__Username: ${WORKSITE_DEMO_USERNAME:-demo}
+      Demo__Password: ${WORKSITE_DEMO_PASSWORD:-}
+    volumes:
+      - ${WORKSITE_CERT_FILE:?set WORKSITE_CERT_FILE in .env}:/https/worksite-dev.pfx:ro
+    ports:
+      - "127.0.0.1:${WORKSITE_HTTPS_PORT:-8443}:8443"
+    networks: [worksite]
+
+volumes:
+  worksite-db:
+
+networks:
+  worksite:
