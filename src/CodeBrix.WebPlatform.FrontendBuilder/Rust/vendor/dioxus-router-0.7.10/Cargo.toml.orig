@@ -1,0 +1,50 @@
+[package]
+name = "dioxus-router"
+authors = ["Jonathan Kelley", "Evan Almloff"]
+version = { workspace = true }
+edition = "2021"
+description = "Cross-platform router for Dioxus apps"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/DioxusLabs/dioxus/"
+homepage = "https://dioxuslabs.com"
+keywords = ["dom", "ui", "gui", "react", "wasm"]
+
+[dependencies]
+dioxus-core = { workspace = true }
+dioxus-core-macro = { workspace = true }
+dioxus-signals = { workspace = true }
+dioxus-hooks = { workspace = true }
+dioxus-html = { workspace = true, optional = true }
+dioxus-history = { workspace = true }
+dioxus-router-macro = { workspace = true }
+dioxus-fullstack-core = { workspace = true, optional = true }
+tracing = { workspace = true }
+percent-encoding = { workspace = true }
+url = { workspace = true }
+dioxus-cli-config = { workspace = true }
+rustversion = { workspace = true }
+
+[features]
+default = ["html"]
+streaming = ["dep:dioxus-fullstack-core"]
+wasm-split = []
+html = ["dep:dioxus-html"]
+
+[package.metadata.docs.rs]
+cargo-args = ["-Zunstable-options", "-Zrustdoc-scrape-examples"]
+
+# Most of the examples live in the workspace. We include some here so that docs.rs can scrape our examples for better inline docs
+[[example]]
+name = "hash_fragment_state"
+path = "../../examples/06-routing/hash_fragment_state.rs"
+doc-scrape-examples = true
+
+[[example]]
+name = "query_segment_search"
+path = "../../examples/06-routing/query_segment_search.rs"
+doc-scrape-examples = true
+
+[[example]]
+name = "simple_router"
+path = "../../examples/06-routing/simple_router.rs"
+doc-scrape-examples = true

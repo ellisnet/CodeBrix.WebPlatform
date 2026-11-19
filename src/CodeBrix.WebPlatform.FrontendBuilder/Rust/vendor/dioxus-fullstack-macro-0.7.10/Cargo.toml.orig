@@ -1,0 +1,24 @@
+[package]
+name = "dioxus-fullstack-macro"
+version = { workspace = true }
+edition = "2021"
+repository = "https://github.com/DioxusLabs/dioxus/"
+keywords = ["dom", "ui", "gui", "react", "liveview"]
+authors = ["Jonathan Kelley", "Evan Almloff"]
+license = "MIT OR Apache-2.0"
+description = "Server function macros for Dioxus"
+
+[dependencies]
+quote = { workspace = true, default-features = true }
+syn = { features = [
+  "full",
+  "parsing",
+  "extra-traits",
+], workspace = true, default-features = true }
+proc-macro2 = { workspace = true, default-features = true }
+xxhash-rust = { features = ["const_xxh64" ], workspace = true, default-features = true }
+const_format = { workspace = true, default-features = true }
+convert_case = { workspace = true, default-features = true }
+
+[lib]
+proc-macro = true
