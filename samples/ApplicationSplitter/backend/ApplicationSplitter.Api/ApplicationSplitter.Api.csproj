@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <!--
+      wwwroot holds the built frontend applications, which the build program copies in. They are
+      served as plain files from that folder. The SDK's static-web-assets layer is switched off
+      so that a development or test host serves exactly its own web root.
+    -->
+    <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
+    <RootNamespace>ApplicationSplitter.Api</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!--
+      Local builds until the packages are published; see the nuget.config at the repository root.
+      ONE version for every CodeBrix.WebPlatform package of this repository.
+    -->
+    <WebPlatformPackageVersion>1.0.324.250</WebPlatformPackageVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The platform's backend library; it brings CodeBrix.WebPlatform.Core with it. -->
+    <PackageReference Include="CodeBrix.WebPlatform.Backend.ApacheLicenseForever" Version="$(WebPlatformPackageVersion)" />
+  </ItemGroup>
+
+</Project>

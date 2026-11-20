@@ -1,5 +1,6 @@
 using System.Threading;
 using System.Threading.Tasks;
+using CodeBrix.WebPlatform.Backend.Problems;
 using CodeBrix.WebPlatform.Core.Mapping;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -147,7 +148,7 @@ public sealed class AuthController : WorkSiteControllerBase
         var user = await _credentials.CheckAsync(request.Identifier, request.Password, cancellationToken);
         if (user == null)
         {
-            return ProblemResult(ApiProblems.InvalidCredentials());
+            return ProblemResult(WorkSiteProblems.InvalidCredentials());
         }
 
         await _sessionService.StartAsync(Response, user.Id, cancellationToken);

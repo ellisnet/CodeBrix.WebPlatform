@@ -373,7 +373,7 @@ internal sealed class ViewBuilder
             ? $"\"{WireNames.RustString(formatText.ToString().Replace("{{", "{", StringComparison.Ordinal).Replace("}}", "}", StringComparison.Ordinal))}\""
             : $"format!(\"{WireNames.RustString(formatText.ToString())}\", {string.Join(", ", formatArguments)})";
         var needsSignIn = endpoint.RequiresSignIn ? "needs sign-in" : "open to everyone";
-        return new FunctionView
+        var function = new FunctionView
         {
             Name = WireNames.RustIdentifier(endpoint.IsFile ? snake + "_url" : snake),
             Doc = endpoint.IsFile
@@ -389,6 +389,16 @@ internal sealed class ViewBuilder
             Path = formatArguments.Count == 0 && !endpoint.IsFile ? path : formatArguments.Count == 0 ? path + ".to_string()" : path,
             Body = bodyExpression,
         };
+        if (endpoint.IsFile)
+        {
+            //Beside the address, a function that reads the file itself, through the same client.
+            function.BytesName = WireNames.RustIdentifier(snake + "_bytes");
+            function.BytesDoc = $"`{endpoint.HttpMethod} {endpoint.RouteTemplate}` ({needsSignIn}), the file read as bytes.";
+            function.BytesReturnType = "Vec<u8>";
+            function.BytesPath = formatArguments.Count == 0 ? path : "&" + path;
+        }
+
+        return function;
     }
 
     private static string Push(EndpointParameter parameter, string value)

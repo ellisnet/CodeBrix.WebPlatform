@@ -40,9 +40,10 @@ internal static class CargoConfiguration
         }
 
         text.Append("#\n");
-        text.Append("# CrateMode.PlatformCratesOnly: every crate comes from the platform's vendored folder and cargo\n");
-        text.Append("# never uses the network. A crate that is not among the platform's is an error; to add crates of\n");
-        text.Append("# the application's own, switch the build program to CrateMode.ApplicationAddsCrates.\n");
+        text.Append("# CrateMode.PlatformCratesOnly: every crate comes from the vendored folder (the platform's crates\n");
+        text.Append("# and those of the crate bundles the build program registered) and cargo never uses the network.\n");
+        text.Append("# A crate that is not in that folder is an error; to add crates of the application's own, switch\n");
+        text.Append("# the build program to CrateMode.ApplicationAddsCrates.\n");
         text.Append("[source.crates-io]\n");
         text.Append("replace-with = \"").Append(SourceName).Append("\"\n");
         text.Append('\n');

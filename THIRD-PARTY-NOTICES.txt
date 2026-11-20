@@ -2,8 +2,9 @@ THIRD-PARTY SOFTWARE NOTICES AND INFORMATION
 
 CodeBrix.WebPlatform is a set of libraries for building web applications with
 a .NET backend and a Rust frontend compiled to WebAssembly: the
-CodeBrix.WebPlatform.Core, CodeBrix.WebPlatform.BackendMapper and
-CodeBrix.WebPlatform.FrontendBuilder assemblies, the shared Rust crate
+CodeBrix.WebPlatform.Core, CodeBrix.WebPlatform.Backend,
+CodeBrix.WebPlatform.BackendMapper and CodeBrix.WebPlatform.FrontendBuilder
+assemblies, the shared Rust crate
 (codebrix-webplatform) that ships inside the FrontendBuilder assembly, and the
 five host-tools packages (CodeBrix.WebPlatform.FrontendBuilder.<Platform>).
 The assemblies incorporate one piece of third-party source code: the shared
@@ -16,7 +17,13 @@ host-tools package carries the dx and wasm-bindgen programs.
 CodeBrix.WebPlatform.FrontendBuilder depends on other packages that are
 distributed separately under their own licenses and are not part of it:
 CodeBrix.WebPlatform.WasmShrink (which carries the wasm-opt program and the
-notices for it) and CodeBrix.RustTools.
+notices for it), CodeBrix.LibGit2 (which carries the libgit2 library dx needs
+to start, and its licence files; see the dx entry below) and
+CodeBrix.RustTools.
+
+CodeBrix.WebPlatform.Backend depends on CodeBrix.TomlParse (BSD-2-Clause; the
+TOML reader for the frontend manifest), which is distributed separately under
+its own license and is not part of it.
 
 The Rust code that CodeBrix.WebPlatform.BackendMapper writes for an
 application is produced from templates written for this project and from the
@@ -28,8 +35,10 @@ holds the source the two distributed programs are built from
 (tools/dx-native-tools/sources: the dioxus-cli and wasm-bindgen-cli sources
 and the crates they are built from), which is not part of any package and is
 recorded in tools/dx-native-tools/notices/THIRD-PARTY-NOTICES-ToolSources.txt;
-and a sample application, samples/WorkSite, which is not part of any package
-and has a notices file of its own (samples/WorkSite/THIRD-PARTY-NOTICES.txt).
+and the sample applications, which are not part of any package:
+samples/WorkSite, which has a notices file of its own
+(samples/WorkSite/THIRD-PARTY-NOTICES.txt), and samples/ApplicationSplitter,
+which uses no third-party material beyond the platform's.
 
 Jeremy Ellis and contributors license the CodeBrix.WebPlatform project
 to you under the terms set forth in the LICENSE file, which is located at

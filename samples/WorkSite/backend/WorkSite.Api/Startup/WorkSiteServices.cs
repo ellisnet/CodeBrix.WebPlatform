@@ -1,4 +1,5 @@
 using CodeBrix.PostgresClient;
+using CodeBrix.WebPlatform.Backend;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
@@ -19,7 +20,7 @@ namespace WorkSite.Api.Startup;
 /// <summary>Registers the WorkSite services.</summary>
 public static class WorkSiteServices
 {
-    /// <summary>Adds settings, data access, authentication, rate limiting, the controllers and the hubs.</summary>
+    /// <summary>Adds settings, data access, authentication, rate limiting, the controllers, the platform backend and the hubs.</summary>
     /// <param name="services">The service collection.</param>
     /// <returns>The same collection.</returns>
     public static IServiceCollection AddWorkSite(this IServiceCollection services)
@@ -49,12 +50,11 @@ public static class WorkSiteServices
         services.AddSingleton<CredentialChecker>();
         services.AddSingleton<SessionService>();
 
-        services.AddControllers()
-            .ConfigureApiBehaviorOptions(options =>
-            {
-                options.InvalidModelStateResponseFactory = InvalidModelStateResponse.Create;
-                options.SuppressMapClientErrors = true;
-            });
+        services.AddControllers();
+        services.AddPlatformBackend();
+        //WorkSite's Content-Security-Policy is its own setting, read when the pipeline is built.
+        services.AddOptions<PlatformBackendOptions>()
+            .Configure<WorkSiteSettings>((options, settings) => options.ContentSecurityPolicy = settings.Security.ContentSecurityPolicy);
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
         services.AddSingleton<IConfigureOptions<JwtBearerOptions>, JwtBearerConfigurator>();

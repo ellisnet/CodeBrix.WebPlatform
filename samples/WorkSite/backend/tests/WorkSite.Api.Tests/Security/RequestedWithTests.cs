@@ -4,7 +4,6 @@ using System.Text;
 using System.Threading.Tasks;
 using CodeBrix.WebPlatform.Core.Mapping;
 using SilverAssertions;
-using WorkSite.Api.Infrastructure;
 using WorkSite.Api.Tests.Infrastructure;
 using Xunit;
 
@@ -48,12 +47,11 @@ public class RequestedWithTests : IClassFixture<ApiFactory>
     public void the_demanded_value_is_the_marker_the_backend_declares_for_its_frontend()
     {
         //Act
-        var declared = WireRequestMarkerAttribute.GetValue(typeof(RequestedWithMiddleware).Assembly);
+        var declared = WireRequestMarkerAttribute.GetValue(typeof(Program).Assembly);
 
         //Assert
         declared.Should().Be("WorkSite");
-        RequestedWithMiddleware.HeaderValue.Should().Be(declared);
-        RequestedWithMiddleware.HeaderName.Should().Be("X-Requested-With");
+        WireRequestMarkerAttribute.HeaderName.Should().Be("X-Requested-With");
     }
 
     [Fact]

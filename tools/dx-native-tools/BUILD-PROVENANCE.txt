@@ -12,7 +12,264 @@ its section here is updated from that build's output/<rid>/BUILD-INFO.txt and
 the <program>.provenance.txt beside it is written from the same values.
 
 ================================================================================
-ADOPTED 2026-11-19 - the current builds: six patches, dx linked to libgit2
+ADOPTED 2026-11-19 (third rebuild) - the bundle splitter's call graph fixed
+================================================================================
+Why: `dx build --wasm-split` panicked ("assertion failed: !self.dead.contains(&id)",
+walrus) when a field handler that reads the field's value existed only in split
+pages. Two upstream bugs in wasm-split-cli 0.7.10 (upstream issue #4769, open; the
+fixes are those of the unmerged upstream pull requests #5795 and #5915): the
+edges recovered for wasm-bindgen's closure shims were recorded in a map nothing
+read, and a call_indirect's TYPE index was read as a function index. Approved by
+the repository owner 2026-11-19 ("diagnose and fix, please").
+What changed in the source:
+  * the splitter is now a PATCHED COPY: tools/dx-native-tools/sources/wasm-split-cli
+    = the crates.io archive in vendoring/wasm-split-cli plus its two patches
+    (PATCH-NOTES.txt there); sources/vendor/wasm-split-cli-0.7.10 is gone;
+  * dioxus-cli gains patch 0007 (a [patch] section pointing at that copy, and the
+    Cargo.lock entry that follows from it): SEVEN patches;
+  * the notices were regenerated (THIRD-PARTY-NOTICES-Dioxus.txt changed and is
+    adopted with the programs).
+Runs (same laptop, same pinned images, network off): run 16 (x64) and run 17
+(x64, final log output/run17-x64-splitter-fix-final.log) gave BYTE-IDENTICAL dx;
+run 17's gate and functional gate passed every check. Run 18 (arm64, final log
+output/run18-arm64-splitter-fix-final.log): gate passed, qemu run OK.
+  linux-x64/dx    built 2026-11-19 20:44:32 UTC  59540120 bytes
+                  sha256 e939e876db1ab645c47375f26f476611ac8e2d95bdbd6893037fa2e77133c9eb
+  linux-arm64/dx  built 2026-11-19 20:48:32 UTC  53264272 bytes
+                  sha256 57d8ff5d2810583124811fee2acb1b328b18045e3400d2897f1cd7d3c8bd033b
+  wasm-bindgen (both RIDs): unchanged, byte for byte.
+Proof of the change (headless Chrome): a minimal split application with a text
+field on one split page builds, loads that page's piece on demand, and the typed
+text reaches the application; the ApplicationSplitter sample's sales application
+builds with its header search box removed (it panicked before).
+Adopted into ../../native_libraries/linux-x64 and linux-arm64 on 2026-11-19 (dx
+replaced; wasm-bindgen came out byte-identical and was kept;
+THIRD-PARTY-NOTICES-Dioxus.txt replaced; dx.provenance.txt rewritten,
+wasm-bindgen.provenance.txt unchanged). The two earlier ADOPTED blocks below and
+the per-RID sections after them are HISTORY of the builds this one replaces;
+what they say about libgit2 (the same package and library checksums in runs 16
+to 18), the image and the toolchain (rustc and cargo 1.100.0) still holds.
+
+Source          : tools/dx-native-tools/sources; dioxus-cli's Cargo.lock sha256
+                  bbc7445ae86c9fac5a166939c49327e1389d3a8bb7a4d312228034fada8b6706
+                  (patch 0007's lock entry; e339325c... in the second rebuild);
+                  965 folders in sources/vendor (966 before: the vendored
+                  wasm-split-cli-0.7.10 left it); wasm-bindgen-cli's Cargo.lock
+                  unchanged (653f29ed...)
+Image           : codebrix-dx-build-x86_64, reused (no image build in these runs)
+Network         : DISABLED during every build (interfaces: lo)
+
+The runs (output/runNN-*-splitter-fix*.log; the Dell Precision 7770 laptop, the
+same pinned image, cargo's target inside the container; 634 crates compiled for
+dx, 161 for wasm-bindgen):
+  run16 x64     20:08:37 UTC - dx 91s, wasm-bindgen 18s, 110s in the
+                container, 118s end to end. Gate and host check passed;
+                functional gate skipped (SKIP_FUNCTIONAL_GATE=1). dx sha256
+                e939e876db1ab645c47375f26f476611ac8e2d95bdbd6893037fa2e77133c9eb
+                - the same bytes as run 17
+  run17 x64     20:44:32 UTC - ADOPTED. Every gate passed, the functional gate
+                included (output/run17-x64-splitter-fix-final.log)
+  run18 arm64   20:48:32 UTC - ADOPTED. Every gate passed, the qemu run
+                included (output/run18-arm64-splitter-fix-final.log)
+  re-build x64  23:28:09 UTC, the same day, after the adoption, as a check:
+                build.sh x64 with every gate and the functional gate, all
+                passed; dx, wasm-bindgen and the four licence and notices files
+                BYTE-IDENTICAL to the adopted ones. Nothing was adopted from it;
+                output/linux-x64/ now holds this build's files
+
+linux-x64       : built 2026-11-19 20:44:32 UTC (run 17; run 16 and the
+                  re-build of 23:28 UTC gave a byte-identical dx); 110s in the
+                  container (dx 89s, wasm-bindgen 17s), 229s end to end with
+                  every gate
+  dx            : 59,540,120 bytes stripped (77,245,640 as linked);
+                  21,797,290 bytes gzip -9 -n
+                  sha256 e939e876db1ab645c47375f26f476611ac8e2d95bdbd6893037fa2e77133c9eb
+                  build-id ab15a554bd3e48172dd0483af069f77ae40112b1
+                  NEEDED libdl.so.2 libgit2-49e408b.so.1.9 libgcc_s.so.1
+                  libpthread.so.0 libm.so.6 libc.so.6 ld-linux-x86-64.so.2;
+                  glibc floor 2.28; no OpenSSL symbol imported; 624 packages
+                  compiled in
+  wasm-bindgen  : UNCHANGED - byte-identical to native_libraries/linux-x64
+                  (sha256 0efc609f5c0354d28eb907f211e09e5e104e7875e6e683f1a51dc0a891d9eb9a)
+  gates         : every check PASSED (run 17's GATE, HOST-CHECK and
+                  FUNCTIONAL-GATE lines are in its log). On the host: --version
+                  with libgit2 on LD_LIBRARY_PATH; WITHOUT it dx does not start
+                  (exit 127). Functional, on a scratch copy of
+                  samples/WorkSite/frontend (not split), network namespace
+                  with loopback only: shrunk .wasm 1,829,873 bytes, 17 site
+                  files; the tools then in native_libraries/linux-x64 built the
+                  same copy at the same path BYTE-IDENTICALLY (all 17 files,
+                  .wasm 1,829,873 bytes both); DX_SKIP_WASM_OPT=1 with no
+                  wasm-opt anywhere: exit 0, the "Skipping wasm-opt" line, .wasm
+                  2,071,909 bytes; `dx new` from a local git template with no git
+                  program on PATH: project cloned (libgit2) and filled in. The
+                  re-build of 23:28 UTC passed the same functional gate on the
+                  WorkSite frontend as it was then (.wasm 1,832,805 bytes
+                  shrunk, 2,074,976 with DX_SKIP_WASM_OPT, 17 site files; the
+                  adopted tools built the same copy byte-identically)
+linux-arm64     : built 2026-11-19 20:48:32 UTC (run 18), cross-compiled as
+                  before; 112s in the container (dx 92s, wasm-bindgen 19s),
+                  118s end to end
+  dx            : 53,264,272 bytes stripped (76,207,864 as linked);
+                  20,238,705 bytes gzip -9 -n
+                  sha256 57d8ff5d2810583124811fee2acb1b328b18045e3400d2897f1cd7d3c8bd033b
+                  build-id 45c5e99a1ad60bb1c1cff11451aef2d39fa8cf98
+                  NEEDED libdl.so.2 libgit2-49e408b.so.1.9 libgcc_s.so.1
+                  libpthread.so.0 libm.so.6 libc.so.6; glibc floor 2.28; no
+                  OpenSSL symbol imported; 624 packages
+  wasm-bindgen  : UNCHANGED - byte-identical to native_libraries/linux-arm64
+                  (sha256 924af54d6bd82843fd0a4e5a99515343d23036343388cc408fae169c7ca2bd26)
+  gates         : every check PASSED (output/linux-arm64/GATE.txt); under qemu
+                  in the pinned aarch64 image (output/linux-arm64/QEMU-RUN.txt,
+                  20:50:28 UTC): --version with libgit2 on LD_LIBRARY_PATH, ldd
+                  resolves; WITHOUT it dx does not start (exit 127). No
+                  functional gate (as before)
+  reproducible  : NOT CHECKED for this build: run 18 is the only linux-arm64
+                  build of these sources, and linux-arm64 was not rebuilt since
+Licence files   : LICENSE-WasmBindgen.txt and THIRD-PARTY-NOTICES-WasmBindgen.txt
+                  unchanged. THIRD-PARTY-NOTICES-Dioxus.txt regenerated (sha256
+                  af5aced036ddf6e69911f43f2c3223a0ccc2e9ea1687efcb37d195233f05320d),
+                  the same in runs 17 and 18 and in both native_libraries
+                  folders. LICENSE-Dioxus.txt as adopted (sha256
+                  603b882cf8c2e5dc44b1d19cb0a0466d105273d9247ee9225dd004fd93eabac7)
+                  is licences/LICENSE-Dioxus.txt after a one-line wording change
+                  made after runs 17 and 18 ("with six patches applied" became
+                  "with the repository's recorded patches applied"); those runs
+                  packed the earlier text (sha256 ccfa4c6f1ac6b52a197e936d6a34557f
+                  71b9cdb3b4e2d2e15f26503c568bf092, run 18's
+                  output/linux-arm64/SHA256SUMS.txt), and the re-build of 23:28
+                  UTC packed 603b882c... itself
+win-x64, osx-*  : STILL NEVER RUN; their scripts build from the same sources
+                  and pick the change up from there
+
+================================================================================
+ADOPTED 2026-11-19 (second rebuild) - patch 0003 copies the bundle-splitting
+loader; its dx REPLACED later the same day by the third rebuild (the block above)
+================================================================================
+Adopted into ../../native_libraries/linux-x64 and linux-arm64 on 2026-11-19,
+after the owner approved the change (dx replaced; wasm-bindgen came out
+byte-identical again and was kept; the four licence and notices files came
+out byte-identical and were kept; dx.provenance.txt rewritten,
+wasm-bindgen.provenance.txt unchanged). The block below this one describes
+the dx of 07:18 / 07:22 UTC that these replaced; everything it says about
+libgit2, the image and the other five patches still holds.
+
+What changed in the source (vendoring/dioxus-cli/PATCH-NOTES.txt, 0003):
+  * patch 0003 (build without esbuild) EXTENDED in src/opt/js.rs: when the
+    glue file is copied without esbuild and `__wasm_split.js` (the loader a
+    `--wasm-split` build writes) is beside it, the loader is copied beside
+    the output as `__wasm_split-dxh<hash>.js` (FNV-1a, 64 bit, of its
+    content) and the glue file's `from "./__wasm_split.js"` imports are
+    rewritten to that name - only those: the glue file also uses the
+    original name as the key under which it hands the loader to the
+    WebAssembly module;
+  * WHY: upstream leaves the loader to esbuild and deletes the folder it was
+    written to, so a split RELEASE build shipped a main script importing a
+    file that was not there, and the page never started;
+  * still SIX patches; 0003-build-without-esbuild.patch rewritten from the
+    source, `LibraryChecker patches` passes; Cargo.lock unchanged (sha256
+    e339325cf12c644e37cb04cef34b326f87d458ea6f72ac81f1b8020e20418f92), no
+    crate added (966 folders in sources/vendor).
+Tooling fix     : linux/functional-gate.sh step 5 (the comparison with
+                  today's tools) did not give the reference dx the libgit2
+                  library, so since the adopted dx became libgit2-linked that
+                  step could only fail (exit 127). It now passes
+                  CBX_LOADER_VAR / CBX_LIBGIT2_DIR and the loader export like
+                  the other dx runs. The `--version` call in that step's pass
+                  message was still made without the library (run 14's
+                  FUNCTIONAL-GATE.txt quotes the loader's error text there);
+                  it now runs with the library too. Cosmetic: the result of
+                  the step was not affected.
+Image           : codebrix-dx-build-x86_64 as built earlier on 2026-11-19,
+                  reused (no image build in these runs)
+Network         : DISABLED during every build (interfaces: lo)
+
+The runs (output/runNN-*-split-loader.log; all on the Dell Precision 7770
+laptop, the same pinned image; each a from-scratch cargo build, 634 crates
+for dx):
+  run10 x64     18:58:11 UTC - a FIRST version of the change whose rewrite was
+                too broad (it also rewrote the import-object keys, and the
+                WebAssembly module then failed to instantiate). Functional
+                gate skipped. dx sha256 da736017fd2bfd2e8758afb5b8a767703511d2
+                1d6ae28a38637ce12b06e8e6fe. NEVER SHIPPED; superseded
+  run11 arm64   19:00:22 UTC - the same first version. dx sha256
+                b5ffd3cddb1640523210c3ab788d2efde0805d02a4ed18f21c123f079a3cbf40.
+                NEVER SHIPPED; superseded
+  run12 all     19:05:07 UTC - did not compile (error[E0425]: cannot find
+                function `copy_dir_recursive`: the helper had been dropped
+                from the edited source by mistake; restored)
+  run13 x64     19:07:39 UTC - the final source: built, every gate passed
+                except the functional gate's step 5, for the tooling reason
+                above (exit 127). dx sha256 b99ee8aa8bdd292edf3d8657709e13a6a0
+                cd9961078e610c1a70a3c5a74ce684 - the same bytes as run 14
+  run14 x64     19:11:23 UTC - ADOPTED. Every gate passed, the functional gate
+                included (output/run14-x64-split-loader.log)
+  run15 arm64   19:15:32 UTC - ADOPTED. Every gate passed
+                (output/run15-arm64-split-loader.log)
+
+linux-x64       : built 2026-11-19 19:11:23 UTC (run 14; run 13 gave a
+                  byte-identical dx); 116s in the container (dx 91s,
+                  wasm-bindgen 24s), 242s end to end with every gate
+  dx            : 59,540,184 bytes stripped (77,244,536 as linked);
+                  21,797,351 bytes gzip -9 -n
+                  sha256 b99ee8aa8bdd292edf3d8657709e13a6a0cd9961078e610c1a70a3c5a74ce684
+                  build-id ad6d8552ed455b09bdc235dfafdc211ad19b062c
+                  NEEDED libdl.so.2 libgit2-49e408b.so.1.9 libgcc_s.so.1
+                  libpthread.so.0 libm.so.6 libc.so.6 ld-linux-x86-64.so.2;
+                  glibc floor 2.28; no OpenSSL symbol imported; 624 packages
+                  compiled in
+  wasm-bindgen  : UNCHANGED - byte-identical to native_libraries/linux-x64
+                  (sha256 0efc609f5c0354d28eb907f211e09e5e104e7875e6e683f1a51dc0a891d9eb9a)
+  gates         : every check PASSED (output/linux-x64/GATE.txt,
+                  HOST-CHECK.txt, FUNCTIONAL-GATE.txt). On the host: --version
+                  with libgit2 on LD_LIBRARY_PATH; WITHOUT it dx does not start
+                  (exit 127). Functional, on a scratch copy of
+                  samples/WorkSite/frontend (not split), network namespace
+                  with loopback only: shrunk .wasm 1,829,874 bytes, 17 site
+                  files; the previously adopted tools (the dx of 07:18 UTC)
+                  build the same copy at the same path BYTE-IDENTICALLY (all
+                  17 files, .wasm 1,829,874 bytes both) - so the change leaves
+                  an unsplit build exactly as it was; DX_SKIP_WASM_OPT=1 with
+                  no wasm-opt anywhere: exit 0, the "Skipping wasm-opt" line,
+                  .wasm 2,071,909 bytes; `dx new` from a local git template
+                  with no git program on PATH: project cloned (libgit2) and
+                  filled in
+linux-arm64     : built 2026-11-19 19:15:32 UTC (run 15), cross-compiled as
+                  before; 122s in the container (dx 101s, wasm-bindgen 19s),
+                  128s end to end
+  dx            : 53,264,624 bytes stripped (76,209,544 as linked);
+                  20,238,679 bytes gzip -9 -n
+                  sha256 1108b9d3d2647062f5331ec2de53036356606e679f728ab06b5277c54af5bfe3
+                  build-id e83a657d5458f5f4eadd6224595cafee4f9c260a
+                  NEEDED libdl.so.2 libgit2-49e408b.so.1.9 libgcc_s.so.1
+                  libpthread.so.0 libm.so.6 libc.so.6; glibc floor 2.28; no
+                  OpenSSL symbol imported; 624 packages
+  wasm-bindgen  : UNCHANGED - byte-identical to native_libraries/linux-arm64
+                  (sha256 924af54d6bd82843fd0a4e5a99515343d23036343388cc408fae169c7ca2bd26)
+  gates         : every check PASSED; under qemu in the pinned aarch64 image:
+                  --version with libgit2 on LD_LIBRARY_PATH, ldd resolves;
+                  WITHOUT it dx does not start (exit 127). No functional gate
+                  (as before)
+Licence files   : LICENSE-Dioxus.txt, LICENSE-WasmBindgen.txt and the two
+                  THIRD-PARTY-NOTICES files byte-identical to the adopted ones
+                  (output/<rid>/SHA256SUMS.txt)
+Proof of the change (not part of the gate scripts; no file in output/): a
+                  scratch Dioxus application built with `--release
+                  --base-path sales --wasm-split` by the new linux-x64 dx
+                  ships assets/__wasm_split-dxh<hash>.js, its glue file
+                  imports that name, and in headless Chrome under a strict
+                  Content-Security-Policy the first page requests only its
+                  own route's module and a deep link to the other page
+                  requests only that page's module, with no console errors.
+                  samples/ApplicationSplitter ("sales") is the standing
+                  example
+win-x64, osx-*  : STILL NEVER RUN; their scripts build from the same sources
+                  and pick the change up from there
+
+
+================================================================================
+ADOPTED 2026-11-19 (first rebuild) - six patches, dx linked to libgit2; its dx
+REPLACED later the same day by the block above
 ================================================================================
 Adopted into ../../native_libraries/linux-x64 and linux-arm64 on 2026-11-19
 (dx replaced; wasm-bindgen came out byte-identical and was kept; the licence
@@ -236,7 +493,9 @@ Functional gate  : PASSED - dx build --platform web --release --debug-symbols
                    frontend crate's hash inside three mangled closure names -
                    the only printable strings that differ (strings-diff.txt)
 Adopted          : YES, 2026-11-18, into native_libraries/linux-x64/; dx REPLACED
-                   2026-11-19 by the build in the ADOPTED section at the top
+                   2026-11-19 by the first rebuild, and again the same day by
+                   the second and the third (the three ADOPTED sections at the
+                   top)
 Re-checked       : 2026-11-19 05:45 UTC, from tools/dx-native-tools/sources:
                    byte-identical programs; functional gate PASSED on the
                    materialized frontend (it now carries the platform's crates
@@ -288,7 +547,9 @@ Note             : qemu is not silicon, and no functional gate ran for arm64;
                    run the host-tools tests and a frontend build on real arm64
                    hardware before a release
 Adopted          : YES, 2026-11-18, into native_libraries/linux-arm64/; dx REPLACED
-                   2026-11-19 by the build in the ADOPTED section at the top
+                   2026-11-19 by the first rebuild, and again the same day by
+                   the second and the third (the three ADOPTED sections at the
+                   top)
 
 
 ================================================================================

@@ -1,0 +1,146 @@
+================================================================================
+PATCH NOTES: wasm-split-cli (the WebAssembly bundle splitter inside `dx`)
+================================================================================
+
+tools/dx-native-tools/sources/wasm-split-cli is the wasm-split-cli crate exactly
+as published on crates.io (the archive beside this file, whose checksum is in
+the .sha256 file) with the numbered patches in this folder applied in order.
+Nothing else may differ: `LibraryChecker patches` rebuilds the source from the
+archive and the patches and compares it with that folder byte for byte.
+
+wasm-split-cli is a library crate of the Dioxus project
+(https://github.com/DioxusLabs/dioxus, packages/wasm-split/wasm-split-cli),
+"MIT OR Apache-2.0", used under Apache-2.0 like dx itself. It is not a separate
+program here: dx links it and runs it for `dx build --wasm-split`. dx's
+Cargo.toml substitutes this patched copy for the crates.io crate
+(tools/dx-native-tools/vendoring/dioxus-cli, patch 0007), so `cargo vendor`
+does not take the crates.io copy and it is not in sources/vendor; the archive
+here is the pristine crate.
+
+Each changed place in the source carries a comment that starts "CodeBrix
+change:" and points at this file.
+
+The patches, in the order they apply:
+  0001-recovered-edges-into-call-graph.patch       the edges the splitter
+                                                   meant to give `main` reach
+                                                   its call graph
+  0002-no-edges-from-type-index-relocations.patch  a call_indirect's type
+                                                   index is not read as a
+                                                   symbol
+
+Both patches change src/lib.rs only. They belong together: 0001 is the fix of
+the panic, and 0002 keeps 0001 from pinning most of a split route's code into
+the main module (see the Effect of each).
+
+Status of both: approved by the repository owner 2026-11-19 ("diagnose and
+fix").
+
+
+THE BUG BOTH PATCHES FIX
+------------------------
+`dx build --platform web --release --wasm-split` panicked right after "Emitting
+main bundle split module":
+
+    assertion failed: !self.dead.contains(&id)
+    (walrus-0.23.3/src/module/functions/mod.rs, from walrus::passes::gc::run
+    in Splitter::emit_main_module)
+
+A small application reproduces it deterministically: two split routes, and an
+input field whose handler reads the field's value (`oninput: move |e|
+typed.set(e.value())`) on ONE of them and nowhere in the main module. Upstream
+issue DioxusLabs/dioxus#4769 reports the same panic (open).
+
+How the splitter works: it builds a call graph of the program from the
+relocations rustc leaves in the module (`--emit-relocs`), pairs the original
+module's functions with the module wasm-bindgen wrote, computes what the main
+module reaches and what each split route reaches, and deletes from the main
+module every function that only split routes reach.
+
+What went wrong, proved by dumping the splitter's sets for that application:
+
+  - wasm-bindgen replaces its "describe" functions with generated glue. A
+    describe function is the only code that names the `invoke` shim of a
+    closure type (the function JavaScript calls through the function table
+    when it calls a Rust closure). The splitter knows this: build_call_graph
+    collects everything those vanished functions referenced ("recovered
+    children") and every function only wasm-bindgen made, and attaches them
+    to `main`. But it attached them in a LOCAL map, `new_call_graph`, that is
+    never read again. So those shims were reachable from nothing.
+  - They stay in the main module anyway: they sit in the function table,
+    which is exported. Two of them (the shims of the closure types js-sys's
+    Array::flatMap takes) call alloc::vec::Vec<JsValue>::into_boxed_slice.
+    The form code of the split route also calls that function, and nothing
+    else in the graph does, so it counted as "only a split route reaches it"
+    and was deleted from the main module while the shims still called it.
+    walrus's garbage collector then walked the dangling call and panicked.
+  - With a field in the main module too (the workaround the
+    ApplicationSplitter sample used), the main module itself reaches the
+    form code, so nothing the shims call is deleted. Whether a build panics
+    therefore depended on which functions a split route happens to share
+    with such a shim.
+
+Upstream status (checked 2026-11-19): the code is unchanged on upstream's main
+branch, and there is no release after 0.7.10 except 0.8.0 pre-releases, which
+this repository does not take. No fix is merged.
+
+
+0001-recovered-edges-into-call-graph.patch
+------------------------------------------
+What:   src/lib.rs, build_call_graph - the edges from `main` to the recovered
+        children and to the functions only wasm-bindgen made are written into
+        `self.call_graph`, the graph the main module's reachability is
+        computed from, instead of into the discarded local map
+        `new_call_graph`, which is removed (with the empty entries it was
+        given). This is exactly the change of upstream's open pull request
+        DioxusLabs/dioxus#5795 (its one commit,
+        3f6e5a950dfd29cb60ae2d1b76d22c0bd7cd1301), with our own comments.
+Why:    it makes the splitter do what its own comments say it does. Without
+        it, a function reached only through such a shim can be deleted from
+        the main module while still called, and the build panics (above).
+Effect: the closure shims, the functions only wasm-bindgen made, and what
+        they call are kept in the main module, which they never left; a split
+        module that uses one of those functions now imports it from the main
+        module instead of deleting it there. The panic is gone. ON ITS OWN
+        this patch pins far too much into the main module, because of the
+        defect 0002 fixes: in the small reproduction no function at all was
+        left in the split routes.
+Drop when: upstream merges #5795 or an equivalent fix and the repository
+        takes a stable release that has it.
+
+
+0002-no-edges-from-type-index-relocations.patch
+-----------------------------------------------
+What:   src/lib.rs, ModuleWithRelocations::build_code_call_graph - a
+        relocation of type R_WASM_TYPE_INDEX_LEB is skipped. Every other
+        relocation type in the code section names a symbol; this one carries
+        a TYPE index (the signature immediate of a `call_indirect`), and
+        upstream looked that number up as if it were a symbol index. The same
+        skip is part of upstream's pull request DioxusLabs/dioxus#5915, which
+        was closed unmerged.
+Why:    the lookup linked a function to whatever symbol happens to have the
+        number of the type it calls through - in the reproduction, a closure
+        `invoke` shim to the split export of route Two. Those edges are
+        false. Before 0001 they only made the splitter's sets larger; with
+        0001 the recovered shims carry them into the main module's graph, and
+        through them most of every split route's code.
+Effect: the call graph no longer has those false edges. Removing edges that
+        are not references cannot make anything that is used look unused, so
+        this does not weaken 0001. With both patches the reproduction builds,
+        the functions only the split route uses leave the main module again,
+        and a split route's piece holds that route's code.
+Drop when: with 0001, when upstream fixes the type-index lookup.
+
+
+UPGRADING
+---------
+When dx is upgraded, the crate's version changes with it (dx asks for the same
+release of wasm-split-cli). Take the new release's .crate from crates.io (or
+the local cargo cache) and record its checksum, check upstream for #5795 and
+the type-index fix first, re-apply the patches that are still needed, and
+change the [patch] path and version in dx's Cargo.toml (dioxus-cli patch
+0007) to match. Then rebuild and check a split build with a field only on a
+split page, as above.
+
+================================================================================
+END OF PATCH NOTES
+================================================================================

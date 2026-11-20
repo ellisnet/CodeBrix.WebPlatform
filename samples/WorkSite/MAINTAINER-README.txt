@@ -21,9 +21,12 @@ sample then keeps only what is its own.
   - Tailwind CSS for all styling.
 
 It consumes the platform the way any application does: its backend references
-CodeBrix.WebPlatform.Core, and its build program (build/WorkSite.BuildFrontend)
-references CodeBrix.WebPlatform.FrontendBuilder and the host-tools package
-for the machine it runs on. There is no contract document: the backend's
+CodeBrix.WebPlatform.Core and CodeBrix.WebPlatform.Backend (one services call
+and one pipeline call: the built frontend, the error bodies, the
+X-Requested-With and Origin checks and the security headers), and its build
+program (build/WorkSite.BuildFrontend) references
+CodeBrix.WebPlatform.FrontendBuilder and the host-tools package for the
+machine it runs on. There is no contract document: the backend's
 controllers and hubs are the contract.
 
 The sample holds APPLICATION CODE ONLY. The owner's split: HOW to talk to a
@@ -148,15 +151,14 @@ short, for WorkSite:
     message classes in WorkSite.Core/Hubs, carries [WireHub("/api/hubs/...")]
     and [Authorize] or [AllowAnonymous], and is mapped in WorkSiteHubs with
     WireHubAttribute.GetPath so the path is written once;
-  - what the frontend never calls (the health probe, the "no such API route"
-    controller) is marked [WireIgnore];
+  - what the frontend never calls (the health probe) is marked [WireIgnore];
   - the CSV export is marked [WireFile]: the frontend gets a function that
     builds its address;
   - the backend DECLARES what the frontend must know about it, where it
     lives: the request marker, [assembly: WireRequestMarker("WorkSite")] in
-    backend/WorkSite.Api/WireDeclarations.cs, which RequestedWithMiddleware
-    reads back (WireRequestMarkerAttribute.GetValue) - so the value exists
-    once; and the session refresh, [WireSessionRefresh] on
+    backend/WorkSite.Api/WireDeclarations.cs, which the platform backend's
+    X-Requested-With check (CodeBrix.WebPlatform.Backend) reads back - so the
+    value exists once; and the session refresh, [WireSessionRefresh] on
     AuthController.Refresh. The generated code carries both
     (REQUEST_MARKER, SESSION_REFRESH_PATH, configure_platform); the
     frontend never types them.
@@ -212,9 +214,10 @@ Three things every hub relies on:
     anywhere else would never see who is signed in.
   - THE ORIGIN CHECK. A browser does not apply the same-origin policy to
     WebSockets and sends cookies with the handshake, and the X-Requested-With
-    protection of the REST API does not cover a WebSocket upgrade. So
-    HubOriginMiddleware refuses any request to a hub path whose Origin header
-    is not this site's own - for the public hubs too. (The negotiate call,
+    protection of the REST API does not cover a WebSocket upgrade. So the
+    platform backend (CodeBrix.WebPlatform.Backend) refuses any request below
+    /api/hubs whose Origin header is not this site's own - for the public
+    hubs too. (The negotiate call,
     being a POST under /api, needs X-Requested-With as well; the one set-up
     call makes the SignalR client send it.)
   - TYPED HUBS ONLY. An untyped Clients.All.SendAsync("name", ...) is a string
@@ -339,14 +342,17 @@ wwwroot content (it is build output), samples/WorkSite/artifacts, the
 temp-packages folder at the repository root, and the build output written
 into the frontend: frontend/src/generated, frontend/platform and
 frontend/.cargo. The .gitignore at the repository root covers all of them.
-frontend/Cargo.lock IS committed: it is the application's own.
+frontend/Cargo.lock IS committed: it is the application's own. Its third
+line is the platform's marker line, so the build keeps it in step when a
+platform crate moves (AGENT-README.txt, THE FRONTEND'S Cargo.lock): commit
+what the build changed there, and never move the line.
 
 
 TEMPORARY PACKAGES
 ==================
 WorkSite uses CodeBrix packages that are not on nuget.org yet: the packages
-of this repository (WorkSite.Core references Core; WorkSite.BuildFrontend
-references FrontendBuilder, which brings Core and BackendMapper, and the
+of this repository (WorkSite.Core references Core; WorkSite.Api references
+Backend; WorkSite.BuildFrontend references FrontendBuilder, which brings Core and BackendMapper, and the
 host-tools package of the machine). (CodeBrix.WebPlatform.WasmShrink,
 CodeBrix.LibGit2 and CodeBrix.RustTools, which FrontendBuilder also brings,
 are published and come from nuget.org.)
@@ -361,12 +367,12 @@ Consequences:
     either the packages are published or the same .nupkg files are put in
     temp-packages/.
   - WorkSite does not see a change to a library until the feed is refreshed.
-    The exact procedure (build the libraries in Release, replace the eight
+    The exact procedure (build the libraries in Release, replace the
     .nupkg files, set the version in backend/libs/WorkSite.Core/
-    WorkSite.Core.csproj and in build/WorkSite.BuildFrontend/
-    WorkSite.BuildFrontend.csproj, whose one property
-    WebPlatformPackageVersion covers FrontendBuilder and the five host-tools
-    references) is TEMPORARY PACKAGES in the root
+    WorkSite.Core.csproj, in backend/WorkSite.Api/WorkSite.Api.csproj and in
+    build/WorkSite.BuildFrontend/WorkSite.BuildFrontend.csproj, whose one
+    property WebPlatformPackageVersion covers FrontendBuilder and the
+    host-tools references) is TEMPORARY PACKAGES in the root
     MAINTAINER-README.txt.
 
 When the packages are on nuget.org the feed is deleted (see the root file),

@@ -52,21 +52,28 @@ internal readonly struct ShrinkPlan
     /// <summary>Decides who shrinks the file.</summary>
     /// <param name="configuration">The kind of build.</param>
     /// <param name="shrinkOption"><see cref="PlatformFrontendOptions.Shrink"/>.</param>
-    public static ShrinkPlan Decide(FrontendConfiguration configuration, bool? shrinkOption)
+    /// <param name="wasmSplit">Whether the build splits the bundle: dx then always runs wasm-opt
+    /// (on the main file and on every piece), whatever the configuration and the option.</param>
+    public static ShrinkPlan Decide(FrontendConfiguration configuration, bool? shrinkOption, bool wasmSplit = false)
     {
+        if (wasmSplit)
+        {
+            return new ShrinkPlan(true, true, false, false);
+        }
+
         var release = configuration == FrontendConfiguration.Release;
         var shrink = shrinkOption ?? release;
         return new ShrinkPlan(shrink, release && shrink, !release && shrink, release && !shrink);
     }
 
     /// <summary>
-    /// True when dx itself ran wasm-opt in this build. A release build always does, unless the
+    /// True when dx itself ran wasm-opt in this build. A split build always does. A release build always does, unless the
     /// skip was asked for AND dx confirms it in its output (a dx without the platform's patch
     /// ignores the request and shrinks anyway).
     /// </summary>
     /// <param name="configuration">The kind of build.</param>
     /// <param name="dxOutput">Everything dx wrote.</param>
     public bool DxRanWasmOpt(FrontendConfiguration configuration, string dxOutput)
-        => configuration == FrontendConfiguration.Release
+        => (DxShrinks || configuration == FrontendConfiguration.Release)
             && !(SkipRequested && (dxOutput ?? string.Empty).Contains(SkipConfirmationText, StringComparison.Ordinal));
 }

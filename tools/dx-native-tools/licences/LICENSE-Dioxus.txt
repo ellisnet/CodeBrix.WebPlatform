@@ -15,7 +15,7 @@ Licence  : the crate declares "MIT OR Apache-2.0". CodeBrix.WebPlatform uses
            LICENSE-APACHE file of the wasm-bindgen-cli 0.2.130 crate).
 
 THIS COPY OF dx IS MODIFIED. It is the published dioxus-cli 0.7.10 source
-with six patches applied, kept in the CodeBrix.WebPlatform repository as
+with the repository's recorded patches applied, kept in the CodeBrix.WebPlatform repository as
 numbered patch files beside the pristine crate archive
 (tools/dx-native-tools/vendoring/dioxus-cli/, explained in PATCH-NOTES.txt
 there; the patched source is in tools/dx-native-tools/sources/dioxus-cli);

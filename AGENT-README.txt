@@ -2,6 +2,7 @@
 AGENT-README: CodeBrix.WebPlatform
 A Guide for AI Coding Agents — CONSUMING the
 CodeBrix.WebPlatform.Core.ApacheLicenseForever,
+CodeBrix.WebPlatform.Backend.ApacheLicenseForever,
 CodeBrix.WebPlatform.BackendMapper.ApacheLicenseForever,
 CodeBrix.WebPlatform.FrontendBuilder.ApacheLicenseForever and
 CodeBrix.WebPlatform.FrontendBuilder.<Platform>.ApacheLicenseForever (the
@@ -16,8 +17,9 @@ CodeBrix.WebPlatform is a platform for building web applications with
 
     * a .NET backend that serves REST controllers and SignalR hubs and renders
       no UI, and
-    * a frontend written in Rust, compiled to WebAssembly, that talks to that
-      backend.
+    * one or more frontend applications written in Rust, compiled to
+      WebAssembly, that talk to that backend (see SEVERAL FRONTEND
+      APPLICATIONS).
 
 No Node.js is used, relied on or talked to by anything in these packages, and
 the platform assumes none is installed. The frontend is Rust; the only
@@ -33,7 +35,25 @@ This file documents every package of the platform. They target .NET 10
           - the attributes a backend uses to declare its contract, and what
             it declares about itself (its request marker, the action that
             renews an expired session),
-          - the standard error body (ApiProblem) and its codes.
+          - the standard error body (ApiProblem) and its codes,
+          - the description of the frontend applications (their names and
+            where each is served), which the frontend build and the backend
+            share,
+          - the registry of crate bundles: Rust crates that a NuGet package
+            brings to the frontend (see CRATE BUNDLES).
+
+    CodeBrix.WebPlatform.Backend
+        The ASP.NET Core plumbing every platform backend needs, in one
+        services call and one pipeline call. It serves the frontend
+        applications the frontend build wrote into the web root (with the
+        build's compressed copies, to a browser that accepts them), answers
+        what the platform's rules say about API errors, demands the
+        backend's request marker, checks the Origin of hub requests and sends
+        the security headers. Every piece can be switched off. On request it
+        also compresses the backend's own answers (off by default; see
+        COMPRESSION). Referenced by
+        the backend (it brings Core). It is the one package with ASP.NET Core
+        code; Core still has none.
 
     CodeBrix.WebPlatform.BackendMapper
         A BUILD-TIME library. It reads the compiled backend (its metadata
@@ -46,14 +66,18 @@ This file documents every package of the platform. They target .NET 10
 
     CodeBrix.WebPlatform.FrontendBuilder
         A BUILD-TIME library: the one a build PROGRAM calls to build the
-        frontend. It checks the machine and says what is missing; it
-        MATERIALIZES the frontend (builds and maps the backend with
-        BackendMapper, writes the generated client code, the shared Rust
-        crate every platform frontend compiles in, the platform's Rust crates,
-        the cargo configuration and, when it is missing, the Tailwind
-        stylesheet, so that plain cargo works offline); and
-        it BUILDS the servable site, or SERVES it with hot reload, by running
-        the Dioxus build tool (dx), with release builds shrunk by wasm-opt. It
+        frontend applications. It checks the machine and says what is
+        missing; it MATERIALIZES every frontend application (builds and maps
+        the backend with BackendMapper, writes the generated client code, the
+        shared Rust crate every platform frontend compiles in, the platform's
+        Rust crates and those of the registered crate bundles, the cargo
+        configuration and, when it is missing, the Tailwind stylesheet, so
+        that plain cargo works offline); and it BUILDS the servable site of
+        every application into the backend's web root, or SERVES one with hot
+        reload, by running the Dioxus build tool (dx), with release builds
+        shrunk by wasm-opt, Brotli and gzip copies of the built files in the
+        web root (see COMPRESSION) and, on request, the WebAssembly split
+        into pieces that load when they are needed (see CODE SPLITTING). It
         carries the shared Rust crate (the one set-up call, the REST client,
         the SignalR client, the browser helpers and the other code every
         frontend needs) inside its assembly, and the
@@ -77,38 +101,54 @@ The split: HOW to talk to a backend is the platform's (the shared crate); the
 DESCRIPTION of a particular backend is generated on every build (BackendMapper);
 only WHAT THE APPLICATION DOES with the answers is the application's code. The
 platform supplies no interface components (forms, dialogs, toasts, icons) and
-no session handling: those are the application's.
+no session handling: those are the application's. The backend's PLUMBING -
+serving the frontend applications, the standard error answers, the
+cross-site checks, the security headers - is the platform's too (the Backend
+package); the backend's controllers, hubs, sign-in and data are its own.
 
 
 INSTALLATION
 ============
 
+    dotnet add package CodeBrix.WebPlatform.Backend.ApacheLicenseForever
+        (brings CodeBrix.WebPlatform.Core.ApacheLicenseForever)
     dotnet add package CodeBrix.WebPlatform.Core.ApacheLicenseForever
+        (for a project of contract classes beside the backend)
     dotnet add package CodeBrix.WebPlatform.FrontendBuilder.ApacheLicenseForever
         (brings CodeBrix.WebPlatform.BackendMapper.ApacheLicenseForever)
 
 IMPORTANT: the package ids carry the ".ApacheLicenseForever" suffix. There are
 no packages named plain CodeBrix.WebPlatform.Core,
-CodeBrix.WebPlatform.BackendMapper or CodeBrix.WebPlatform.FrontendBuilder.
-The assembly names and root namespaces are CodeBrix.WebPlatform.Core,
+CodeBrix.WebPlatform.Backend, CodeBrix.WebPlatform.BackendMapper or
+CodeBrix.WebPlatform.FrontendBuilder. The assembly names and root namespaces
+are CodeBrix.WebPlatform.Core, CodeBrix.WebPlatform.Backend,
 CodeBrix.WebPlatform.BackendMapper and CodeBrix.WebPlatform.FrontendBuilder.
 
 Which project references what:
 
-    the backend (and every project that holds contract   Core
-      classes or hub client interfaces)
+    the backend (the ASP.NET Core project)               Backend (it brings
+                                                         Core)
+    every other project that holds contract classes      Core
+      or hub client interfaces
     the program that builds the frontend                 FrontendBuilder (it
                                                          brings BackendMapper
                                                          and Core), and the
                                                          host-tools package
                                                          for the machine
-    the frontend (Rust)                                  none; it gets Rust
+    the frontend applications (Rust)                     none; they get Rust
                                                          source and the
                                                          platform's crates,
                                                          below
 
+A backend may leave the Backend package out and write that plumbing itself
+(see THE PLATFORM RULES); it then references Core alone.
+
 NuGet dependencies:
     Core            none. It uses only the .NET base class library.
+    Backend         CodeBrix.WebPlatform.Core.ApacheLicenseForever and
+                    CodeBrix.TomlParse.BsdLicenseForever (it reads the
+                    frontend manifest), and the ASP.NET Core shared
+                    framework (a framework reference, as in every backend).
     BackendMapper   CodeBrix.WebPlatform.Core.ApacheLicenseForever,
                     CodeBrix.Templating.BsdLicenseForever (the template
                     engine the Rust code is written with) and
@@ -153,8 +193,10 @@ platform, so that it restores everywhere:
     WindowsX64, 'OSX' / 'Arm64' -> MacOSArm64, 'OSX' / 'X64' -> MacOSX64)
 
 Use the same version for FrontendBuilder and the host-tools package (they
-are published together). CheckPrerequisitesAsync says which package the
-programs came from, or which one to add.
+are published together), and the same release for the backend's Backend and
+Core (the backend reads the manifest the frontend build writes, and the
+generated code is written against Core's attributes). CheckPrerequisitesAsync
+says which package the programs came from, or which one to add.
 
 THE PLATFORM'S CRATES come with FrontendBuilder itself: the package copies
 them beside the build program as frontend-crates/platform-crates.zip (one
@@ -194,6 +236,23 @@ KEY NAMESPACES / USINGS
     using CodeBrix.WebPlatform.Core.Problems;
         // ApiProblem, ApiProblemCodes
 
+    using CodeBrix.WebPlatform.Core.Applications;
+        // FrontendApplication, FrontendApplicationSet, FrontendManifest
+
+    using CodeBrix.WebPlatform.Core.Crates;
+        // CrateBundle, CrateBundles
+
+    using CodeBrix.WebPlatform.Backend;
+        // AddPlatformBackend, UsePlatformBackend (extension methods),
+        // PlatformBackendOptions, PlatformBackendPaths, ResponseCompression
+
+    using CodeBrix.WebPlatform.Backend.Problems;
+        // ApiProblems, ApiProblemWriter, ApiProblemResult,
+        // InvalidModelStateResponse
+
+    using CodeBrix.WebPlatform.Backend.Applications;
+        // FrontendManifestReader, FrontendManifestException
+
     using CodeBrix.WebPlatform.BackendMapper;
         // BackendMapper, BackendMapOptions, BackendMapException,
         // MappingProblem
@@ -214,7 +273,11 @@ KEY NAMESPACES / USINGS
     using CodeBrix.WebPlatform.FrontendBuilder;
         // PlatformFrontend, PlatformFrontendOptions, FrontendConfiguration,
         // FrontendRequirements, MaterializeResult, FrontendBuildResult,
-        // FrontendBuildException
+        // FrontendBuildException, FrontendCompression,
+        // FrontendCompressionResult, CompressedFile
+
+    using CodeBrix.WebPlatform.FrontendBuilder.Applications;
+        // FrontendApplicationOptions, FrontendManifestWriter
 
     using CodeBrix.WebPlatform.FrontendBuilder.Stylesheet;
         // StylesheetOutcome
@@ -227,10 +290,15 @@ KEY NAMESPACES / USINGS
         // HostTools, HostToolsSource
 
     using CodeBrix.WebPlatform.FrontendBuilder.Crates;
-        // PlatformCrates, CrateMode
+        // PlatformCrates, CrateMode, CrateBundleOutcome
 
     using CodeBrix.WebPlatform.FrontendBuilder.SharedCrate;
         // SharedRustCrate, SharedRustFile
+
+THE ENUM ResponseCompression (CodeBrix.WebPlatform.Backend) is named like
+ASP.NET Core's namespace Microsoft.AspNetCore.ResponseCompression; a `using`
+of that namespace does not clash with it (a using brings in types, not the
+namespace's name), so `ResponseCompression.FileAnswers` works as written.
 
 NAME CLASH TO KNOW ABOUT: the static class BackendMapper has the same name as
 its namespace. Inside a file that has `using CodeBrix.WebPlatform.BackendMapper;`
@@ -276,8 +344,8 @@ rest.
     * A request that changes state (anything but GET/HEAD) is refused unless
       it carries the X-Requested-With header with the application's value.
       The backend DECLARES that value once, [assembly: WireRequestMarker],
-      and its own check reads it back from there (see below); the generated
-      client code sends it.
+      and the check (the Backend package's, or the backend's own) reads it
+      back from there (see below); the generated client code sends it.
 
   SIGN-IN
     * A backend with any action or hub that needs sign-in declares its
@@ -285,16 +353,70 @@ rest.
       that renews an expired session ([WireSessionRefresh]): a POST anyone may
       call ([AllowAnonymous]) that takes nothing and answers 401 (empty body)
       when the session cannot be renewed. A backend where nothing needs
-      sign-in needs neither.
+      sign-in needs neither for BackendMapper. (The Backend package's
+      X-Requested-With check is on by default and needs a marker even then:
+      declare one anyway, or switch the check off - see BACKEND API
+      REFERENCE: THE OPTIONS.)
 
   HUBS
     * Every hub derives from Hub<TClient> with an interface that names each
       message it sends, and carries [WireHub("/path")].
 
-The backend produces those answers with its own ASP.NET Core code (a problem
-writer, an invalid-model-state response factory, status-code pages, a
-middleware for the header). These packages do not contain that code; Core has
-no web framework dependency.
+The ANSWERS come from ASP.NET Core code, and the Backend package has all of
+it: a backend that makes its two calls (builder.Services.AddPlatformBackend
+and app.UsePlatformBackend, see BACKEND API REFERENCE) gets the problem
+bodies for what the framework answers by itself, the model-binding answer,
+the unknown-API answer, the X-Requested-With check, the hub Origin check, the
+security headers and the serving of the frontend applications. A backend may
+still write any of it itself (switch that piece off in the options) or leave
+the package out altogether. Core itself has no web framework dependency.
+
+
+SEVERAL FRONTEND APPLICATIONS
+=============================
+
+A platform application has ONE backend and ONE OR MORE frontend
+applications. Each frontend application is a separate Dioxus application:
+its own Rust crate, in its own folder, with its own Cargo.toml, Cargo.lock,
+Dioxus.toml and pages. They all share the backend, the generated client code
+(it is written into every one of them), the platform's crates and the crate
+bundles, and the one build program and build. A developer who wants
+different backends makes separate platform applications.
+
+THE DEFAULT APPLICATION. The application that is given NO name is the
+default application. Its internal name is "app" (FrontendApplication
+.DefaultName) and it is served at the site root - https://host/ - which is
+what a platform application with one frontend application normally has. At
+most one application has no name, and no application can be NAMED "app".
+
+A NAMED APPLICATION is served below its name: "sales" at https://host/sales
+and every address below it. That goes for the only application too, if the
+developer names it. Inside an application its routes are written from its
+own root (#[route("/")] is https://host/sales/ for "sales"); the build gives
+dx the name as the base path, so the router and the assets follow it.
+
+THE NAME RULES. A name is lowercase letters (a-z), digits and hyphens; it
+starts with a letter, does not end with a hyphen, and has at most 40
+characters (FrontendApplication.MaximumNameLength). "api" and "assets" are
+the platform's. Capitals are REFUSED, not lowered: the name is the address
+and the folder, exactly. FrontendApplication.DescribeNameProblem(name) says
+what is wrong with a name, or null.
+
+WHEN EVERY APPLICATION HAS A NAME, nothing of the platform's is at the site
+root: "/" answers the developer's own wwwroot/index.html if there is one,
+and 404 otherwise. Any address outside every application is 404 too (there
+is no site-wide fallback).
+
+EVERYTHING IS SHARED. Moving between applications is a FULL PAGE LOAD (each
+is its own WebAssembly): link to another application with a plain anchor,
+a { href: "/admin", "Admin" }, not with the router's Link. The API (/api) is
+the same for all of them, and so is the session cookie: the cookie a sign-in
+in one application sets is sent by the others too (what each application
+shows about the session is its own code).
+
+How the build program lists the applications: FRONTENDBUILDER API
+REFERENCE (PlatformFrontendOptions.Applications). How the backend serves
+them: BACKEND: HOW THE FRONTEND APPLICATIONS ARE SERVED.
 
 
 CORE API REFERENCE: THE CONTRACT ATTRIBUTES
@@ -366,17 +488,48 @@ For an application-wide change use RustTypeMap instead (below).
 
 [WireFile]
 ----------
-Target: method (a REST action). The action's answer is a file for the browser
-to download or show, not JSON for the frontend to read. The action must answer
-GET and needs no declared response type. The generated code gets a function
-that BUILDS THE ADDRESS (returns String) instead of one that fetches it; the
-frontend hands the address to the browser.
+Target: method (a REST action). The action's answer is a file, not JSON. The
+action must answer GET, reads no body and needs no declared response type.
+The generated code gets TWO functions for it, with the same arguments:
+  <name>_url(..) -> String
+      BUILDS THE ADDRESS; the frontend hands it to the browser to download or
+      show (browser::navigate).
+  <name>_bytes(..).await -> ApiResult<Vec<u8>>
+      FETCHES THE FILE for the frontend's own code (model data, glyph data,
+      any binary blob), through the shared REST client like every other
+      generated call: the session refresh and retry for an action that needs
+      sign-in, and an error answer (the standard JSON problem body) as an
+      ApiError. The whole answer is read into memory before it is returned.
+Both names are taken, so no other action of the same controller may be named
+<Name>Url or <Name>Bytes; BackendMapper reports such a clash as a problem.
+With the backend's CompressResponses = FileAnswers, the answers of [WireFile]
+actions - and nothing else - are compressed as they are sent (see
+COMPRESSION, and THE RISK there).
+
+    // in MeshesController ([Route("api/meshes")], [Authorize])
+    [HttpGet("{id:guid}/data.bin")]
+    [WireFile]
+    public async Task<IActionResult> Data(Guid id, CancellationToken token)
+    {
+        byte[] data = await _store.ReadAsync(id, token);
+        return data == null
+            ? new ApiProblemResult(ApiProblems.NotFound())
+            : File(data, "application/octet-stream");
+    }
+
+    // frontend (Rust): read it ...
+    use crate::generated::api::meshes;
+    let data: Vec<u8> = meshes::data_bytes(&id).await.map_err(|e| e.message())?;
+    // ... or let the browser download it
+    codebrix_webplatform::browser::navigate(&meshes::data_url(&id));
 
 [WireIgnore]
 ------------
 Targets: class, method, property. Leaves a controller, hub, action, hub method
 or property out of the generated code entirely. Use it for what the frontend
-never calls: a health probe, a catch-all "no such route" controller.
+never calls: a health probe, a catch-all "no such route" controller of the
+backend's own (the Backend package answers unknown /api addresses without
+one).
 
 [WireHub("/path")]
 ------------------
@@ -395,8 +548,9 @@ back, so the two cannot drift apart:
 Target: the backend ASSEMBLY (the one BackendMapper reads), once. Declares the
 value the backend demands in X-Requested-With on every request that changes
 state. The generated client code sends it (REST calls and the SignalR
-negotiate request), and the backend's own check reads it back, so the two
-cannot drift apart:
+negotiate request), and the check reads it back, so the two cannot drift
+apart. The Backend package's check reads it by itself (from the backend's
+assembly); a backend that writes its own check calls GetValue:
 
     [assembly: WireRequestMarker("MyApp")]    // e.g. in WireDeclarations.cs
 
@@ -408,7 +562,7 @@ cannot drift apart:
     public static bool WireRequestMarkerAttribute.IsValidValue(string value)
         // visible ASCII, single spaces inside, at most 100 characters
 
-    // in the backend's middleware:
+    // in a check of the backend's own (not needed with the Backend package):
     static readonly string Marker =
         WireRequestMarkerAttribute.GetValue(typeof(Program).Assembly);
 
@@ -452,6 +606,12 @@ CodeBrix.WebPlatform.Core.Problems
         ValidationFailed     = "validation_failed"        // 400
         MissingRequestHeader = "missing_request_header"   // 400
         InvalidCredentials   = "invalid_credentials"      // 401, with a body
+        Forbidden            = "forbidden"                // 403: the caller is
+                                                          // known but may not
+                                                          // do this
+        ForbiddenOrigin      = "forbidden_origin"         // 403: a hub request
+                                                          // not from a page of
+                                                          // this site
         NotFound             = "not_found"                // 404
         Conflict             = "conflict"                 // 409
         RateLimited          = "rate_limited"             // 429
@@ -465,6 +625,101 @@ JsonSerializerOptions.Web (camelCase):
      "code":"validation_failed","errors":{"email":["Enter a valid email."]}}
 
 The frontend's shared error type (ApiError, below) reads exactly this shape.
+The Backend package builds the standard ones (ApiProblems, see BACKEND API
+REFERENCE: THE ERROR BODIES).
+
+
+CORE API REFERENCE: FRONTEND APPLICATIONS
+=========================================
+
+CodeBrix.WebPlatform.Core.Applications. The names and places of the frontend
+applications (see SEVERAL FRONTEND APPLICATIONS), shared by the frontend
+build and the backend. A build program normally names its applications with
+FrontendApplicationOptions (FrontendBuilder) and a backend normally reads
+them from the manifest (Backend); these types are what both pass around.
+
+    public sealed class FrontendApplication : IEquatable<FrontendApplication>
+    {
+        public const string DefaultName = "app";       // the one with no name
+        public const int MaximumNameLength = 40;
+        public static FrontendApplication Default { get; }   // at the site root
+        public static FrontendApplication Named(string name);
+            // ArgumentException when the name breaks a rule (the message
+            // says which)
+        public static FrontendApplication FromName(string name);
+            // null or empty: Default; otherwise Named(name)
+        public static string DescribeNameProblem(string name);
+            // what is wrong with a name, as a sentence; null when it is fine
+        public string Name { get; }        // DefaultName for the default one
+        public bool IsDefault { get; }
+        public string BasePath { get; }    // first address segment: "" for
+                                           // the default one, else the name
+        public string Folder { get; }      // its folder below the web root:
+                                           // "" (the web root), else the name
+        public override string ToString(); // "sales", "app (site root)"
+    }
+
+    public sealed class FrontendApplicationSet
+        : IReadOnlyList<FrontendApplication>
+    {
+        public FrontendApplicationSet(
+            IEnumerable<FrontendApplication> applications);
+            // ArgumentNullException; ArgumentException: none, a name twice,
+            // more than one default application
+        public static FrontendApplicationSet FromNames(
+            IEnumerable<string> names);
+            // null or empty entry = the default application
+        public static FrontendApplicationSet SingleDefault { get; }
+            // one application, the default one
+        public FrontendApplication Default { get; }   // null when every
+                                                      // application has a name
+        public IReadOnlyList<FrontendApplication> Named { get; }
+        public FrontendApplication Find(string name); // null/"" = the default
+                                                      // one; null when absent
+        public FrontendApplication this[int index] { get; }
+        public int Count { get; }
+    }
+
+    public static class FrontendManifest
+        // the names of the file the frontend build writes into the web root
+        // for the backend: FileName = "codebrix-frontends.toml", and the names
+        // used inside it. What it is for: BACKEND: HOW THE FRONTEND
+        // APPLICATIONS ARE SERVED. Its layout is the platform's business:
+        // never write or edit the file yourself.
+
+
+CORE API REFERENCE: CRATE BUNDLES
+=================================
+
+CodeBrix.WebPlatform.Core.Crates. How a NuGet package brings Rust crates of
+its own to a platform frontend (see CRATE BUNDLES for the whole mechanism).
+
+    public sealed class CrateBundle
+    {
+        public CrateBundle(string name, string packageName,
+            string packageVersion, Func<Stream> openArchive);
+            // name: short, unique among the bundles of one build;
+            // packageName / packageVersion: named in error messages;
+            // openArchive: opens the zip of crates, called each time the
+            // build needs it (the caller disposes the stream).
+            // ArgumentException (a blank text), ArgumentNullException
+        public string Name { get; }
+        public string PackageName { get; }
+        public string PackageVersion { get; }
+        public string Origin { get; }      // "<package> <version>"
+        public Stream OpenArchive();       // InvalidOperationException when
+                                           // the function gave no stream
+    }
+
+    public static class CrateBundles
+    {
+        public static void Register(CrateBundle bundle);
+            // the same bundle again (same name, package and version) does
+            // nothing; the same NAME from another package or another version
+            // of it throws InvalidOperationException
+        public static IReadOnlyList<CrateBundle> Registered { get; }
+            // a copy, in registration order
+    }
 
 
 DECLARING A REST ACTION
@@ -580,8 +835,474 @@ DECLARING A HUB
 IMPORTANT for a hub that needs sign-in: a browser sends a cookie only to the
 paths the cookie is scoped to. If the session cookie is scoped to /api, serve
 the hubs under /api too (for example /api/hubs/clock). And because a browser
-does not apply the same-origin policy to WebSockets, the backend should check
-the Origin header of every hub request (public hubs too).
+does not apply the same-origin policy to WebSockets, the backend checks the
+Origin header of every hub request (public hubs too): the Backend package does
+that for every address below /api/hubs (PlatformBackendPaths.Hubs), so map
+the hubs there.
+
+
+BACKEND API REFERENCE: THE TWO CALLS
+====================================
+
+CodeBrix.WebPlatform.Backend. One services call and one pipeline call give a
+backend everything THE PLATFORM RULES ask of its answers, and serve its
+frontend applications:
+
+    var builder = WebApplication.CreateBuilder(args);
+    builder.Services.AddControllers();
+    builder.Services.AddSignalR();
+    builder.Services.AddAuthentication(...);      // the application's own
+    builder.Services.AddAuthorization();
+    builder.Services.AddPlatformBackend(options =>
+    {
+        options.ContentSecurityPolicy =
+            "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; "
+            + "style-src 'self'; img-src 'self' data:; connect-src 'self'; "
+            + "base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+    });
+    var app = builder.Build();
+
+    if (!app.Environment.IsDevelopment())
+    {
+        app.UseHsts();             // BEFORE: whatever must see every answer
+    }
+
+    app.UsePlatformBackend();      // the platform's part of the pipeline
+    app.UseRouting();              // AFTER, in this order: the application's
+    app.UseRateLimiter();          //   own routing, rate limiter,
+    app.UseAuthentication();       //   authentication, authorization,
+    app.UseAuthorization();        //   controllers and hubs
+    app.MapControllers();
+    app.MapHub<ClockHub>(WireHubAttribute.GetPath(typeof(ClockHub)));
+    await app.RunAsync();
+
+THE ORDER IN THE PIPELINE. UseHsts (and anything else that must be on every
+answer, the platform's own refusals and static files included) goes BEFORE
+UsePlatformBackend. Everything else of the application goes AFTER it,
+starting with its own app.UseRouting(). Call UseRouting yourself: without it
+WebApplication puts routing at the very start of the pipeline, and then a
+controller wins over a web-root file at the same address. HSTS, rate
+limiting, authentication, authorization, CORS, the controllers and the hubs'
+mapping stay the application's.
+
+    public static IServiceCollection AddPlatformBackend(
+        this IServiceCollection services,
+        Action<PlatformBackendOptions> configure = null);
+        // registers the options and MVC's settings (the model-binding answer;
+        // no MVC problem details for bodiless 4xx answers). The order of this
+        // call and AddControllers() does not matter. May be called more than
+        // once; the settings add up. ArgumentNullException (services).
+
+    public static WebApplication UsePlatformBackend(this WebApplication app);
+        // adds the platform's part of the pipeline and serves the frontend
+        // applications the manifest in the web root names - read ONCE, here
+    public static WebApplication UsePlatformBackend(this WebApplication app,
+        FrontendApplicationSet applications);
+        // the same, but serves the applications given instead of reading the
+        // manifest (tests, or a developer who prefers to say it in code);
+        // each is served from its folder in the web root
+
+    public const string PlatformBackendApplicationExtensions.LogCategory;
+        // "CodeBrix.WebPlatform.Backend": the start-up log lines
+    public static class PlatformBackendPaths
+    {
+        public const string Api  = "/api";        // every API address
+        public const string Hubs = "/api/hubs";   // every hub's address
+    }
+
+UsePlatformBackend adds, in this order and each only when its option is on:
+the compression of the backend's answers (CompressResponses; off by
+default), first, so that it covers the platform's own error bodies too; the
+security headers; the standard body for bodiless 4xx answers below /api;
+the X-Requested-With check; the hub Origin check; the web root's static files
+(the manifest and the .br / .gz copies never by name; a file's copy in its
+place when ServePrecompressedFiles is on); then it maps the frontend
+applications' fallbacks (which serve an index.html's copy the same way) and
+the unknown-API answer. Those two are endpoints of the lowest priority, so a
+controller or a hub always wins over them.
+
+It THROWS at start-up (the message says what to do):
+    InvalidOperationException   AddPlatformBackend was not called; the
+                                X-Requested-With check is on and no marker is
+                                declared (or the assembly cannot be told or
+                                loaded); RequestMarker is not a valid marker;
+                                ContentSecurityPolicy is not one line; a set
+                                of applications was given while
+                                ServeFrontendApplications is off;
+                                CompressResponses is not a ResponseCompression
+                                value
+    FrontendManifestException   the web root holds a manifest that cannot be
+                                used
+    ArgumentNullException       app (or applications) is null
+
+
+BACKEND API REFERENCE: THE OPTIONS
+==================================
+
+    public sealed class PlatformBackendOptions   // every switch: true, except
+    {                                            // CompressResponses (None)
+        bool ServeFrontendApplications;     // the web root's static files
+                                            // (.wasm as application/wasm) and
+                                            // the applications' fallbacks
+        bool ServePrecompressedFiles;       // a file's .br / .gz copy (written
+                                            // by the frontend build) to a
+                                            // browser that accepts it; see
+                                            // COMPRESSION
+        ResponseCompression CompressResponses;
+                                            // DEFAULT None. FileAnswers: the
+                                            // answers of [WireFile] actions,
+                                            // nothing else; FileAnswersAndJson:
+                                            // JSON answers too; read
+                                            // COMPRESSION (the risk) first
+        bool AnswerUnknownApiRoutes;        // 404 not_found, standard body,
+                                            // for every /api address nothing
+                                            // else answers, every HTTP method
+        bool AddProblemBodiesToStatusCodes; // the standard body for every 4xx
+                                            // below /api the framework wrote
+                                            // without one (401 stays EMPTY;
+                                            // 5xx and answers outside /api are
+                                            // left alone)
+        bool AnswerModelBindingFailures;    // MVC's invalid-model-state answer:
+                                            // 400 validation_failed, one
+                                            // message per camelCase field
+        bool RequireRequestMarker;          // X-Requested-With on every POST,
+                                            // PUT, PATCH and DELETE below /api,
+                                            // exactly once and equal to the
+                                            // marker; else 400
+                                            // missing_request_header
+        bool RequireHubOrigin;              // Origin must be this site's
+                                            // scheme and host on every request
+                                            // below /api/hubs; else 403
+                                            // forbidden_origin
+        bool SendSecurityHeaders;           // on every answer:
+                                            // X-Content-Type-Options: nosniff,
+                                            // X-Frame-Options: DENY,
+                                            // Referrer-Policy: no-referrer, and
+                                            // the policy below
+        string ContentSecurityPolicy;       // sent exactly as given, on one
+                                            // line. NO platform default: null
+                                            // or blank = the header is not sent
+        string RequestMarker;               // normally null (see below)
+        Assembly BackendAssembly;           // normally null (see below)
+    }
+
+THE REQUEST MARKER the check demands is, in this order: RequestMarker; the
+[assembly: WireRequestMarker] of BackendAssembly; the one of the
+application's own assembly (the host's application name - the backend's
+assembly in a normal run and under WebApplicationFactory<Program>). Declare
+it once on the backend, [assembly: WireRequestMarker("MyApp")]: the
+generated frontend code sends that value. A backend where nothing needs
+sign-in still declares one, or sets RequireRequestMarker = false.
+
+THE CONTENT-SECURITY-POLICY a platform site needs is the one in the example
+above: 'wasm-unsafe-eval' is what lets the browser compile WebAssembly, and
+nothing else of a platform frontend needs more. It is the same with code
+splitting (the pieces are WebAssembly from the same site). The platform sends
+the policy you give, and none when you give none.
+
+A setting that comes from the application's own configuration goes in with
+the options pattern, after AddPlatformBackend:
+
+    builder.Services.AddOptions<PlatformBackendOptions>()
+        .Configure<MySettings>((options, settings) =>
+            options.ContentSecurityPolicy = settings.ContentSecurityPolicy);
+
+
+BACKEND: HOW THE FRONTEND APPLICATIONS ARE SERVED
+=================================================
+
+THE MANIFEST. When the frontend build fills the web root it writes, beside
+the applications, a small file named codebrix-frontends.toml
+(FrontendManifest.FileName): it tells the backend which frontend
+applications were built and where they are. The backend reads it ONCE, in
+UsePlatformBackend, and serves what it names; the backend's code names no
+application anywhere. The file is BUILD OUTPUT: it is rewritten on every
+build into a web root, never edited, never committed, and never served.
+Restart the backend after building the frontend into its web root.
+
+NO MANIFEST (no frontend built into the web root yet, or an empty web root):
+the API works as usual; the web root's files are still served and "/"
+answers <web root>/index.html if there is one; nothing else falls back. A
+start-up log line (LogCategory) says what is served; a warning names an
+application whose index.html is missing (its addresses then answer 404).
+
+For GET and HEAD the backend serves:
+
+    the web root's files           as files (.wasm as application/wasm)
+    the default application        "/" and every address that is not a file,
+                                   not below a named application and not
+                                   below /api -> <web root>/index.html
+    a named application X          /X, /X/ and every address below it that
+                                   is not a file -> <web root>/X/index.html
+    no default application         "/" -> <web root>/index.html when the
+                                   developer put one there, else 404; any
+                                   address outside every application -> 404
+    below /api                     NEVER an index.html: an address nothing
+                                   answers is 404 not_found with the standard
+                                   body, for every method
+    the manifest                   never, under any spelling (404)
+    a .br / .gz copy by its name   never (404, as for an unknown file): a
+      (x.wasm.br beside x.wasm)      copy is served only in its file's place
+                                   (see COMPRESSION). A .br / .gz file with
+                                   no file of the shorter name beside it is
+                                   an ordinary file.
+    a file-like address that       404. An address whose last segment has a
+      does not exist                 dot is a file (/assets/x.js), as in
+                                   ASP.NET Core's MapFallbackToFile.
+    POST/PUT/DELETE to a frontend  405 with an empty body (a fallback answers
+      address                        GET and HEAD only)
+
+The fallbacks allow anonymous access, so a fallback authorization policy of
+the application never locks a frontend out.
+
+    public static class FrontendManifestReader   // ...Backend.Applications
+    {
+        public static FrontendApplicationSet Read(string webRootDirectory);
+            // null when there is no manifest (or no web root)
+        public static FrontendApplicationSet Parse(string text,
+            string sourceName = "codebrix-frontends.toml");
+        public static string GetPath(string webRootDirectory);
+    }
+    public sealed class FrontendManifestException : Exception
+    {
+        public string FilePath { get; }
+        public string Problem { get; }     // what is wrong, alone
+    }
+
+The reader is strict: anything the frontend build of the same release would
+not have written is refused with a FrontendManifestException whose message
+names the file and says to build the frontend again. The application does
+not normally call the reader; UsePlatformBackend does.
+
+
+COMPRESSION: THE BUILT FILES AND THE BACKEND'S ANSWERS
+======================================================
+
+THE RULE. The built frontend files are the same for every visitor and hold
+no secrets, so the platform compresses them - ONCE, when the frontend is
+built - and the backend serves the compressed copies: ON by default.
+Anything the backend GENERATES may hold a user's data, so compressing it as
+it is sent is the developer's decision: OFF by default (read THE RISK
+below before switching it on).
+
+THE THREE OPTIONS
+
+    options.CompressOutput = FrontendCompression.BrotliAndGzip;
+        // the build program's PlatformFrontendOptions (the default)
+    options.ServePrecompressedFiles = true;
+        // AddPlatformBackend's PlatformBackendOptions (the default)
+    options.CompressResponses = ResponseCompression.FileAnswers;
+        // AddPlatformBackend's PlatformBackendOptions (default None)
+
+    public enum FrontendCompression     // CodeBrix.WebPlatform.FrontendBuilder
+    { None, Brotli, Gzip, BrotliAndGzip }
+    public enum ResponseCompression     // CodeBrix.WebPlatform.Backend
+    { None, FileAnswers, FileAnswersAndJson }
+
+WHAT THE BUILD DOES TO THE WEB ROOT (CompressOutput)
+  - BuildAsync with a web root, after it has filled it, writes beside every
+    file of the built applications (dx's files, in each application's folder
+    of the web root) whose extension is one of
+        .wasm .js .mjs .css .html .htm .json .map .webmanifest .svg .txt
+        .xml .csv .md .toml .yaml .yml .wgsl .glsl .gltf .obj .ttf .otf
+    a <name>.br copy (Brotli at its strongest: quality 11, window 24) and/or
+    a <name>.gz copy (gzip at its smallest size), each ONLY when it is
+    smaller than the file. Every other file - PNG, JPEG, GIF, WebP, AVIF,
+    ICO, WOFF, WOFF2, audio, video, ZIP, .gz, .br and the like, which are
+    compressed already - gets no copy.
+  - The copies are deterministic: the same file gives the same bytes, on
+    every machine.
+  - Copies never outlive their files: the build replaces the applications'
+    folders on every build, and in each folder that holds an application's
+    files a .br / .gz whose file no longer exists is removed. A .br / .gz
+    that dx itself wrote beside a file (Dioxus.toml's pre_compress) is
+    replaced by the platform's copy, or removed when the option does not ask
+    for that copy; None leaves dx's output exactly as dx wrote it.
+  - THE DEVELOPER'S OWN FILES ARE NEVER GIVEN COPIES. When every application
+    has a name, the web root's other files (a page of your own at "/",
+    images beside it) are left exactly as they are; so is a file the build
+    program writes into the web root AFTER BuildAsync (the notices, for
+    example). A <name>.br / <name>.gz you put beside such a file yourself is
+    served in the same way as the platform's.
+  - NOTHING for ServeAsync (dx serve answers the browser itself), and
+    nothing without a web root.
+  - THE TIME. Brotli at its strongest takes seconds on a large .wasm (the
+    files are compressed in parallel); result.Compression.Elapsed says how
+    long it took, and the build writes one line per application to Output.
+    CompressOutput = None skips it, for example for quick local builds.
+  - The copies are BUILD OUTPUT, like everything else the build writes into
+    the web root: never edited, never committed. The manifest
+    (codebrix-frontends.toml) does not change: the backend finds the copies
+    on disk.
+
+    public sealed class FrontendCompressionResult   // result.Compression
+    {
+        FrontendCompression Compression;         // what was asked for
+        IReadOnlyList<CompressedFile> Files;     // every compressible file
+                                                 // of the application, by
+                                                 // path; empty with None
+        int BrotliFileCount; int GzipFileCount;  // copies written
+        long OriginalBytes;                      // the files themselves
+        long BrotliBytes;                        // what a browser taking
+                                                 // Brotli downloads for them
+        long GzipBytes;                          // ... taking gzip, not Brotli
+        int RemovedCopyCount;                    // .br / .gz files removed
+        TimeSpan Elapsed;                        // time spent compressing
+    }
+    public sealed class CompressedFile
+    {
+        string Path;                             // in the application's
+                                                 // folder, "/" separated
+        long OriginalBytes;
+        long? BrotliBytes; long? GzipBytes;      // null: no such copy
+        string ToString();                       // "wasm/x.wasm 1000 bytes,
+                                                 //  br 300, gz 400"
+    }
+
+HOW THE BACKEND SERVES THE COPIES (ServePrecompressedFiles, default true)
+  - A GET or HEAD of a web-root file that has a copy - and an application's
+    index.html reached through its fallback (/sales/orders) - is answered
+    with the copy when the request's Accept-Encoding prefers it: the .br
+    copy, else the .gz copy, with Content-Encoding, the FILE's own
+    Content-Type, the copy's Content-Length, and the copy's own
+    Last-Modified and ETag (If-None-Match / If-Modified-Since answer 304,
+    If-Match / If-Unmodified-Since 412).
+  - Accept-Encoding is read with its q-values: the heaviest coding the
+    request accepts wins, Brotli before gzip at equal weight; "identity"
+    (the file itself) wins only when it is listed (or "*" is) with a
+    greater weight; "*" counts for a coding that is not listed; q=0 refuses
+    a coding; x-gzip is gzip. A request without Accept-Encoding, or one
+    that accepts neither coding, gets the file itself.
+  - A request with a Range header gets the file itself, with ranges, as
+    before: ranges are not offered on a copy.
+  - Every answer for a file that has a copy carries Vary: Accept-Encoding,
+    so a cache keeps the two apart.
+  - A copy is never served under its own name: /x.wasm.br answers what any
+    unknown file answers (404), whatever ServePrecompressedFiles says. A
+    .br / .gz file with no file of the shorter name beside it is an
+    ordinary file of the web root.
+  - Off: every file is served as it is (the copies stay hidden). With no
+    copies in the web root the option changes nothing.
+  - THE FRONTEND NEEDS NOTHING. The browser decompresses: the frontend's
+    fetches - the generated REST client, <name>_bytes (send_bytes), the
+    hubs' negotiate call - go through the browser's fetch (reqwest in the
+    browser IS fetch) and receive the original bytes.
+
+COMPRESSING THE BACKEND'S ANSWERS (CompressResponses, default None)
+  - FileAnswers compresses the answers of [WireFile] actions, and nothing else.
+    The matched endpoint decides, per request (the action's [WireFile] is in
+    its metadata), not the address and not the Content-Type. An action
+    WITHOUT [WireFile] is never compressed under FileAnswers, whatever it
+    answers: text it writes itself (text/plain, text/html, text/csv), a
+    File(...) or PhysicalFile(...) result, JSON. To have a download
+    compressed, mark its action [WireFile] (which also gives the frontend
+    its <name>_url and <name>_bytes functions), or let a proxy compress it.
+    Inside a [WireFile] answer, the types that are compressed already are
+    skipped; every other type is compressed: application/octet-stream,
+    text/* (not text/event-stream), XML and every +xml type (SVG too),
+    JavaScript, application/wasm, YAML, TOML, JSON - and the action's error
+    answers (its problem bodies) as well.
+  - FileAnswersAndJson: the [WireFile] answers as above, and the JSON
+    answers of EVERY action too - application/json, text/json, NDJSON and
+    every +json type, application/problem+json (the platform's error bodies,
+    those of the X-Requested-With and hub Origin checks included). Other
+    answers of actions without [WireFile] are still not compressed.
+  - NEVER compressed this way: types that are compressed already (images,
+    archives, PDF, fonts, audio, video - every type not listed above), not
+    even in a [WireFile] answer; the
+    web root's files (compressed when the frontend is built, served as they
+    are); every address below /api/hubs and every hub endpoint (negotiate,
+    long polling, WebSockets); text/event-stream; an answer that already
+    has a Content-Encoding or a Content-Range (a range answer).
+  - Brotli when the request prefers it, otherwise gzip (the same reading of
+    Accept-Encoding as above), at the FASTEST setting; over HTTPS as well;
+    with Vary: Accept-Encoding and without Content-Length (the body is sent
+    in chunks). A flush passes through, so an answer that flushes as it
+    goes still reaches the client as it is written. There is no option for
+    the encoder or the level.
+  - It is ASP.NET Core's response-compression middleware (from the shared
+    framework), set up by UsePlatformBackend with these rules, first in the
+    platform's part of the pipeline. Do NOT add AddResponseCompression /
+    UseResponseCompression of your own as well.
+
+THE RISK (read this before you switch CompressResponses on)
+  Compressing, over HTTPS, an answer that holds a SECRET together with TEXT
+  AN ATTACKER CONTROLS can leak the secret. An attacker who can make the
+  victim's browser send requests (a page of his that the victim opens) and
+  can see the sizes of the encrypted answers (on the same network) changes
+  the text he controls - a search term, a name he typed into the
+  application - and watches the answer shrink when his guess matches part
+  of the secret, one character after another. That is the BREACH class of
+  attack. It is why CompressResponses is OFF by default, and why JSON -
+  where a user's data, tokens and echoed input usually sit side by side -
+  is a separate, explicit choice. Switch it on only for answers that hold
+  no secret, or no text anyone else can put into them (a public download;
+  an export made only of the signed-in user's own data). Never let an
+  answer that carries a token, a CSRF value or one user's data be
+  compressed together with text from the request or from another user.
+  The built frontend files carry no such risk: they are the same for
+  everyone and are compressed once, at build time.
+
+BEHIND A PROXY THAT COMPRESSES
+  A site behind a reverse proxy or a CDN that compresses (nginx's gzip or
+  brotli modules, a CDN's compression) turns the platform's compression off
+  with the three options:
+      options.CompressOutput = FrontendCompression.None;     // build program
+      options.ServePrecompressedFiles = false;               // backend
+      options.CompressResponses = ResponseCompression.None;  // backend
+  (A proxy that passes Content-Encoding through unchanged can keep the
+  copies instead.) The proxy's own compression of the backend's answers
+  carries THE RISK above just the same.
+
+WHAT YOU CANNOT DO
+  - fetch a copy by its name (x.wasm.br is 404);
+  - have ServeAsync (dx serve) compress anything;
+  - have the build compress your own files in the web root;
+  - choose the encoder or the level of the answers compressed as they are
+    sent.
+
+
+BACKEND API REFERENCE: THE ERROR BODIES
+=======================================
+
+CodeBrix.WebPlatform.Backend.Problems. The standard ApiProblem bodies, for
+the backend's own answers too:
+
+    ApiProblems.Validation(errors) / Validation(field, message)
+                                                  400 validation_failed
+    ApiProblems.MissingRequestHeader()            400 missing_request_header
+    ApiProblems.Forbidden(title = "You are not allowed to do that.")
+                                                  403 forbidden
+    ApiProblems.ForbiddenOrigin()                 403 forbidden_origin
+    ApiProblems.NotFound(title = null)            404 not_found
+                                                  (DefaultNotFoundTitle when
+                                                  no title is given)
+    ApiProblems.Conflict(title, field, message) / Conflict(title, errors = null)
+                                                  409 conflict
+    ApiProblems.RateLimited()                     429 rate_limited
+    ApiProblems.ForStatus(status)
+        // the body the platform gives a bodiless 4xx: 404 and 405 not_found
+        // ("There is no such API route.", with the real status), 403
+        // forbidden, 409 conflict, 429 rate_limited, 415 and every other
+        // validation_failed
+    const string ValidationTitle, NoSuchApiRouteTitle, DefaultNotFoundTitle
+
+    return new ApiProblemResult(problem);             // from a controller
+                                                      // action: status =
+                                                      // problem.Status
+    await ApiProblemWriter.WriteAsync(httpContext, problem);
+        // from middleware or an endpoint delegate; InvalidOperationException
+        // when the answer has already started
+    InvalidModelStateResponse.Create(actionContext)   // what AddPlatformBackend
+        // installs in MVC; BodyField "body" names the request body as a whole
+
+An application's own codes (invalid_credentials and the like) are a new
+ApiProblem { Title, Status, Code } of its own, returned the same ways. A rate
+limiter's rejection is written with ApiProblemWriter and RateLimited():
+
+    options.OnRejected = (context, token) => new ValueTask(
+        ApiProblemWriter.WriteAsync(context.HttpContext,
+            ApiProblems.RateLimited()));
 
 
 BACKENDMAPPER API REFERENCE: MAPPING
@@ -802,12 +1523,18 @@ WHAT THE GENERATED CODE LOOKS LIKE
         pub async fn update(id: &str, request: &ClientRequest) -> ApiResult<Client>
         /// `DELETE /api/clients/{id}` (needs sign-in).
         pub async fn delete(id: &str) -> ApiResult<()>
+        /// The address of `GET /api/clients/{id}/logo.png` (needs sign-in), ...
+        pub fn logo_url(id: &str) -> String                      // [WireFile]
+        /// `GET /api/clients/{id}/logo.png` (needs sign-in), the file read as bytes.
+        pub async fn logo_bytes(id: &str) -> ApiResult<Vec<u8>>  // [WireFile]
     }
 
 Naming and shape rules of the generated code:
   * module   = the controller's name without "Controller", in snake_case
   * function = the action's name in snake_case, without an "Async" suffix; a
-               [WireFile] action gets "_url" appended and returns String
+               [WireFile] action gets two: "_url" appended (returns String,
+               the address) and "_bytes" appended (an async fn returning
+               ApiResult<Vec<u8>>, the file's bytes)
   * arguments: route values in path order, then the body (`&T`), then the
                query values. String-like values are taken as `&str`, numbers,
                flags, dates and enums by value, everything else by reference.
@@ -904,7 +1631,10 @@ out; names are snake_case):
     controllers[]  name, clr_name, module,
                    query_structs[] (name, doc, fields[] (name, type)),
                    functions[] (name, doc, parameters, is_file, has_response,
-                   return_type, method, auth, query_statement, path, body)
+                   return_type, method, auth, query_statement, path, body,
+                   and for a file endpoint bytes_name, bytes_doc,
+                   bytes_return_type, bytes_path - the function that reads
+                   the file's bytes; empty otherwise)
     hubs[]         name, clr_name, descriptor, path, requires_sign_in,
                    sign_in_doc,
                    methods[] (name, wire_name, is_stream, parameters,
@@ -923,10 +1653,25 @@ FRONTENDBUILDER API REFERENCE: BUILDING A FRONTEND
 The build program describes the application's frontend once and calls three
 steps. Everything is in CodeBrix.WebPlatform.FrontendBuilder.
 
+ONE frontend application: set FrontendDirectory (and, to serve it below a
+name, ApplicationName). SEVERAL: leave both unset and add one
+FrontendApplicationOptions per application to Applications, first one first;
+everything else in the options is shared by all of them.
+
     public sealed class PlatformFrontendOptions
     {
-        public string FrontendDirectory { get; set; }     // REQUIRED: the
-            // frontend crate's folder (Cargo.toml, Dioxus.toml)
+        public string FrontendDirectory { get; set; }     // the one
+            // application's frontend crate folder (Cargo.toml, Dioxus.toml);
+            // REQUIRED unless Applications has entries
+        public string ApplicationName { get; set; }       // the one
+            // application's name; null or empty (the default): no name, served
+            // at the site root. See SEVERAL FRONTEND APPLICATIONS.
+        public IList<FrontendApplicationOptions> Applications { get; }
+            // several applications; empty by default. When it has entries,
+            // FrontendDirectory and ApplicationName must be unset.
+        public bool? WasmSplit { get; set; }              // bundle splitting
+            // (see CODE SPLITTING); null or false: off. With Applications it
+            // is the first application's setting when that one sets none.
         public string BackendProjectPath { get; set; }    // the backend's
             // .csproj; built in Release by MaterializeAsync
         public string BackendAssemblyPath { get; set; }   // the assembly to
@@ -938,11 +1683,13 @@ steps. Everything is in CodeBrix.WebPlatform.FrontendBuilder.
             // from; default PlatformCratesOnly (offline) - see THE
             // PLATFORM'S CRATES
         public string VendorDirectory { get; set; }       // where the
-            // platform's crates are written; default <frontend>/platform/vendor
+            // crates are written; default <frontend>/platform/vendor (the
+            // FIRST application's: all applications share the one folder)
         public string DxPath { get; set; }                // see HOST TOOLS
         public string WasmBindgenPath { get; set; }
         public string DxHomeDirectory { get; set; }       // dx's DX_HOME;
-            // default <frontend>/target/dx-home
+            // default <frontend>/target/dx-home of each application; when
+            // set and there are several applications, <it>/<name> each
         public string MinimumTailwindVersion { get; set; }
             // default FrontendRequirements.MinimumTailwindVersion
         public bool GenerateMissingStylesheet { get; set; }  // default true:
@@ -952,30 +1699,72 @@ steps. Everything is in CodeBrix.WebPlatform.FrontendBuilder.
         public string TailwindOutputFile { get; set; }    // default
             // <frontend>/assets/tailwind.css (where dx writes it)
         public bool? Shrink { get; set; }                 // see SHRINKING
+        public FrontendCompression CompressOutput { get; set; }
+            // default BrotliAndGzip: .br and .gz copies beside the built
+            // files in the web root (BuildAsync only); see COMPRESSION
         public IList<string> ServeFeatures { get; }       // cargo features
             // for ServeAsync, e.g. the one that enables dioxus/devtools
         public TextWriter Output { get; set; }            // progress lines;
             // null = none
+        // the paths below are the ONE application's (FrontendDirectory);
+        // null when only Applications is used
         public string GeneratedClientDirectory { get; }
             // <frontend>/src/generated
         public string SharedCrateDirectory { get; }
             // <frontend>/platform/codebrix-webplatform
-        public string ResolvedVendorDirectory { get; }
-            // VendorDirectory, or <frontend>/platform/vendor
         public string CargoConfigurationFile { get; }
             // <frontend>/.cargo/config.toml
         public string ResolvedTailwindInputFile { get; }  // full paths of the
         public string ResolvedTailwindOutputFile { get; } //   two stylesheets
+        public string ResolvedVendorDirectory { get; }
+            // VendorDirectory, or <frontend>/platform/vendor (of the first
+            // application in Applications when that list is used)
     }
+
+    public sealed class FrontendApplicationOptions   // ...Applications
+    {
+        public string Name { get; set; }                  // null or empty: the
+            // default application (at the site root); at most one
+        public string FrontendDirectory { get; set; }     // REQUIRED: its own
+            // crate folder; no two applications share one
+        public bool? WasmSplit { get; set; }              // null: the first
+            // application's setting; the first's null: the options' WasmSplit,
+            // else off
+        public string TailwindInputFile { get; set; }     // as in the options,
+        public string TailwindOutputFile { get; set; }    //   for this one
+        public IList<string> ServeFeatures { get; }       // empty: the
+            // options' ServeFeatures
+    }
+
+    var options = new PlatformFrontendOptions
+    {
+        BackendProjectPath = "backend/MyApp.Api/MyApp.Api.csproj",
+    };
+    options.Applications.Add(new FrontendApplicationOptions
+        { FrontendDirectory = "frontends/home" });                 // site root
+    options.Applications.Add(new FrontendApplicationOptions
+        { Name = "sales", FrontendDirectory = "frontends/sales",
+          WasmSplit = true });                                     // /sales
+    options.Applications.Add(new FrontendApplicationOptions
+        { Name = "admin", FrontendDirectory = "frontends/admin",
+          WasmSplit = false });                                    // /admin
 
     public sealed class PlatformFrontend
     {
         public PlatformFrontend(PlatformFrontendOptions options);
-            // ArgumentNullException; ArgumentException (blank
-            // FrontendDirectory)
+            // ArgumentNullException; ArgumentException (the message says
+            // which): no frontend folder named; FrontendDirectory or
+            // ApplicationName set together with Applications; a name that
+            // breaks a rule or is used twice; more than one application
+            // without a name; two applications with the same folder
         public PlatformFrontendOptions Options { get; }
-        public string FrontendDirectory { get; }          // full path
-        public string DxHomeDirectory { get; }
+        public FrontendApplicationSet Applications { get; }   // in the order
+                                                              // of the options
+        public string FrontendDirectory { get; }  // the FIRST application's,
+        public string DxHomeDirectory { get; }    //   full paths
+        public string GetFrontendDirectory(string applicationName);
+            // null or empty: the one without a name; FrontendBuildException
+            // when there is no application of that name
 
         public Task<PrerequisiteReport> CheckPrerequisitesAsync(
             CancellationToken cancellationToken = default);
@@ -987,14 +1776,25 @@ steps. Everything is in CodeBrix.WebPlatform.FrontendBuilder.
             CancellationToken cancellationToken = default);
         public Task<int> ServeAsync(
             CancellationToken cancellationToken = default);
+        public Task<int> ServeAsync(string applicationName,
+            CancellationToken cancellationToken = default);
 
         public HostTools FindHostTools();
         public string GetOutputDirectory(FrontendConfiguration configuration);
+            // the first application's:
             // <frontend>/target/dx/<package name>/<release|debug>/web/public
+        public string GetOutputDirectory(string applicationName,
+            FrontendConfiguration configuration);
         public static IReadOnlyList<string> GetDxBuildArguments(
             FrontendConfiguration configuration);
             // Release: build --platform web --release --debug-symbols false
             // Debug:   build --platform web
+        public static IReadOnlyList<string> GetDxBuildArguments(
+            FrontendConfiguration configuration, string applicationName,
+            bool wasmSplit);
+            // the same, then --base-path <name> for a named application
+            // (null, "" or "app": none), then --wasm-split when splitting;
+            // ArgumentException for a name that breaks a rule
     }
 
     public enum FrontendConfiguration { Release, Debug }
@@ -1053,23 +1853,41 @@ STEP 1 - CheckPrerequisitesAsync
     }
 
 STEP 2 - MaterializeAsync
-    Writes everything the frontend needs and does not write itself:
+    Writes everything the frontend applications need and do not write
+    themselves. ONCE for the whole platform application:
       1. builds BackendProjectPath with `dotnet build -c Release` (when set);
       2. maps the backend assembly with BackendMapper (Types);
-      3. writes the generated client code into GeneratedClientDirectory
-         (RustClientGenerator.WriteTo, with ClientOptions);
-      4. writes the shared Rust crate into SharedCrateDirectory
-         (SharedRustCrate.ExtractTo);
-      5. CrateMode.PlatformCratesOnly (the default): writes the platform's
-         crates into ResolvedVendorDirectory - unpacked from the package's
-         archive only when that archive changed (a stamp file in the folder
-         records which archive it holds). CrateMode.ApplicationAddsCrates:
-         removes that folder if this library wrote it;
-      6. writes the cargo configuration, CargoConfigurationFile
-         (<frontend>/.cargo/config.toml), for the crate mode;
-      7. when the frontend has NO Cargo.lock yet, writes the platform's as its
-         starting point (the platform's versions). From then on Cargo.lock is
-         the application's own file: commit it;
+      3. checks the registered crate bundles against the platform's crates
+         (see CRATE BUNDLES); CrateMode.PlatformCratesOnly (the default):
+         writes the platform's crates and the bundles' into
+         ResolvedVendorDirectory, ONE folder that every application uses -
+         unpacked only when an archive changed (a stamp file in the folder
+         records the platform's archive and every bundle it holds).
+         CrateMode.ApplicationAddsCrates: removes that folder if this library
+         wrote it;
+    and FOR EACH frontend application, in its own folder:
+      4. writes the generated client code into <frontend>/src/generated
+         (RustClientGenerator.WriteTo, with ClientOptions) - the same code
+         for every application;
+      5. writes the shared Rust crate into
+         <frontend>/platform/codebrix-webplatform (SharedRustCrate.ExtractTo);
+      6. writes the cargo configuration, <frontend>/.cargo/config.toml, for
+         the crate mode (pointing at the one vendor folder);
+      7. THE FRONTEND'S Cargo.lock (see THE FRONTEND'S Cargo.lock below):
+         when the frontend has NO Cargo.lock yet, writes the platform's as its
+         starting point (the platform's versions), with the platform's MARKER
+         LINE as its third line. Commit the file. In
+         CrateMode.PlatformCratesOnly it then compares the lock file with the
+         vendor folder: an entry that names a version of a crate the folder
+         holds ONLY in other versions (a platform crate or a bundle's crate
+         that moved with a package upgrade) is STALE. WITH the marker line,
+         exactly those entries are brought in step by running
+         `cargo update --offline -p <crate> ...` in the frontend folder (every
+         other entry stays as it is; the result's LockFileRepairs says what
+         changed). WITHOUT it, the file is never touched: the result's
+         LockFileWarning (also written to Output) names the stale entries and
+         the exact command to run. A lock file with nothing stale is never
+         touched, marker or not;
       8. THE TAILWIND STYLESHEET: when the frontend uses Tailwind (its input
          stylesheet, ResolvedTailwindInputFile, exists) and the generated one
          (ResolvedTailwindOutputFile, the file the application's
@@ -1083,24 +1901,68 @@ STEP 2 - MaterializeAsync
          also written to Output. Switch the step off with
          GenerateMissingStylesheet = false.
     Only changed files are rewritten, so cargo does not rebuild for nothing.
-    AFTERWARDS PLAIN `cargo check`, `cargo test` AND `cargo build` WORK in the
-    frontend folder - offline, in the default crate mode - and so does an
+    AFTERWARDS PLAIN `cargo check`, `cargo test` AND `cargo build` WORK in
+    every frontend folder - offline, in the default crate mode - and so does an
     editor's Rust support, on a fresh clone too: clone, Materialize, cargo
     check. (Unless the result reports StylesheetMissing: then they fail on
     the asset!() until a build has run or Tailwind is installed.)
 
-    public sealed class MaterializeResult
+    public sealed class MaterializeResult    // the FIRST application's
     {
+        string ApplicationName;                  // "app" for the default one
+        IReadOnlyList<MaterializeResult> Applications;
+                                                 // one per application, in
+                                                 // order; the first is this
+                                                 // object
         BackendMap Map;                          // what the mapper read
         IReadOnlyList<string> GeneratedFiles;    // written or removed
         IReadOnlyList<string> SharedCrateFiles;  // written or removed
         bool VendorChanged;                      // crates written / removed
         bool CargoConfigurationWritten;
         bool LockFileWritten;                    // a starting Cargo.lock
+        bool LockFileMarked;                     // Cargo.lock carries the
+                                                 // marker line
+        IReadOnlyList<LockFileRepair> LockFileRepairs;
+                                                 // entries brought in step
+                                                 // (marked file only)
+        IReadOnlyList<string> StaleLockFileEntries;
+                                                 // "name version" of an
+                                                 // UNMARKED file, not changed
+        string LockFileUpdateCommand;            // the command for those, run
+                                                 // in the frontend folder;
+                                                 // null when nothing is stale
+        string LockFileWarning;                  // a message fit to show with
+                                                 // that command; empty if none
         StylesheetOutcome Stylesheet;            // see below
         string StylesheetMessage;                // a sentence fit to show
         bool StylesheetMissing;                  // missing and not generated
-        bool WasUpToDate;                        // nothing written
+        bool WasUpToDate;                        // nothing written for this
+                                                 // application (a lock-file
+                                                 // repair counts as written)
+        bool AllWereUpToDate;                    // nothing written for any
+        IReadOnlyList<CrateBundleOutcome> CrateBundles;
+                                                 // per registered bundle, in
+                                                 // registration order (the
+                                                 // same for every application)
+    }
+
+    public sealed class CrateBundleOutcome   // ...FrontendBuilder.Crates
+    {
+        string Name;                             // the bundle's
+        string Origin;                           // "<package> <version>"
+        IReadOnlyList<string> AddedCrates;       // "name version", only it
+        IReadOnlyList<string> SharedCrates;      // "name version", already
+                                                 // there, identical (one
+                                                 // copy is kept)
+    }
+
+    public sealed class LockFileRepair       // ...FrontendBuilder.Crates
+    {
+        string Crate;                            // the crate's name
+        string OldVersion;                       // the version that was locked
+        string NewVersion;                       // the version locked now; null
+                                                 // when cargo dropped the crate
+        string ToString();                       // "name old -> new"
     }
 
     public enum StylesheetOutcome   // CodeBrix.WebPlatform.FrontendBuilder.Stylesheet
@@ -1113,48 +1975,113 @@ STEP 2 - MaterializeAsync
         SkippedTailwindFailed,       // missing: Tailwind ran and failed
     }
 
-    Fails when: the frontend folder has no Cargo.toml; neither backend option
+    Fails when: a frontend folder has no Cargo.toml; neither backend option
     is set; the project does not exist or does not build; the contract is not
     fully declared (every problem listed); src/generated holds a file without
     the generated marker; the shared crate's folder holds something else; the
-    vendor folder holds files this library did not write (no stamp); the
+    vendor folder holds files this library did not write (no stamp); a
     frontend's .cargo/config.toml was not written by this library; the
     platform's crates are not beside the build program (the package was not
-    restored, or the program was copied without its frontend-crates folder).
+    restored, or the program was copied without its frontend-crates folder);
+    a crate bundle cannot be read or breaks the strict rule (see CRATE
+    BUNDLES; nothing is written then); bringing a MARKED Cargo.lock in step
+    fails (cargo is missing, or the frontend's Cargo.toml asks for a version
+    the vendor folder does not hold) - the file is then left exactly as it
+    was, and the message says what to do. A stale UNMARKED lock file is NOT
+    a failure of MaterializeAsync: the command it names needs the vendor
+    folder and the cargo configuration MaterializeAsync has just written.
 
 STEP 3 - BuildAsync / ServeAsync
-    BuildAsync runs dx in the frontend folder, from a clean target/dx folder:
-        dx <GetDxBuildArguments(configuration)>
-    with this environment:
+    BuildAsync builds EVERY application, one after the other, by running dx
+    in its frontend folder, each from a clean target/dx folder:
+        dx <GetDxBuildArguments(configuration, name, wasmSplit)>
+    (--base-path <name> for a named application, --wasm-split for one built
+    with splitting) with this environment:
         PATH     the packaged wasm-opt's folder FIRST (when the WasmShrink
                  package has one for this machine), then wasm-bindgen's
                  folder, then the existing PATH (the Tailwind program is found
                  there);
-        DX_HOME  DxHomeDirectory: a folder the build owns, because dx looks in
+        DX_HOME  the application's DX_HOME (DxHomeDirectory for one
+                 application): a folder the build owns, because dx looks in
                  its own data folder BEFORE PATH, and a wasm-opt some other dx
                  once downloaded there would be used instead;
         the loader's search variable - LD_LIBRARY_PATH (Linux),
                  DYLD_LIBRARY_PATH (macOS), PATH (Windows) - with
                  Libgit2Directory FIRST (see DX NEEDS libgit2);
-        DX_SKIP_WASM_OPT  "1" for a Release build with Shrink = false, "0"
-                 otherwise (so a value in your own environment never decides
-                 it).
+        DX_SKIP_WASM_OPT  "1" for an unsplit Release build with Shrink =
+                 false, "0" otherwise (so a value in your own environment
+                 never decides it).
     Only dx's process gets these; the build program's own environment is not
     changed. ServeAsync starts dx with the same environment.
-    It fails when dx fails or leaves no index.html. With a webRootDirectory it
-    then replaces that folder's content with the built site (a .gitkeep file
-    is kept) - typically the backend's wwwroot.
+    It fails when dx fails or leaves no index.html.
+    BEFORE dx is started, BuildAsync (every application) and ServeAsync (the
+    one it serves) check, in CrateMode.PlatformCratesOnly, that no
+    frontend's Cargo.lock is stale (see STEP 2, item 7): a stale one is a
+    FrontendBuildException with the stale entries and the exact
+    `cargo update --offline -p ...` command, and dx is not started - so the
+    developer reads that message instead of cargo's "failed to select a
+    version" from inside dx's output.
 
-    public sealed class FrontendBuildResult
+    THE WEB ROOT. With a webRootDirectory (typically the backend's wwwroot),
+    once EVERY application has been built, BuildAsync fills it:
+      - the default application's site goes into the web root itself, a
+        named application's into <web root>/<name>/, and the manifest
+        codebrix-frontends.toml beside them (for the backend; see BACKEND:
+        HOW THE FRONTEND APPLICATIONS ARE SERVED);
+      - WITH a default application the build owns the WHOLE web root:
+        everything in it is replaced (a .gitkeep file is kept);
+      - when EVERY application has a name, the build owns only the
+        applications' sub-folders (this build's, and those the previous
+        manifest names) and the manifest; any other file in the web root -
+        a page of the developer's own at "/", for example - is left alone;
+      - a default application's site with an entry named like another
+        application (a folder "sales" beside an application "sales") is
+        refused with a FrontendBuildException, before the web root is
+        touched;
+      - then, beside each compressible file of the built applications, the
+        compressed copies CompressOutput asks for (<name>.br and <name>.gz
+        by default; see COMPRESSION). The developer's own files in the web
+        root are never given copies.
+    Without a webRootDirectory each site stays where dx left it
+    (GetOutputDirectory), no manifest is written and nothing is compressed.
+
+    public sealed class FrontendBuildResult   // the FIRST application's
     {
+        string ApplicationName;                  // "app" for the default one
+        IReadOnlyList<FrontendBuildResult> Applications;
+                                                 // one per application, in
+                                                 // order; the first is this
+                                                 // object
         FrontendConfiguration Configuration; string OutputDirectory;
         bool Shrunk; WasmOptSource WasmOpt; HostTools Tools;
-        string WebRootDirectory; int WebRootFileCount;
+        bool WasmSplit;                          // built with splitting
+        string WebRootDirectory;                 // null without a web root
+        string WebRootApplicationDirectory;      // the web root itself, or
+                                                 // <web root>/<name>
+        int WebRootFileCount;                    // files copied for it
+                                                 // (dx's files; the .br /
+                                                 // .gz copies not counted)
+        string ManifestFile;                     // the manifest written;
+                                                 // null without a web root
+        FrontendCompressionResult Compression;   // the copies written for
+                                                 // it (see COMPRESSION);
+                                                 // null without a web root
     }
 
-    ServeAsync runs `dx serve --platform web [--features <ServeFeatures>]`
-    with the same environment, passes dx's output to Options.Output, and
-    returns dx's exit code when it ends (cancel the token to stop it). The
+    ServeAsync(applicationName) runs `dx serve --platform web [--base-path
+    <name>] [--features <features>]` in that application's folder, with the
+    same environment, its own ServeFeatures (or the options'), passes dx's
+    output to Options.Output, and returns dx's exit code when it ends (cancel
+    the token to stop it). Which application:
+      - a name: that application; an unknown name is a FrontendBuildException
+        listing the names;
+      - no name (null, "", or ServeAsync without the argument): the
+        application without a name; if there is none and there is exactly one
+        application, that one; otherwise a FrontendBuildException listing the
+        names.
+    ServeAsync does NOT split the bundle, whatever WasmSplit says: hot reload
+    serves one WebAssembly file. Nor does it compress anything (dx serve
+    answers the browser itself; CompressOutput is for BuildAsync). Use BuildAsync to see the split pieces. The
     frontend's API calls need a running backend; Dioxus.toml can proxy /api
     to it.
 
@@ -1167,14 +2094,16 @@ THE PLATFORM'S CRATES
     reqwest, serde, serde_json, web-sys, js-sys, wasm-bindgen,
     wasm-bindgen-futures, futures-core and what they need) with the Dioxus
     features the platform offers (minimal, web, router, document, mounted,
-    asset, and devtools for hot reload), at the platform's versions, exactly
-    as crates.io published them. An application chooses, with
+    asset, wasm-split, and devtools for hot reload), at the platform's
+    versions, exactly as crates.io published them. An application chooses, with
     PlatformFrontendOptions.CrateMode, where its frontend's crates come from:
 
     CrateMode.PlatformCratesOnly (THE DEFAULT)
-        The crates are written into the frontend (platform/vendor) and the
-        cargo configuration replaces crates.io with that folder and switches
-        cargo to offline mode:
+        The crates - the platform's and those of the registered crate
+        bundles (see CRATE BUNDLES) - are written into the frontend
+        (platform/vendor; with several applications, the first one's, shared
+        by all) and the cargo configuration replaces crates.io with that
+        folder and switches cargo to offline mode:
 
             [source.crates-io]
             replace-with = "codebrix-webplatform-crates"
@@ -1183,9 +2112,10 @@ THE PLATFORM'S CRATES
             [net]
             offline = true
 
+        (directory is the path from that frontend to the vendor folder.)
         Nothing is downloaded, ever. A crate (or a version) that is not among
-        the platform's is an error ("no matching package"); that is the
-        moment to switch mode.
+        the platform's or a registered bundle's is an error ("no matching
+        package"); that is the moment to switch mode.
 
     CrateMode.ApplicationAddsCrates
         For an application that adds crates of its own - it MAY add any crate.
@@ -1198,12 +2128,16 @@ THE PLATFORM'S CRATES
         platform's versions are the ones locked. Keeping such an application
         offline (vendoring its own crates as well) is the application's
         business: `cargo vendor` in the frontend and a cargo configuration of
-        its own in a folder above the frontend.
+        its own in a folder above the frontend. Registered crate bundles are
+        checked as in the default mode but not unpacked: cargo fetches their
+        crates from crates.io like any other (see CRATE BUNDLES for what pins
+        their versions then).
 
     Either way the frontend keeps a SMALL Cargo.toml of its own: the shared
     crate as a path dependency, dioxus with the features it uses, the
     platform crates its own code names directly, and - in the second mode -
-    any crate of its own. Its Cargo.lock is its own (commit it). Everything
+    any crate of its own. Its Cargo.lock is its own (commit it; see THE
+    FRONTEND'S Cargo.lock for what the build may change in it). Everything
     MaterializeAsync writes - platform/, src/generated/, .cargo/ - is build
     output: git-ignore it and never edit it. A cargo setting of the
     application's own belongs in a .cargo/config.toml in a folder ABOVE the
@@ -1225,7 +2159,55 @@ THE PLATFORM'S CRATES
             // FrontendBuildException when the file is missing
         public static string LockFileText { get; } // the platform's Cargo.lock
     }
+    // and, in the same class:
+        public const string LockFileMarker;       // the marker line (below)
+        public const string LockFileMarkerPrefix; // how it is recognised
     public enum CrateMode { PlatformCratesOnly, ApplicationAddsCrates }
+
+THE FRONTEND'S Cargo.lock
+    The frontend's Cargo.lock is the application's file and is committed.
+    WHAT THE BUILD DOES TO IT, and nothing else:
+      * NO FILE: MaterializeAsync writes the platform's lock file as the
+        starting point, with this MARKER LINE as its THIRD line, directly
+        after cargo's own two header comment lines:
+
+            # CodeBrix.WebPlatform keeps this file in step with the platform's crates. Remove this line to manage the file yourself.
+
+        (PlatformCrates.LockFileMarker; recognised by its start,
+        PlatformCrates.LockFileMarkerPrefix, so a later version may reword
+        the rest.)
+      * MARKER PRESENT, CrateMode.PlatformCratesOnly: when the lock file names
+        a version of a crate that the vendor folder (the platform's crates
+        and the registered bundles') holds ONLY in other versions - after a
+        package upgrade moved that crate - MaterializeAsync runs
+        `cargo update --offline -p <crate> ...` for EXACTLY those crates in
+        the frontend folder, after the vendor folder and the cargo
+        configuration are written. Every other entry stays as it is: crates
+        that did not move, crates the vendor folder does not carry at all,
+        and a version the folder holds beside another. The marker line
+        stays. MaterializeResult.LockFileRepairs says what changed (crate,
+        old version, new version); commit the changed file. When the update
+        fails, the file is left exactly as it was and MaterializeAsync throws
+        a FrontendBuildException that says what to do.
+      * MARKER ABSENT: the file is the developer's. The build NEVER changes
+        it. When it is stale, MaterializeAsync reports it (LockFileWarning,
+        StaleLockFileEntries, LockFileUpdateCommand, and a WARNING line on
+        Output) with the exact command, and BuildAsync / ServeAsync refuse to
+        start dx with the same message. Run the command in that frontend
+        folder, then commit the file.
+      * CrateMode.ApplicationAddsCrates: NOTHING happens, marker or not. cargo
+        takes crates from crates.io, which keeps every published version, so
+        a locked version never disappears and the lock file is never stale in
+        this sense; moving to newer versions is the developer's own
+        `cargo update`. (The marker is harmless there and is acted on again
+        if the application goes back to the default mode.)
+      * A lock file whose versions all exist is never touched, marker or not.
+    WHAT THE DEVELOPER CANNOT DO: move the marker line. cargo keeps a comment
+    on the third line, on an ordinary build and when it rewrites the file,
+    but it DELETES one at the end of the file, and a comment above its own
+    header makes it write the header again. Leave the line where it is.
+    REMOVING the line is how the developer takes the file over; putting it
+    back as the third line hands it to the platform again.
 
 NOTICES FOR A BUILT SITE
     The WebAssembly file of a platform application contains third-party code:
@@ -1244,7 +2226,16 @@ NOTICES FOR A BUILT SITE
             File.ReadAllText("THIRD-PARTY-NOTICES.txt") + "\n\n\n"
                 + PlatformCrates.ReadNotices());
 
-    (Write it AFTER BuildAsync: BuildAsync replaces the web root's content.)
+    (Write it AFTER BuildAsync: with a default application BuildAsync
+    replaces the web root's whole content. When every application has a
+    name the build leaves the file alone, but writing it after the build is
+    right either way.) The Backend package serves it like any other file of
+    the web root, at /THIRD-PARTY-NOTICES.txt. One file serves every
+    frontend application of the site. PlatformCrates.ReadNotices covers the
+    platform's crates only: it does not cover the crates a registered crate
+    bundle adds (serve their notices too, from the package that brings
+    them), and crates an application adds of its own are the application's
+    to record.
     The dx and wasm-bindgen programs are build tools and are not part of the
     site; their licence and notices files travel beside them in the build
     program's frontend-tools folder.
@@ -1272,6 +2263,10 @@ SHRINKING
     keeps the unshrunk file); BuildAsync reads dx's output and FAILS the build
     in that case. How hard wasm-opt works is dx's setting: [web.wasm_opt] in
     the frontend's Dioxus.toml (level "z", the smallest file, when unset).
+    AN APPLICATION BUILT WITH SPLITTING (WasmSplit, see CODE SPLITTING) is
+    ALWAYS shrunk, by dx, the main file and every piece, in a Debug build
+    too: Shrink is ignored for it, a wasm-opt must be available, and Shrunk
+    is true. Each application of a build is decided on its own.
 
 HOST TOOLS
     FindHostTools (and BuildAsync, ServeAsync, CheckPrerequisitesAsync) look
@@ -1341,6 +2336,181 @@ DX NEEDS libgit2
         public HostToolsSource Source;                   // Package | Options
         public string RuntimeIdentifier;
     }
+
+
+CODE SPLITTING
+==============
+
+Bundle splitting (lazy loading) cuts an application's WebAssembly into a
+main file and PIECES that the browser downloads when they are first needed,
+so a visitor does not download the code of pages they never open. It is
+dx's `--wasm-split`, which dx itself calls EXPERIMENTAL. It is decided per
+frontend application.
+
+SWITCHING IT ON takes both of these:
+
+    # 1. the frontend's Cargo.toml: the wasm-split feature of dioxus (it is
+    #    among the features the platform's crates offer)
+    dioxus = { version = "...", default-features = false,
+               features = ["minimal", "web", "router", "wasm-split", ...] }
+
+    // 2. the build program: WasmSplit for that application
+    options.Applications.Add(new FrontendApplicationOptions
+        { Name = "sales", FrontendDirectory = "frontends/sales",
+          WasmSplit = true });
+    // (one application: options.WasmSplit = true)
+
+WHAT IS SPLIT. With the feature on, EVERY route of the application's
+Routable enum becomes a piece of its own, loaded when the route is first
+shown: dx writes one module_<n>_route<Name>...wasm per route, the main file,
+and shared chunk_<n>_split...wasm files for code several pieces use. A
+second visit to a page downloads nothing. The lower-level forms, in
+dioxus::wasm_split, split off code by hand:
+
+    #[wasm_split::wasm_split(forecast)]       // an ASYNC function whose code
+    async fn run_forecast(runs: u32) -> Forecast { ... }   // is the piece
+                                              // "forecast", downloaded on the
+                                              // first call
+    static PANEL: wasm_split::LazyLoader<Order, Element> =
+        wasm_split::lazy_loader!(extern "details"
+            fn panel(order: Order) -> Element);
+                                              // PANEL.load().await downloads
+                                              // the piece; PANEL.call(order)
+                                              // then runs it
+    #[component(lazy)]                        // a component whose body is a
+    fn Insights(..) -> Element { ... }        // piece (every lazy component of
+                                              // an application shares the one
+                                              // piece "lazy"); it suspends
+                                              // until the piece has arrived
+
+  * #[wasm_split] takes async functions only, and drops the function's `pub`
+    in the WebAssembly build: keep it private and call it from a public
+    function beside it.
+  * In a build without splitting (ServeAsync, or WasmSplit off) all of this
+    is ordinary code that is already loaded.
+
+THE LOADING STATE. A route's piece (or a lazy component) SUSPENDS while it
+downloads. Put a SuspenseBoundary around the Router, or around the Outlet
+inside the layout, so that the layout stays on screen and a fallback shows:
+
+    SuspenseBoundary {
+        fallback: |_| rsx! { PageLoading {} },
+        Outlet::<Route> {}
+    }
+
+A WARNING PER ROUTE. With the feature on, the router macro generates a
+function and a loader per route named after the route in camel case
+(route<Name><hash>), which the compiler reports as non_snake_case, once per
+route. The names are the macro's; an allow on the enum does not reach them.
+Keep the Routable enum in a module of its own and allow the lint there:
+
+    // routes.rs - the Routable enum and nothing else
+    #![allow(non_snake_case)]
+
+SHRINKING. A split build ALWAYS runs wasm-opt: dx shrinks the main file and
+every piece, for a Debug build too; Shrink is ignored for it and
+FrontendBuildResult.Shrunk is true (see SHRINKING). dx switches on link-time
+optimisation and debug information for the compile by itself; the shipped
+files carry no debug or name sections.
+
+WHAT ELSE CHANGES. dx writes one extra generated JavaScript file for a split
+build, the loader of the pieces, beside the main script (toolchain glue,
+like the rest of the generated JavaScript). The pieces are fetched from
+/<base path>/assets/..., so splitting works for a named application as well
+as for the one at the site root. The Content-Security-Policy a platform site
+needs is unchanged: the pieces are WebAssembly from the same site, compiled
+under the 'wasm-unsafe-eval' the site needs anyway. ServeAsync never splits
+(see STEP 3).
+
+
+CRATE BUNDLES
+=============
+
+A crate bundle is a set of Rust crates that a NuGet package brings to a
+platform frontend, beside the platform's own crates - for example a package
+whose frontend half is Rust. The frontend build writes the bundles' crates
+into the one vendor folder, so a frontend that uses them still builds
+offline in the default crate mode.
+
+USING A PACKAGE THAT BRINGS A BUNDLE (the application developer):
+
+  1. Reference the package from the BUILD PROGRAM (and wherever else its
+     documentation says).
+  2. Make the package's ONE registration call in the build program, BEFORE
+     MaterializeAsync. Nothing registers itself: a package that is only
+     referenced adds no crate. The call hands a CrateBundle to
+     CrateBundles.Register; registering the same bundle twice is harmless.
+  3. Name the crate(s) you use in the frontend's own Cargo.toml, as with any
+     platform crate.
+  4. Materialize. MaterializeResult.CrateBundles says, per bundle, which
+     crates it added (AddedCrates) and which the platform or an earlier
+     bundle already had (SharedCrates).
+
+THE STRICT RULE. A crate is identified by its name and version. The same
+name and version must have the same content wherever it comes from (compared
+through the crate's .cargo-checksum.json); ONE copy of it is written however
+many bundles carry it. And a bundle must not bring a version of a crate that
+the platform or ANOTHER bundle carries in a different version. (The
+platform's own set holds some crates in two versions, and one bundle may
+bring two versions of a crate nobody else has: neither is a violation.) On a
+violation NOTHING is written, and one FrontendBuildException lists every
+such crate with the versions and the packages, and says to use versions of
+those packages built against the same platform version, or to leave one of
+them out.
+
+THE VENDOR FOLDER'S STAMP covers the platform's archive and every bundle, so
+adding, removing or updating a bundle rewrites the folder, and an unchanged
+set costs nothing.
+
+UPDATING A PACKAGE THAT BRINGS A BUNDLE can move one of its crates to a new
+version. The frontend's Cargo.lock still names the old one, which is no
+longer in the vendor folder. With the marker line in the lock file,
+MaterializeAsync brings exactly that entry in step; without it, it names the
+`cargo update --offline -p <crate>` command to run (see THE FRONTEND'S
+Cargo.lock).
+
+IN CrateMode.ApplicationAddsCrates the same check runs, but nothing is
+unpacked: cargo fetches the bundles' crates from crates.io like any other.
+NOTHING then pins a bundle's crate to the bundle's version: that is the
+APPLICATION'S job, with an exact requirement in its Cargo.toml
+(`some-crate = "=x.y.z"`, the version the bundle carries) or its committed
+Cargo.lock.
+
+WRITING A PACKAGE THAT BRINGS A BUNDLE (the package author):
+
+  * The package depends on Core ONLY - never on FrontendBuilder - with an
+    EXACT version pin on Core, because its crates are chosen against one
+    platform release:
+        <PackageReference Include="CodeBrix.WebPlatform.Core.ApacheLicenseForever"
+                          Version="[x.y.z.w]" />
+  * It carries ONE zip archive of crates exactly as crates.io published them,
+    what `cargo vendor` writes: one folder per crate at the top of the
+    archive, each with its Cargo.toml and .cargo-checksum.json, and nothing
+    else at the top. Name the folders name-version (what
+    `cargo vendor --versioned-dirs` writes), as the platform's own are, so
+    that no folder name can meet another crate's.
+  * It offers ONE public call that registers the bundle:
+
+        public static class GraphicsCrates
+        {
+            public static void Register() =>
+                CrateBundles.Register(new CrateBundle(
+                    "graphics",                      // unique in a build
+                    "MyCompany.Graphics",            // the package id
+                    "x.y.z",                         // the package version
+                    () => File.OpenRead(Path.Combine(
+                        AppContext.BaseDirectory,
+                        "graphics-crates.zip"))));   // opened when needed
+        }
+
+    and the archive reaches the build program's output folder the way the
+    package arranges it (for example a buildTransitive targets file that
+    copies it beside the program).
+  * Registering ANOTHER bundle under a name that is already registered by
+    another package, or another version of the same package, throws
+    InvalidOperationException.
+  * The package's own notices for its crates are its business: the
+    platform's notices (PlatformCrates.ReadNotices) do not cover them.
 
 
 FRONTENDBUILDER API REFERENCE: THE SHARED RUST CRATE
@@ -1441,7 +2611,11 @@ WHAT THE CRATE PROVIDES (Rust)
         - on 401 from an endpoint that needs sign-in: ONE refresh call, shared
           by every request waiting on it, and ONE retry; if that fails too the
           application is told the session ended;
-        - any non-success answer becomes an ApiError;
+        - a success answer read as JSON (send_json), as nothing
+          (send_empty) or as the bytes it is (send_bytes, which the
+          generated <name>_bytes functions of [WireFile] actions call);
+        - any non-success answer becomes an ApiError, whichever of the three
+          sent it (an error answer is always the standard JSON problem body);
         - it keeps note of the requests that change state while they are in
           flight (any of them may set or clear the session cookies: sign-in,
           sign-out, a refresh); the SignalR client waits for them before it
@@ -1462,6 +2636,7 @@ WHAT THE CRATE PROVIDES (Rust)
       pub use reqwest::Method;
       pub async fn send_json<T>(method, path, body, auth) -> Result<T, ApiError>
       pub async fn send_empty(method, path, body, auth) -> Result<(), ApiError>
+      pub async fn send_bytes(method, path, body, auth) -> Result<Vec<u8>, ApiError>
       pub fn body<B: Serialize>(value: &B) -> Result<String, ApiError>
 
   codebrix_webplatform::api::{ApiError, ApiResult}
@@ -1757,12 +2932,58 @@ COMPLETE EXAMPLES
 
     // WireDeclarations.cs (no namespace):
     //     [assembly: WireRequestMarker("MyApp")]
-    // Program.cs:
-    //     app.MapHub<NotesHub>(WireHubAttribute.GetPath(typeof(NotesHub)));
-    //     the X-Requested-With check compares with
-    //     WireRequestMarkerAttribute.GetValue(typeof(Program).Assembly)
 
-2. The build program (builds the frontend)
+2. The backend's Program.cs (the two Backend calls)
+---------------------------------------------------
+
+    using CodeBrix.WebPlatform.Backend;
+    using CodeBrix.WebPlatform.Core.Mapping;
+    using Microsoft.AspNetCore.Builder;
+    using Microsoft.Extensions.DependencyInjection;
+    using Microsoft.Extensions.Hosting;
+
+    public partial class Program
+    {
+        public const string ContentSecurityPolicy =
+            "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; "
+            + "style-src 'self'; img-src 'self' data:; connect-src 'self'; "
+            + "base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+
+        public static void Main(string[] args)
+        {
+            var builder = WebApplication.CreateBuilder(args);
+            builder.Services.AddControllers();
+            builder.Services.AddSignalR();
+            // the application's own sign-in:
+            //     builder.Services.AddAuthentication(...); AddAuthorization();
+            builder.Services.AddPlatformBackend(options =>
+                options.ContentSecurityPolicy = ContentSecurityPolicy);
+            var app = builder.Build();
+
+            if (!app.Environment.IsDevelopment())
+            {
+                app.UseHsts();
+            }
+
+            // serves the frontend applications the build wrote into wwwroot
+            // (read from its manifest), the error bodies, the X-Requested-With
+            // and Origin checks, the security headers
+            app.UsePlatformBackend();
+
+            app.UseRouting();
+            app.UseAuthentication();
+            app.UseAuthorization();
+            app.MapControllers();
+            app.MapHub<NotesHub>(WireHubAttribute.GetPath(typeof(NotesHub)));
+            app.Run();
+        }
+    }
+
+The backend's project is a Microsoft.NET.Sdk.Web project that references the
+Backend package; nothing in it names a frontend application. Its wwwroot is
+the web root the build program builds into.
+
+3. The build program (builds the frontend)
 ------------------------------------------
 
     using System;
@@ -1845,7 +3066,89 @@ The same steps by hand, with the lower-level APIs (no dx involved):
     SharedRustCrate.ExtractTo("frontend/platform/codebrix-webplatform");
     // the platform's crates and the cargo configuration are MaterializeAsync's
 
-3. Using the generated code (frontend, Rust)
+4. A build program with three frontend applications and splitting
+-----------------------------------------------------------------
+
+    using System;
+    using System.IO;
+    using System.Threading;
+    using System.Threading.Tasks;
+    using CodeBrix.WebPlatform.FrontendBuilder;
+    using CodeBrix.WebPlatform.FrontendBuilder.Applications;
+    using CodeBrix.WebPlatform.FrontendBuilder.Crates;
+
+    public static class Program
+    {
+        public static async Task<int> Main(string[] args)
+        {
+            var options = new PlatformFrontendOptions
+            {
+                BackendProjectPath = "backend/MyApp.Api/MyApp.Api.csproj",
+                ServeFeatures = { "devtools" },
+                Output = Console.Out,
+            };
+            // no name: served at the site root
+            options.Applications.Add(new FrontendApplicationOptions
+                { FrontendDirectory = "frontends/home" });
+            // served below /sales, split into pieces (its Cargo.toml turns
+            // on dioxus's wasm-split feature)
+            options.Applications.Add(new FrontendApplicationOptions
+                { Name = "sales", FrontendDirectory = "frontends/sales",
+                  WasmSplit = true });
+            // served below /admin, one WebAssembly file
+            options.Applications.Add(new FrontendApplicationOptions
+                { Name = "admin", FrontendDirectory = "frontends/admin" });
+            var frontend = new PlatformFrontend(options);
+            using var stop = new CancellationTokenSource();
+            Console.CancelKeyPress += (_, e) =>
+            {
+                e.Cancel = true;
+                stop.Cancel();
+            };
+
+            try
+            {
+                // a package that brings crates registers them here, BEFORE
+                // materializing:  MyCompany.Graphics.GraphicsCrates.Register();
+                await frontend.MaterializeAsync(stop.Token);   // all three
+                if (args.Length > 0 && args[0] == "serve")
+                {
+                    // one application with hot reload: "sales", "admin", or
+                    // none for the one at the site root
+                    return await frontend.ServeAsync(
+                        args.Length > 1 ? args[1] : null, stop.Token);
+                }
+
+                var webRoot = "backend/MyApp.Api/wwwroot";
+                var built = await frontend.BuildAsync(
+                    FrontendConfiguration.Release, webRoot, stop.Token);
+                File.WriteAllText(
+                    Path.Combine(webRoot, "THIRD-PARTY-NOTICES.txt"),
+                    File.ReadAllText("THIRD-PARTY-NOTICES.txt") + "\n\n\n"
+                        + PlatformCrates.ReadNotices());
+                foreach (var application in built.Applications)
+                {
+                    Console.WriteLine($"{application.ApplicationName}: "
+                        + $"{application.WebRootFileCount} files in "
+                        + application.WebRootApplicationDirectory
+                        + (application.WasmSplit ? " (split)" : ""));
+                }
+
+                return 0;
+            }
+            catch (FrontendBuildException e)
+            {
+                Console.Error.WriteLine(e.Message);
+                return 1;
+            }
+        }
+    }
+
+The web root then holds home's site at its top, sales/ and admin/ beside it,
+and codebrix-frontends.toml; the backend of example 2 serves all three with
+no change.
+
+5. Using the generated code (frontend, Rust)
 --------------------------------------------
 
     // main.rs
@@ -1880,6 +3183,12 @@ The same steps by hand, with the lower-level APIs (no dx involved):
 
     fn download() {
         codebrix_webplatform::browser::navigate(&notes::export_url());
+    }
+
+    // the same [WireFile] action, read by the page's own code
+    async fn export_size() -> Result<usize, String> {
+        let bytes: Vec<u8> = notes::export_bytes().await.map_err(|e| e.message())?;
+        Ok(bytes.len())
     }
 
     // the hub: a component that lists notes as other tabs add them
@@ -1929,25 +3238,43 @@ package of the machine it is built on - see INSTALLATION):
       </ItemGroup>
     </Project>
 
-(Replace `*` with the current package version; the backend's Core and the
-build program's FrontendBuilder come from the same release.) RollForward lets
+(Replace `*` with the current package version; the backend's Backend and Core
+and the build program's FrontendBuilder come from the same release.)
+RollForward lets
 the build program run on a newer .NET than it was built for. Program.cs is
-example 2 above.
+example 3 above (or 4, for several frontend applications).
+
+The backend (Program.cs is example 2 above):
+
+    <Project Sdk="Microsoft.NET.Sdk.Web">
+      <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+      </PropertyGroup>
+      <ItemGroup>
+        <PackageReference Include="CodeBrix.WebPlatform.Backend.ApacheLicenseForever" Version="*" />
+      </ItemGroup>
+    </Project>
 
 The frontend crate keeps a small Cargo.toml of its own:
 
     [dependencies]
     codebrix-webplatform = { path = "platform/codebrix-webplatform" }
     dioxus = { version = "...", default-features = false,
-               features = ["web", ...] }
-    # ... and, with CrateMode.ApplicationAddsCrates, any crate of its own
+               features = ["web", ...] }   # + "wasm-split" for CODE SPLITTING
+    # ... a registered crate bundle's crates it uses, and, with
+    # CrateMode.ApplicationAddsCrates, any crate of its own
 
     [features]
     devtools = ["dioxus/devtools"]      # for ServeAsync's hot reload
 
 and its own Cargo.lock (committed), and git-ignores what is materialized and
 built: frontend/src/generated/, frontend/platform/, frontend/.cargo/ and
-frontend/target/.
+frontend/target/. With several frontend applications each folder is such a
+crate (frontends/home, frontends/sales, ...) and each ignores the same four
+folders. What the build writes into the backend's wwwroot (the sites and the
+manifest) is build output as well: ignore it in git - with a default
+application that is the folder's whole content (a .gitkeep keeps the
+folder).
 
 
 PERFORMANCE TIPS
@@ -1964,8 +3291,17 @@ PERFORMANCE TIPS
     it.
   * The stylesheet step runs Tailwind only when the generated stylesheet is
     missing, so it costs nothing on every later Materialize.
+  * Several frontend applications share one backend build and map, and ONE
+    vendor folder; only the generated code, the shared crate and the cargo
+    configuration are written per application.
+  * Split the application whose pages are many or heavy (CODE SPLITTING):
+    the first page then downloads the main file and its own piece only.
   * BuildAsync starts from a clean target/dx folder on purpose; cargo's own
     compiled crates in target/ are kept, so a second build is quick.
+  * Leave CompressOutput and ServePrecompressedFiles on (the defaults): the
+    Brotli copy of a platform application's .wasm is a fraction of its size
+    (see COMPRESSION), compressed once at build time and served without any
+    work per request. CompressOutput = None makes a local build quicker.
 
 
 COMMON PITFALLS TO AVOID
@@ -1984,8 +3320,27 @@ COMMON PITFALLS TO AVOID
     Add [Authorize] or [AllowAnonymous]. A fallback policy in Program.cs does
     not count: the mapper cannot see it.
 
+  * "a [WireFile] action must answer GET, because the browser fetches it by
+    address." / "a [WireFile] action cannot read a body."
+    An action that answers with a file is a GET with its inputs in the route
+    or the query string. To send a body and get a file back, make two
+    actions: one that takes the body and answers with an identifier, and a
+    [WireFile] GET that answers with the file for that identifier.
+
+  * "the generated function '..._url' (or '..._bytes') would have the same
+    name as one generated for another action of this controller"
+    A [WireFile] action named X takes the names x_url and x_bytes as well, so
+    the same controller cannot also have an action named XUrl or XBytes.
+    Rename one of the two actions.
+
+  * Expecting <name>_bytes to stream. It reads the whole answer into memory
+    before it returns; for a very large file hand <name>_url to the browser
+    instead.
+
   * A catch-all controller ("api/{**path}") or a health probe that answers
     with something other than ApiProblem: mark the controller [WireIgnore].
+    (With the Backend package no catch-all controller is needed: unknown /api
+    addresses are answered for you.)
 
   * A required string arrives as null and the frontend reports "The server
     sent an answer this page could not read" (ApiError::Decode).
@@ -2066,10 +3421,11 @@ COMMON PITFALLS TO AVOID
     and the title never changes. Use codebrix_webplatform::browser::set_title.
 
   * Typing the request marker or the refresh path into the frontend (or a
-    second copy into the backend's middleware). Declare them in the backend
+    second copy into the backend). Declare them in the backend
     ([assembly: WireRequestMarker], [WireSessionRefresh]); the generated
-    configure_platform carries them, and the middleware reads
-    WireRequestMarkerAttribute.GetValue.
+    configure_platform carries them, and the Backend package's check reads
+    the marker back (a check of your own calls
+    WireRequestMarkerAttribute.GetValue).
 
   * "actions or hubs of the backend need sign-in, but no action is marked
     [WireSessionRefresh]" / "... does not declare the value it demands in
@@ -2100,13 +3456,152 @@ COMMON PITFALLS TO AVOID
     belong to the build; MaterializeAsync refuses to write over files it did
     not write.
 
+  * The pipeline in the wrong order: UseRouting, MapControllers or the
+    authentication BEFORE UsePlatformBackend, or no UseRouting of your own at
+    all. Without your own app.UseRouting() after UsePlatformBackend, routing
+    runs first and a controller wins over a web-root file at the same
+    address. The order: Build; UseHsts (and whatever must see every answer);
+    UsePlatformBackend; UseRouting; rate limiter; authentication;
+    authorization; controllers and hubs.
+
+  * "... declares none. Add [assembly: WireRequestMarker(...)]" at start-up:
+    the Backend package's X-Requested-With check is on and the backend
+    declares no marker. Declare one (even when nothing needs sign-in), set
+    BackendAssembly when it is declared on another assembly, or set
+    RequireRequestMarker = false.
+
+  * Expecting the platform to send a Content-Security-Policy. It sends the
+    one you give (ContentSecurityPolicy) and none by default.
+
+  * A hub mapped outside /api/hubs: the Backend package does not check its
+    Origin, and a session cookie scoped to /api never reaches it.
+
+  * A HEAD request to a GET-only API action answers 404: MVC's [HttpGet]
+    does not answer HEAD, and the unknown-API answer takes it.
+
+  * Expecting a new frontend build to be served by a running backend. The
+    backend reads the manifest once, at start-up: restart it.
+
+  * Editing, committing or deleting codebrix-frontends.toml. It is build
+    output: an edited one is refused at start-up (FrontendManifestException),
+    and without it the backend serves no frontend application. Build the
+    frontend again.
+
+  * Naming an application "app", "api" or "assets", or with capitals
+    ("Sales"). "app" is the name of the application that has no name; "api"
+    and "assets" are the platform's; capitals are refused, not lowered. Give
+    the site-root application no name at all.
+
+  * A default application whose built site has a top-level folder or file
+    named like another application (a "sales" folder at the top of the
+    site-root application's output while there is an application "sales"):
+    BuildAsync refuses it. Rename one of them.
+
+  * Linking to another frontend application with the router's Link. The
+    router's navigation is for the application's own routes; moving to
+    another application is a full page load: use a plain anchor,
+    a { href: "/sales" }.
+
+  * Expecting ServeAsync to split the bundle: it never does. Build with
+    BuildAsync to see the pieces.
+
+  * Setting WasmSplit = true and forgetting the wasm-split feature of dioxus
+    in the frontend's Cargo.toml (or the other way round): splitting needs
+    both, and with nothing marked for splitting the build is one file.
+
+  * One non_snake_case warning per route after switching splitting on: the
+    router macro's generated names. Allow the lint in the module that holds
+    the Routable enum (CODE SPLITTING).
+
+  * No SuspenseBoundary around the Router (or the layout's Outlet) of a
+    split application: a page whose piece is downloading has no loading
+    state to show.
+
+  * Referencing a package that brings a crate bundle and not calling its
+    registration in the build program before MaterializeAsync: nothing
+    registers itself, and cargo reports "no matching package".
+
+  * "WARNING: The Cargo.lock of the frontend '...' names versions of crates
+    that the platform's crates and the registered crate bundles no longer
+    hold: some-crate x.y.z (the vendor folder holds x.y.w). The offline
+    build fails until the file is brought in step. The file has no
+    CodeBrix.WebPlatform marker line, so it is the application's own and
+    was not changed. Run this command in that folder and commit the changed
+    file:
+        cargo update --offline -p some-crate"
+    A package upgrade moved a crate, and the lock file is the developer's
+    (the marker line was removed, or the file was never written by the
+    platform). Run exactly that command in that frontend folder (it needs
+    the folders MaterializeAsync wrote, so materialize first), or put the
+    marker line back as the file's third line and materialize again.
+    BuildAsync and ServeAsync refuse to start dx with the same message.
+    (cargo's own words for the same thing are "failed to select a version
+    for the requirement ... (locked to ...)" and "perhaps a crate was
+    updated and forgotten to be re-vendored?".)
+
+  * Moving the marker line of Cargo.lock, or putting other comments above
+    cargo's header. cargo deletes a comment at the end of the file and
+    rewrites its header above one placed first; only the third line is
+    kept. Remove the line to manage the file yourself; never move it.
+
+  * Expecting a registered bundle's crate version to be pinned in
+    CrateMode.ApplicationAddsCrates. Nothing pins it there: write the exact
+    version in the frontend's Cargo.toml (`name = "=x.y.z"`) or keep it in
+    the committed Cargo.lock.
+
+  * Expecting `dx serve` (ServeAsync) to serve compressed files. It never
+    does: only BuildAsync into a web root writes the .br / .gz copies, and
+    only the platform backend serves them. Look at sizes and
+    Content-Encoding on a build served by the backend.
+
+  * Committing the web root's .br / .gz files. They are build output, like
+    the rest of what the build writes into the web root; the repository's
+    .gitignore should ignore the web root's content (.gitkeep excepted).
+
+  * Editing a file in the web root by hand after a build. Its .br / .gz
+    copies still hold the old content, and they are what browsers get.
+    Change the frontend and build again (or delete the copies).
+
+  * Linking to x.wasm.br, or expecting it to download. A copy is never
+    served under its own name (404); ask for x.wasm and the backend picks
+    the copy.
+
+  * "My file download is not compressed" with CompressResponses =
+    FileAnswers. FileAnswers compresses the answers of [WireFile] actions,
+    and nothing else: an action without the attribute that answers with
+    File(...), PhysicalFile(...) or text it writes itself is sent as it is.
+    Mark the action [WireFile] (it must answer GET and read no body; the
+    frontend gets its <name>_url and <name>_bytes functions with it), or let
+    a proxy compress the download. Read THE RISK first either way. (A type
+    that is compressed already - PNG, ZIP, PDF ... - is never compressed,
+    marked or not.)
+
+  * Expecting CompressResponses = FileAnswers to compress JSON. It does not,
+    on purpose (THE RISK in COMPRESSION), except in a [WireFile] answer;
+    FileAnswersAndJson compresses every action's JSON answers. Do not
+    add app.UseResponseCompression() of your own on top: it compresses by
+    its own rules, without the platform's exclusions (the hubs, the web
+    root's files).
+
+  * "The registered crate bundles cannot be combined with the platform's
+    crates ...": two packages (or a package and the platform) bring
+    different versions of one crate, or different content for one version.
+    Use releases of those packages built against the same platform release,
+    or leave one out.
+
 
 WHAT THIS PACKAGE DOES NOT DO
 =============================
 
-  * It does not run, host or configure the backend. There is no ASP.NET Core
-    code in any of the packages: the problem writer, the X-Requested-With
-    check, authentication and the hub mapping are the application's.
+  * It does not run, host or configure the backend. The Backend package
+    (the only one with ASP.NET Core code) adds the platform's plumbing to the
+    backend's pipeline; HSTS, rate limiting, authentication, authorization,
+    CORS, the controllers and the hub mapping are the application's.
+  * The Backend package does not build the frontend, and serves only the
+    frontend applications the manifest names (or the set given to
+    UsePlatformBackend), from the web root.
+  * A platform application has ONE backend: frontend applications that need
+    different backends are separate platform applications.
   * Core and BackendMapper do not build the frontend; FrontendBuilder does,
     by running dx. None of them installs anything: Rust, its WebAssembly
     target and the Tailwind program are the developer's to install, and
@@ -2117,8 +3612,9 @@ WHAT THIS PACKAGE DOES NOT DO
   * FrontendBuilder does not include dx or wasm-bindgen; they come from the
     host-tools package for the build machine.
   * It does not check the licences of the crates an application adds
-    (CrateMode.ApplicationAddsCrates) or record them in notices: an
-    application's own code and crates are the application's.
+    (CrateMode.ApplicationAddsCrates), or of the crates a registered crate
+    bundle brings, or record them in notices: an application's own code and
+    crates are the application's, and a bundle's are its package's.
   * Its SignalR client speaks the JSON hub protocol over WebSockets only: no
     long polling, server-sent events or MessagePack, and it returns no result
     when the server invokes the client and waits for one.
@@ -2136,6 +3632,19 @@ WORKING EXAMPLES ON GITHUB
 Core
     attributes          https://github.com/ellisnet/CodeBrix.WebPlatform/tree/main/tests/CodeBrix.WebPlatform.Core.Tests/Mapping
     ApiProblem          https://github.com/ellisnet/CodeBrix.WebPlatform/tree/main/tests/CodeBrix.WebPlatform.Core.Tests/Problems
+    frontend applications, their names
+                        https://github.com/ellisnet/CodeBrix.WebPlatform/tree/main/tests/CodeBrix.WebPlatform.Core.Tests/Applications
+    crate bundles       https://github.com/ellisnet/CodeBrix.WebPlatform/tree/main/tests/CodeBrix.WebPlatform.Core.Tests/Crates
+
+Backend
+    a backend that makes the two calls (controllers, a hub, sign-in)
+                        https://github.com/ellisnet/CodeBrix.WebPlatform/tree/main/tests/CodeBrix.WebPlatform.Backend.Tests.SampleBackend
+    serving the frontend applications
+                        https://github.com/ellisnet/CodeBrix.WebPlatform/tree/main/tests/CodeBrix.WebPlatform.Backend.Tests/Serving
+    the checks, headers, error bodies and the pipeline order
+                        https://github.com/ellisnet/CodeBrix.WebPlatform/tree/main/tests/CodeBrix.WebPlatform.Backend.Tests/Plumbing
+    the manifest        https://github.com/ellisnet/CodeBrix.WebPlatform/tree/main/tests/CodeBrix.WebPlatform.Backend.Tests/Applications
+    ApiProblems         https://github.com/ellisnet/CodeBrix.WebPlatform/tree/main/tests/CodeBrix.WebPlatform.Backend.Tests/Problems
 
 BackendMapper
     a well-formed backend to read (contract classes, controllers, hubs)
@@ -2150,6 +3659,12 @@ BackendMapper
 FrontendBuilder
     check, materialize, build, serve, the dx environment
                         https://github.com/ellisnet/CodeBrix.WebPlatform/blob/main/tests/CodeBrix.WebPlatform.FrontendBuilder.Tests/PlatformFrontendTests.cs
+    several frontend applications, splitting, ServeAsync(name)
+                        https://github.com/ellisnet/CodeBrix.WebPlatform/blob/main/tests/CodeBrix.WebPlatform.FrontendBuilder.Tests/PlatformFrontendApplicationsTests.cs
+    the application options, the web root, the manifest
+                        https://github.com/ellisnet/CodeBrix.WebPlatform/tree/main/tests/CodeBrix.WebPlatform.FrontendBuilder.Tests/Applications
+    crate bundles and the strict rule
+                        https://github.com/ellisnet/CodeBrix.WebPlatform/blob/main/tests/CodeBrix.WebPlatform.FrontendBuilder.Tests/Crates/CrateBundleMergeTests.cs
     finding dx and wasm-bindgen
                         https://github.com/ellisnet/CodeBrix.WebPlatform/tree/main/tests/CodeBrix.WebPlatform.FrontendBuilder.Tests/Tools
     SharedRustCrate     https://github.com/ellisnet/CodeBrix.WebPlatform/tree/main/tests/CodeBrix.WebPlatform.FrontendBuilder.Tests/SharedCrate
@@ -2163,16 +3678,36 @@ The shared Rust crate
 A whole application built this way (backend, hubs, build program, frontend):
                         https://github.com/ellisnet/CodeBrix.WebPlatform/tree/main/samples/WorkSite
 
+One backend with three frontend applications (one at the site root, two
+named; one of them split into pieces):
+                        https://github.com/ellisnet/CodeBrix.WebPlatform/tree/main/samples/ApplicationSplitter
+
 
 QUICK REFERENCE CARD
 ====================
 
-  BACKEND (references Core)
+  BACKEND (references Backend, which brings Core)
+    builder.Services.AddPlatformBackend(o => o.ContentSecurityPolicy = "...");
+    app.UseHsts();                    // (outside Development) BEFORE
+    app.UsePlatformBackend();         // serves wwwroot's applications (its
+                                      // manifest), error bodies, checks,
+                                      // security headers
+    app.UseRouting(); ...auth...; app.MapControllers(); app.MapHub<..>(..);
+    return new ApiProblemResult(ApiProblems.NotFound());   // in an action
+    await ApiProblemWriter.WriteAsync(context, problem);   // in middleware
+    PlatformBackendOptions: every piece on by default; switch one off
+    o.ServePrecompressedFiles (true)  a built file's .br / .gz copy to a
+                                      browser that accepts it
+    o.CompressResponses = ResponseCompression.FileAnswers   // default None;
+                                      // [WireFile] answers only; read
+                                      // COMPRESSION (THE RISK) first
     [WireRequired] / [WireOptional]   on contract classes, client interfaces,
                                       members; nearest wins
     [WireRequired] on a `T?` member   the frontend always sends it
     [WireType("T", Import=, With=)]   one value's Rust type
-    [WireFile]                        GET action that answers with a file
+    [WireFile]                        GET action that answers with a file:
+                                      <name>_url (address) + <name>_bytes
+                                      (the bytes, Vec<u8>)
     [WireIgnore]                      leave out of the generated code
     [WireHub("/api/hubs/x")]          a hub's path; map it with
                                       WireHubAttribute.GetPath(typeof(XHub))
@@ -2181,10 +3716,13 @@ QUICK REFERENCE CARD
     each action: [HttpX] + route, [Authorize]|[AllowAnonymous],
                  [ProducesResponseType(typeof(T), 200)] | (204) | ActionResult<T>
     each hub:    Hub<TClient>, [WireHub], [Authorize]|[AllowAnonymous]
-    with sign-in: [assembly: WireRequestMarker("MyApp")]  (the X-Requested-With
-                  value; the check reads WireRequestMarkerAttribute.GetValue)
-                  and ONE [WireSessionRefresh] action: POST, [AllowAnonymous],
+    [assembly: WireRequestMarker("MyApp")]  the X-Requested-With value
+                  (the Backend package's check reads it; needed with the
+                  check on, sign-in or not)
+    with sign-in: ONE [WireSessionRefresh] action: POST, [AllowAnonymous],
                   takes nothing
+    hubs below /api/hubs (Origin-checked; the /api session cookie reaches
+                  them)
 
   BUILD PROGRAM (references FrontendBuilder + the machine's host-tools package)
     var frontend = new PlatformFrontend(new PlatformFrontendOptions {
@@ -2197,20 +3735,36 @@ QUICK REFERENCE CARD
     options.GenerateMissingStylesheet = false;   // TailwindInputFile/OutputFile
     options.CrateMode = CrateMode.ApplicationAddsCrates;   // own crates
     await frontend.BuildAsync(FrontendConfiguration.Release, "wwwroot");
-    await frontend.ServeAsync();         // dx serve, hot reload
+                                         // every application, + the manifest
+    await frontend.ServeAsync();         // dx serve, hot reload (never split)
+    several applications: options.Applications.Add(new
+        FrontendApplicationOptions { Name = "sales", FrontendDirectory =
+        "frontends/sales", WasmSplit = true });   // no Name: the site root
+    names: a-z 0-9 -, letter first, no "app"/"api"/"assets", <= 40
+    await frontend.ServeAsync("sales");  // one application by name
+    splitting: dioxus feature "wasm-split" + WasmSplit = true;
+               SuspenseBoundary around the Router; always wasm-opt
+    crate bundles: the package's Register call BEFORE MaterializeAsync;
+               result.CrateBundles; strict rule: one version per crate
     PlatformCrates.ReadNotices()          // serve after the app's notices
     catch (FrontendBuildException e)  ->  e.Message says what to do
     options.Types.Map<decimal>(new RustType("Money") { Import = "..." });
     options.ClientOptions = new RustClientOptions { MaxSeparateQueryArguments = 3 };
     Shrink: null = Release shrunk, Debug not; true = Debug too; false =
             Release not shrunk (dx skips wasm-opt)
+    CompressOutput: BrotliAndGzip (default) = .br + .gz beside the built
+            files in the web root (BuildAsync only); None = no copies;
+            result.Compression says what was written and how long it took
     dx needs libgit2 to start: the library supplies it (Libgit2Directory)
     lower level: BackendMapper.Map, RustClientGenerator.Generate/WriteTo,
                  SharedRustCrate.ExtractTo
 
   FRONTEND (Rust)
     Cargo.toml: codebrix-webplatform = { path = "platform/codebrix-webplatform" }
-    Cargo.lock: the application's own; commit it
+    Cargo.lock: the application's own; commit it. The marker line (3rd
+                line) lets MaterializeAsync keep moved crates in step; no
+                marker: never touched, the stale entries are reported with
+                the `cargo update --offline -p ...` command
     after MaterializeAsync: cargo check / test / build, offline by default
     mod generated;
     use_hook(|| generated::configure_platform(on_refreshed, on_ended));
@@ -2220,6 +3774,9 @@ QUICK REFERENCE CARD
     browser::local_hour() / local_time(instant) / today() / navigate(path)
     signalr::session_ended() / session_started()   on sign-out / sign-in
     generated::api::<controller>::<action>(..).await -> ApiResult<T>
+    generated::api::<controller>::<file>_bytes(..).await -> ApiResult<Vec<u8>>
+                                    // a [WireFile] action; <file>_url(..) is
+                                    // its address
     generated::hubs::<Hub>::use_hub() / connect() / on_<message>() /
         use_<message>() / <method>(..).await / <stream>(..).next().await
     signalr::use_subscription(|| hub.on_x(..))   handlers may write signals

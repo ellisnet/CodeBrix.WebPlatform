@@ -54,6 +54,15 @@ public sealed class WidgetsController : SampleControllerBase
     [WireFile]
     public IActionResult Export([FromQuery] DateOnly? from, [FromQuery, WireRequired] string label) => throw new NotSupportedException();
 
+    [HttpGet("manual.pdf")]
+    [WireFile]
+    public IActionResult Manual() => throw new NotSupportedException();
+
+    [HttpGet("{id:guid}/picture.png")]
+    [WireFile]
+    [AllowAnonymous]
+    public IActionResult Picture(Guid id) => throw new NotSupportedException();
+
     [HttpGet("/status")]
     [AllowAnonymous]
     public ActionResult<Dictionary<string, string>> Status() => throw new NotSupportedException();

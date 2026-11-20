@@ -307,6 +307,7 @@ public class BackendMapperTests
         problems.Should().Contain(p => p.StartsWith("ThingsController.WrongErrorBody(token):") && p.Contains("header or a form"));
         problems.Should().Contain(p => p.StartsWith("ThingsController.WrongErrorBody:") && p.Contains("ApiProblem"));
         problems.Should().Contain(p => p.StartsWith("ThingsController.FileByPost:") && p.Contains("must answer GET"));
+        problems.Should().Contain(p => p.StartsWith("ThingsController.Report:") && p.Contains("'report_bytes'"));
         problems.Should().Contain(p => p.StartsWith("UntypedHub:") && p.Contains("Hub<TClient>"));
         problems.Should().Contain(p => p.StartsWith("UntypedHub:") && p.Contains("[WireHub("));
         problems.Should().Contain(p => p.StartsWith("ReplyHub:") && p.Contains("who may connect"));

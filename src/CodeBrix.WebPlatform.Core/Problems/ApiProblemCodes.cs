@@ -21,6 +21,12 @@ public static class ApiProblemCodes
     /// <summary>409: a duplicate value, or a change blocked by dependent data.</summary>
     public const string Conflict = "conflict";
 
+    /// <summary>403: the caller is known but may not do this.</summary>
+    public const string Forbidden = "forbidden";
+
+    /// <summary>403: a request to a hub that did not come from a page of this site.</summary>
+    public const string ForbiddenOrigin = "forbidden_origin";
+
     /// <summary>429: too many requests.</summary>
     public const string RateLimited = "rate_limited";
 

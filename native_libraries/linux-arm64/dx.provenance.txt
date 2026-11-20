@@ -6,11 +6,17 @@ This program was BUILT HERE, from the source in this repository, by:
 
 inside a digest-pinned manylinux container with the network DISABLED. Nothing
 was downloaded during the build: every crate came from the vendored tool
-crates.
+crates. It was built once from these sources (run 18); whether a second build
+gives the same bytes was NOT checked for this build.
 
 Source            : dioxus-cli 0.7.10 (upstream commit 57d6794ad60b949e5bd8aa282f6f8c3dc97a365e) with the
-                    repository's six patches (tools/dx-native-tools/vendoring/
-                    dioxus-cli/PATCH-NOTES.txt); every dx command is there
+                    repository's SEVEN patches (0007 swaps in the repository's patched copy of the
+                    bundle splitter, tools/dx-native-tools/sources/wasm-split-cli) (tools/dx-native-tools/vendoring/
+                    dioxus-cli/PATCH-NOTES.txt); every dx command is there.
+                    Patch 0003 carries the bundle-splitting loader part
+                    (2026-11-19): without esbuild, `__wasm_split.js` is copied
+                    beside the glue file as `__wasm_split-dxh<hash>.js` and the
+                    glue file's imports of it are pointed at that name
 Folder            : tools/dx-native-tools/sources/dioxus-cli (TOOL_SOURCES_DIR in
                     tools/dx-native-tools/linux/pins.env), read-only
 libgit2-sys       : the declarations-only stand-in tools/dx-native-tools/sources/
@@ -23,8 +29,10 @@ LINKS libgit2     : libgit2 1.9.7 as a SHARED LIBRARY, NEEDED as
                     reaches a build through that package
 --version         : "dioxus 0.7.10 (57d6794)" (with the library on LD_LIBRARY_PATH)
 
-Built             : 2026-11-19 07:22:19 UTC
-Build time        : 99s for this program (cargo, inside the container)
+Built             : 2026-11-19 20:48:32 UTC (run 18) - the THIRD rebuild of 2026-11-19:
+                    dioxus-cli patch 0007 and the patched wasm-split-cli (see
+                    BUILD-PROVENANCE.txt)
+Build time        : 92s for this program (cargo, inside the container)
 Build host        : Dell Precision 7770 laptop, LMDE 7, x86_64, podman 5.4.2
                     (the x86_64 laptop - CROSS-compiled for aarch64 and run under qemu)
 Network           : DISABLED during this build (interfaces: lo)
@@ -46,11 +54,11 @@ Command           : cargo build --release --locked --offline --target
                     then llvm-strip --strip-all
 
 File             : dx
-Size (as linked) : 76210680 bytes (not kept)
-Size (stripped)  : 53254768 bytes  <- the shipped file
-Size (gzip -9 -n): 20227965 bytes
-SHA256           : c955a19e129cea707af889c6960a4386d604d62a3d0d4b24efc393c0b54c6f25
-Build-id (sha1)  : 060311dd7b16156d11e1e431d930de15e9caa565
+Size (as linked) : 76207864 bytes (not kept)
+Size (stripped)  : 53264272 bytes  <- the shipped file
+Size (gzip -9 -n): 20238705 bytes
+SHA256           : 57d8ff5d2810583124811fee2acb1b328b18045e3400d2897f1cd7d3c8bd033b
+Build-id (sha1)  : 45c5e99a1ad60bb1c1cff11451aef2d39fa8cf98
 ELF              : ELF64, AArch64, DYN (Position-Independent Executable file)
 NEEDED           : libdl.so.2 libgit2-49e408b.so.1.9 libgcc_s.so.1 libpthread.so.0 libm.so.6 libc.so.6
 glibc floor      : 2.28 (allowed <= 2.28)

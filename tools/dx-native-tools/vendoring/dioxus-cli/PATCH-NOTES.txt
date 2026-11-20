@@ -25,6 +25,8 @@ The patches, in the order they apply:
   0005-no-prebuilt-openssl.patch            no prebuilt OpenSSL archive
   0006-release-build-without-wasm-opt.patch DX_SKIP_WASM_OPT: an unshrunk
                                             release build on request
+  0007-wasm-split-cli-call-graph.patch      wasm-split-cli -> the patched copy
+                                            (the splitter's call graph)
 
 
 0001-image-crate-encoders.patch
@@ -88,7 +90,13 @@ Drop when: never while this repository may not carry libgit2's source; on an
 What:   - src/build/web.rs - a missing `esbuild` no longer stops a web build.
         - src/opt/js.rs - when a JavaScript module is copied without esbuild,
           the `snippets` folder that wasm-bindgen writes beside it is copied
-          beside the output file.
+          beside the output file; and so is `__wasm_split.js`, the loader a
+          build with bundle splitting (`--wasm-split`) writes beside the glue
+          file, under a name that carries a hash of its content
+          (`__wasm_split-dxh<hash>.js`), with the glue file's `import ... from`
+          lines rewritten to that name (and nothing else: the glue file hands
+          the loader to the WebAssembly module under the ORIGINAL name, which
+          is the name that module imports).
 Why:    upstream requires the `esbuild` program for every web build and, when
         it is absent, downloads it from the npm registry. This repository
         installs no JavaScript tooling and its `dx` is built with downloads
@@ -100,6 +108,13 @@ Effect: the generated JavaScript is served as it was generated: one glue
         `dx` prints "esbuild binary path not set. Copying JS without
         processing." on every build; that is expected. If an `esbuild`
         program IS on PATH, `dx` uses it as upstream does.
+        BUNDLE SPLITTING: upstream leaves the loader to esbuild and removes
+        the folder it was written to, so without this part of the patch a
+        split release build ships a glue file that imports a file that is not
+        there, and the page never starts. The loader lists the addresses of
+        the split modules, which change with every build; the hash in its
+        name keeps a browser from reusing an older build's copy. The loader
+        has no imports of its own.
 Drop when: upstream makes esbuild optional.
 Status: kept by the repository owner's decision. The alternative, installing
         an `esbuild` program, was considered and declined.
@@ -182,6 +197,39 @@ Effect: unset (or "0" / "false"): exactly upstream's behaviour. Set: a
 Drop when: upstream offers a way to skip wasm-opt for a release build.
 Does not touch Cargo.toml or the lock file; on an upgrade it is re-applied
         with 0001 to 0003 and 0005, before 0004 is regenerated.
+
+
+0007-wasm-split-cli-call-graph.patch
+------------------------------------
+What:   - Cargo.toml - a [patch.crates-io.wasm-split-cli] section that replaces
+          the crates.io crate wasm-split-cli 0.7.10 (the WebAssembly bundle
+          splitter dx runs for `dx build --wasm-split`) with the repository's
+          patched copy of the same release in
+          tools/dx-native-tools/sources/wasm-split-cli (path
+          "../wasm-split-cli"). That copy is the crates.io archive in
+          tools/dx-native-tools/vendoring/wasm-split-cli plus the two patches
+          recorded there, checked by `LibraryChecker patches` like this tool.
+        - Cargo.lock - the wasm-split-cli entry loses its crates.io source and
+          checksum (cargo's own result of the substitution; nothing else
+          changes). Because of the substitution, `cargo vendor` does not take
+          the crates.io wasm-split-cli, so it was removed from sources/vendor.
+Why:    `dx build --wasm-split` panicked ("assertion failed:
+        !self.dead.contains(&id)") when a split route used a function that a
+        closure shim of the main module also calls - for example an input
+        field that reads its value, on a split page only. The splitter's call
+        graph is fixed in the patched copy; the bug, the evidence, the two
+        changes and upstream's status are in
+        tools/dx-native-tools/vendoring/wasm-split-cli/PATCH-NOTES.txt.
+Effect: a split build no longer panics there. The closure shims and what they
+        call stay in the main module; split routes still get their own code.
+        Builds without --wasm-split do not run the splitter and are
+        unaffected.
+Drop when: the splitter's patches can be dropped (see that file).
+Status: approved by the repository owner 2026-11-19 ("diagnose and fix").
+On an upgrade: the Cargo.toml part is re-applied with 0001 to 0003, 0005 and
+        0006, before 0004 is regenerated, and 0004's regeneration then
+        includes the lock change; the [patch] must name the wasm-split-cli
+        release the new dx asks for.
 
 
 BUILD SWITCHES (not a patch)

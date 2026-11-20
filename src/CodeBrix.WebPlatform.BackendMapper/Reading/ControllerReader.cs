@@ -78,18 +78,36 @@ internal sealed class ControllerReader
                 continue;
             }
 
-            if (!functionNames.Add(WireNames.SnakeCase(FunctionBaseName(method.Name))))
+            var baseName = WireNames.SnakeCase(FunctionBaseName(method.Name));
+            if (functionNames.Contains(baseName))
             {
                 _context.Problem($"{type.Name}.{method.Name}",
                     "another action of this controller has the same name; the generated functions would collide. Rename one of them.");
                 continue;
             }
 
+            var generatedNames = GeneratedFunctionNames(baseName, endpoint.IsFile);
+            var clash = generatedNames.FirstOrDefault(functionNames.Contains);
+            if (clash != null)
+            {
+                _context.Problem($"{type.Name}.{method.Name}",
+                    $"the generated function '{clash}' would have the same name as one generated for another action of this controller (a [WireFile] action gets '<name>_url' and '<name>_bytes' beside its own name). Rename one of the actions.");
+                continue;
+            }
+
+            functionNames.UnionWith(generatedNames);
             controller.EndpointList.Add(endpoint);
         }
 
         return controller;
     }
+
+    /// <summary>The names an action takes among the generated functions of its controller: its own, and for a
+    /// <c>[WireFile]</c> action also the address builder (<c>_url</c>) and the reader of the bytes (<c>_bytes</c>).</summary>
+    private static List<string> GeneratedFunctionNames(string baseName, bool isFile)
+        => isFile
+            ? new List<string> { baseName, baseName + "_url", baseName + "_bytes" }
+            : new List<string> { baseName };
 
     /// <summary>The method name a generated function is named after: without an <c>Async</c> suffix.</summary>
     internal static string FunctionBaseName(string methodName)

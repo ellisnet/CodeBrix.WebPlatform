@@ -10,7 +10,7 @@
 
   <ItemGroup>
     <!-- A local build until the package is published; see the nuget.config at the repository root. -->
-    <PackageReference Include="CodeBrix.WebPlatform.Core.ApacheLicenseForever" Version="1.0.323.861" />
+    <PackageReference Include="CodeBrix.WebPlatform.Core.ApacheLicenseForever" Version="1.0.324.250" />
   </ItemGroup>
 
 </Project>

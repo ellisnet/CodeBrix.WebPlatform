@@ -406,7 +406,7 @@ Source (in-repo, read-only; nothing fetched at build time)
 ------------------------------------------------------------------------------
 Folder           : $TOOL_SOURCES_DIR (TOOL_SOURCES_DIR in pins.env)
 dioxus-cli       : $DX_SRC_VERSION, upstream commit $DX_VCS_SHA, with the repository's
-                   six patches (tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt);
+                   recorded patches (tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt);
                    Cargo.lock sha256 $DX_LOCK_SHA
 libgit2-sys      : the stand-in codebrix-libgit2-sys $STANDIN_VERSION (declarations only, no C
                    code), lib.rs sha256 $STANDIN_LIBRS_SHA

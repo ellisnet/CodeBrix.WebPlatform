@@ -2,9 +2,7 @@ using System;
 using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
 using SilverAssertions;
-using WorkSite.Api.Hubs;
 using WorkSite.Api.Tests.Infrastructure;
 using Xunit;
 
@@ -105,40 +103,5 @@ public class HubOriginTests : IClassFixture<ApiFactory>
 
         //Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-    }
-
-    [Theory]
-    [InlineData("https", "worksite.example", "https://worksite.example", true)]
-    [InlineData("https", "worksite.example", "HTTPS://WorkSite.Example", true)]
-    [InlineData("https", "worksite.example:8443", "https://worksite.example:8443", true)]
-    [InlineData("https", "worksite.example", "http://worksite.example", false)]
-    [InlineData("https", "worksite.example", "https://worksite.example.evil.test", false)]
-    [InlineData("https", "worksite.example", "https://worksite.example/", false)]
-    [InlineData("https", "worksite.example", "", false)]
-    public void IsOwnOrigin_compares_the_scheme_and_host_exactly(string scheme, string host, string origin, bool expected)
-    {
-        //Arrange
-        var context = new DefaultHttpContext();
-        context.Request.Scheme = scheme;
-        context.Request.Host = new HostString(host);
-        context.Request.Headers.Origin = origin;
-
-        //Act
-        var result = HubOriginMiddleware.IsOwnOrigin(context.Request);
-
-        //Assert
-        result.Should().Be(expected);
-    }
-
-    [Fact]
-    public void IsOwnOrigin_refuses_a_request_without_the_header()
-    {
-        //Arrange
-        var context = new DefaultHttpContext();
-        context.Request.Scheme = "https";
-        context.Request.Host = new HostString("worksite.example");
-
-        //Assert
-        HubOriginMiddleware.IsOwnOrigin(context.Request).Should().BeFalse();
     }
 }

@@ -1,0 +1,22 @@
+diff -ruN a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1257,6 +1257,18 @@
+                 assert!(reloc_range.start >= range.start);
+                 assert!(reloc_range.end <= range.end);
+ 
++                // CodeBrix change: a type-index relocation (the signature immediate of a
++                // `call_indirect`) carries a TYPE index, not a symbol index. Upstream looked it
++                // up as a symbol and linked the caller to whatever symbol has that number - for
++                // example a closure `invoke` shim to a route's split export - so, with patch 0001
++                // in place, most of a split route's code would be pinned into the main module.
++                // The same skip is in upstream's pull request DioxusLabs/dioxus#5915 (closed
++                // unmerged). See tools/dx-native-tools/vendoring/wasm-split-cli/PATCH-NOTES.txt,
++                // patch 0002.
++                if entry.ty == wasmparser::RelocationType::TypeIndexLeb {
++                    continue;
++                }
++
+                 if let Some(target) = self.get_symbol_dep_node(entry.index as usize)? {
+                     let us = Node::Function(func_id);
+                     self.call_graph.entry(us).or_default().insert(target);

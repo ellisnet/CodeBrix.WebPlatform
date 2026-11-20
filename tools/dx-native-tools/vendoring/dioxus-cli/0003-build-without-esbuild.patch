@@ -20,7 +20,7 @@ diff -ruN a/src/build/web.rs b/src/build/web.rs
 diff -ruN a/src/opt/js.rs b/src/opt/js.rs
 --- a/src/opt/js.rs
 +++ b/src/opt/js.rs
-@@ -35,6 +35,37 @@
+@@ -35,6 +35,91 @@
          )
      })?;
  
@@ -34,9 +34,63 @@ diff -ruN a/src/opt/js.rs b/src/opt/js.rs
 +            if snippets.is_dir() {
 +                copy_dir_recursive(&snippets, &output_dir.join("snippets"))?;
 +            }
++
++            // CodeBrix change: a build with bundle splitting (`--wasm-split`) writes a second
++            // generated file, `__wasm_split.js` (the loader of the split modules), beside the
++            // glue file, which imports it. esbuild would have bundled it in as well. Without
++            // esbuild it is copied beside the output file under a name that carries a hash of
++            // its content - it lists the addresses of the split modules, so a browser must
++            // never reuse the copy of an older build - and the `import ... from` lines of the
++            // copied glue file are pointed at that name. (Only those lines: the glue file also
++            // uses the original name as the KEY under which it hands the loader to the
++            // WebAssembly module, which imports it by that name.)
++            let split_loader = source_dir.join(SPLIT_LOADER_FILE);
++            if split_loader.is_file() {
++                copy_split_loader(&split_loader, output_path, output_dir)?;
++            }
 +        }
 +    }
 +
++    Ok(())
++}
++
++/// The file `--wasm-split` writes beside the wasm-bindgen glue file (CodeBrix change).
++const SPLIT_LOADER_FILE: &str = "__wasm_split.js";
++
++/// Copy the bundle-splitting loader beside a copied glue file under a content-hashed name and
++/// rewrite the glue file's imports of it (CodeBrix change, see `process_js`).
++fn copy_split_loader(
++    split_loader: &Path,
++    glue_output: &Path,
++    output_dir: &Path,
++) -> anyhow::Result<()> {
++    let glue = std::fs::read_to_string(glue_output)
++        .with_context(|| format!("Failed to read copied JS: {}", glue_output.display()))?;
++    let imports = [
++        format!("from \"./{SPLIT_LOADER_FILE}\""),
++        format!("from './{SPLIT_LOADER_FILE}'"),
++    ];
++    if !imports.iter().any(|import| glue.contains(import.as_str())) {
++        return Ok(());
++    }
++
++    let loader = std::fs::read(split_loader)
++        .with_context(|| format!("Failed to read: {}", split_loader.display()))?;
++    // FNV-1a, 64 bit: a fixed function, so the same loader gets the same name in every build.
++    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
++    for byte in &loader {
++        hash ^= u64::from(*byte);
++        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
++    }
++    let hashed_name = format!("__wasm_split-dxh{hash:016x}.js");
++    let target = output_dir.join(&hashed_name);
++    std::fs::write(&target, &loader)
++        .with_context(|| format!("Failed to write the split loader to: {}", target.display()))?;
++    let rewritten = glue
++        .replace(imports[0].as_str(), &format!("from \"./{hashed_name}\""))
++        .replace(imports[1].as_str(), &format!("from './{hashed_name}'"));
++    std::fs::write(glue_output, rewritten)
++        .with_context(|| format!("Failed to rewrite copied JS: {}", glue_output.display()))?;
 +    Ok(())
 +}
 +

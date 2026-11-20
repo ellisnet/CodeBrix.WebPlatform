@@ -8,9 +8,11 @@ CodeBrix.WebPlatform ships two prebuilt Rust programs, one NuGet package per
 build platform, so that a developer no longer compiles them (and needs no C
 compiler for them):
 
-  dx            the Dioxus CLI - dioxus-cli 0.7.10 with the repository's six
-                patches, built with the cargo features no-downloads and
-                disable-telemetry; every dx command is there, `dx new`,
+  dx            the Dioxus CLI - dioxus-cli 0.7.10 with the repository's seven
+                patches (the seventh swaps in a patched copy of the bundle
+                splitter, sources/wasm-split-cli), built with the cargo
+                features no-downloads and disable-telemetry; every dx
+                command is there, `dx new`,
                 `dx init` and `dx components` included. dx LINKS libgit2
                 1.9.7 as a shared library, the prebuilt one the published
                 package CodeBrix.LibGit2.MitLicenseForever ships (see "dx
@@ -76,7 +78,7 @@ FOLDER MAP
 --------------------------------------------------------------------------------
   README.txt              this document
   sources/                THE TOOL SOURCES (read-only to every build):
-    dioxus-cli/           dioxus-cli 0.7.10 with the six patches applied
+    dioxus-cli/           dioxus-cli 0.7.10 with its recorded patches applied
     codebrix-libgit2-sys/ OURS: the declarations-only stand-in for the
                           libgit2-sys crate (README.txt there is its notice:
                           what was taken from upstream, the three changes)
@@ -173,7 +175,7 @@ THE FIVE RUNTIME IDENTIFIERS
   osx-x64      macos/build.sh x64           dx, wasm-bindgen         PENDING
 
 BUILT = built here, gated and adopted into ../../native_libraries/<rid>/.
-The adopted programs are the 2026-11-19 builds from the current sources: six
+The adopted programs are the 2026-11-19 builds from the current sources: seven
 patches, dx linked against libgit2 (BUILD-PROVENANCE.txt).
 PENDING = the script is written but has never been run; the owner runs it on
 his Windows x64 machine and his Apple Silicon Mac. Until then that platform's
@@ -242,7 +244,8 @@ ADOPTING A BUILT BINARY (any platform)
   3. Write <program>.provenance.txt beside each program from
      output/<rid>/BUILD-INFO.txt (model: ../../native_libraries/linux-x64/
      dx.provenance.txt).
-  4. Replace that RID's section of BUILD-PROVENANCE.txt.
+  4. Add an ADOPTED block at the top of BUILD-PROVENANCE.txt for the build
+     and mark in that RID's older section what it replaced.
   5. Build the package (dotnet build -c Release
      src/CodeBrix.WebPlatform.FrontendBuilder.<Platform>) and run
      tests/CodeBrix.WebPlatform.FrontendBuilder.HostTools.Tests ON THAT

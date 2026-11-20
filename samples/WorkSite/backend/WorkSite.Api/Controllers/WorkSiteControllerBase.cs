@@ -1,8 +1,8 @@
 using System;
+using CodeBrix.WebPlatform.Backend.Problems;
 using CodeBrix.WebPlatform.Core.Problems;
 using Microsoft.AspNetCore.Mvc;
 using WorkSite.Api.Auth;
-using WorkSite.Api.Infrastructure;
 using WorkSite.Api.Validation;
 
 namespace WorkSite.Api.Controllers;

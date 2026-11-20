@@ -27,6 +27,8 @@ vendored. The features offered, and why:
   - document  page title and stylesheet links
   - mounted   access to mounted elements
   - asset     the asset!() macro, which `dx` resolves at build time
+  - wasm-split  splitting the wasm bundle (brings in wasm-splitter,
+              wasm-split-macro and async-once-cell)
 The `devtools` feature (hot reload) is offered too: an application reaches it
 through a `devtools` feature of its own, which no shipping build enables.
 Not used, and not to be added: fullstack, server, ssr, liveview, desktop,

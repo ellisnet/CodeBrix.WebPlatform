@@ -1,0 +1,28 @@
+diff -ruN a/Cargo.lock b/Cargo.lock
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -7466,8 +7466,6 @@
+ [[package]]
+ name = "wasm-split-cli"
+ version = "0.7.10"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "28e4ed1e468d3d223a67299368fa9515ddd234f653b11e070f02109e9fdb0d10"
+ dependencies = [
+  "anyhow",
+  "clap",
+diff -ruN a/Cargo.toml b/Cargo.toml
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -524,3 +524,12 @@
+ # tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt.
+ [patch.crates-io.libgit2-sys]
+ path = "../codebrix-libgit2-sys"
++
++# CodeBrix change: the crates.io crate wasm-split-cli (dx's WebAssembly bundle splitter) is
++# replaced by the repository's patched copy of the same release, whose call graph is fixed:
++# without it, `dx build --wasm-split` can panic ("assertion failed: !self.dead.contains(&id)")
++# when a function a split module uses is also called by a closure shim the main module keeps.
++# See tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt (patch 0007) and
++# tools/dx-native-tools/vendoring/wasm-split-cli/PATCH-NOTES.txt.
++[patch.crates-io.wasm-split-cli]
++path = "../wasm-split-cli"

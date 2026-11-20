@@ -4,9 +4,9 @@ Samples, tools and other content in this repository that is not part of a NuGet
 package
 ================================================================================
 
-Eight projects in this repository are packable: src/CodeBrix.WebPlatform.Core,
-src/CodeBrix.WebPlatform.BackendMapper, src/CodeBrix.WebPlatform.FrontendBuilder
-and the five host-tools projects
+The packable projects of this repository are src/CodeBrix.WebPlatform.Core,
+src/CodeBrix.WebPlatform.Backend, src/CodeBrix.WebPlatform.BackendMapper,
+src/CodeBrix.WebPlatform.FrontendBuilder and the host-tools projects
 src/CodeBrix.WebPlatform.FrontendBuilder.<Platform>. Everything listed below
 exists to build, check, test, demonstrate or document them. None of it is
 included in a package.
@@ -15,6 +15,7 @@ included in a package.
 TEST PROJECTS
 =============
     tests/CodeBrix.WebPlatform.Core.Tests/
+    tests/CodeBrix.WebPlatform.Backend.Tests/
     tests/CodeBrix.WebPlatform.BackendMapper.Tests/
     tests/CodeBrix.WebPlatform.FrontendBuilder.Tests/
     tests/CodeBrix.WebPlatform.FrontendBuilder.HostTools.Tests/
@@ -33,6 +34,15 @@ every problem the mapper reports (its RefreshMistakesController, marked
 [WireIgnore], is read on its own by a test, so that the backend still lacks a
 session-refresh action). They are also the shortest complete examples of a
 declared (and an undeclared) contract, and AGENT-README.txt links to them.
+
+    tests/CodeBrix.WebPlatform.Backend.Tests.SampleBackend/
+
+A small backend that the Backend library's tests start in a test server:
+public and signed-in controllers, a hub, a stand-in sign-in scheme, routes
+outside /api (to prove that a controller wins over a frontend fallback), and
+the backend's own pipeline lines after UsePlatformBackend. It is the shortest
+example of a backend that makes the two Backend calls, and AGENT-README.txt
+links to it.
 
 
 THE SHARED RUST CRATE'S OWN TESTS
@@ -125,11 +135,35 @@ samples/WorkSite/THIRD-PARTY-NOTICES.txt; its site serves that file followed
 by the platform's notices.
 
 
+THE APPLICATIONSPLITTER SAMPLE APPLICATION
+==========================================
+    samples/ApplicationSplitter/
+
+A small application that proves the platform's frontend applications and
+code splitting: ONE backend (a few REST endpoints and one public hub; no
+database, no containers, no sign-in) and THREE frontend applications under
+frontends/ - home, which has no name and is served at the site root; sales,
+served below /sales and built with code splitting; and admin, served below
+/admin and built as one WebAssembly file. Its build program
+(build/ApplicationSplitter.BuildFrontend: check, generate, build, run, serve
+[name]) names the three applications; the backend names none and serves what
+the build wrote, through the Backend package.
+
+Like WorkSite it is a CONSUMING APPLICATION: it has its own solution
+(samples/ApplicationSplitter/ApplicationSplitter.slnx), is NOT referenced by
+CodeBrix.WebPlatform.slnx, consumes the libraries as NuGet packages from the
+temporary feed, and is not checked by the licence gate. It uses no
+third-party material beyond the platform's, so it has no notices file of its
+own. How it is built, run and checked:
+
+    samples/ApplicationSplitter/MAINTAINER-README.txt
+
+
 THE TEMPORARY PACKAGE FEED
 ==========================
     nuget.config
     temp-packages/          (git-ignored)
 
 Local builds of the CodeBrix packages that are not on nuget.org yet, for the
-root solution and for WorkSite. Temporary: see TEMPORARY PACKAGES in
-MAINTAINER-README.txt.
+root solution and for the samples (WorkSite and ApplicationSplitter).
+Temporary: see TEMPORARY PACKAGES in MAINTAINER-README.txt.

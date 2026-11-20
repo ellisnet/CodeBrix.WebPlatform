@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
+using CodeBrix.WebPlatform.Core.Applications;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using WorkSite.Api;
@@ -20,6 +21,25 @@ public class WorkSiteApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     /// <summary>The base address of every client: https, because the cookies are Secure.</summary>
     public static readonly Uri BaseAddress = new("https://localhost");
 
+    /// <summary>
+    /// The frontend manifest the frontend build writes into wwwroot for WorkSite's one application
+    /// (the default one, at the site root): exactly the text of the platform's
+    /// FrontendManifestWriter.Create(FrontendApplicationSet.SingleDefault). It is kept as written
+    /// text on purpose: the backend reads the manifest strictly, so if the build ever writes
+    /// something else, these tests stop at start-up instead of passing with a stale fake.
+    /// </summary>
+    public const string BuiltManifest =
+        "# Written by CodeBrix.WebPlatform.FrontendBuilder when the frontend is built: the frontend\n"
+        + "# applications in this folder, for the backend that serves them.\n"
+        + "# Build output: never edit it and do not commit it; every build writes it anew.\n"
+        + "written-by = \"CodeBrix.WebPlatform.FrontendBuilder\"\n"
+        + "format = 1\n"
+        + "\n"
+        + "[[application]]\n"
+        + "name = \"app\"\n"
+        + "default = true\n"
+        + "folder = \"\"\n";
+
     private readonly Dictionary<string, string> _settings = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The directory served as wwwroot.</summary>
@@ -31,7 +51,10 @@ public class WorkSiteApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     /// <summary>The hosting environment name.</summary>
     protected virtual string EnvironmentName => "Development";
 
-    /// <summary>Whether wwwroot holds a small fake frontend (index.html, a .wasm file, a stylesheet).</summary>
+    /// <summary>
+    /// Whether wwwroot holds a small fake built frontend (index.html, a .wasm file, a stylesheet
+    /// and the frontend manifest, as the frontend build leaves them).
+    /// </summary>
     protected virtual bool WithFrontendFiles => true;
 
     /// <summary>Whether the factory gets a database and a valid configuration.</summary>
@@ -64,6 +87,8 @@ public class WorkSiteApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             await File.WriteAllBytesAsync(Path.Combine(WebRoot, "app.wasm"), [0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00],
                 TestContext.Current.CancellationToken);
             await File.WriteAllTextAsync(Path.Combine(WebRoot, "styles.css"), "body { margin: 0; }",
+                TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(Path.Combine(WebRoot, FrontendManifest.FileName), BuiltManifest,
                 TestContext.Current.CancellationToken);
         }
 

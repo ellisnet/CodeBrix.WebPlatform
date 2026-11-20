@@ -48,4 +48,25 @@ public class ShrinkPlanTests
         ShrinkPlan.SkipVariable.Should().Be("DX_SKIP_WASM_OPT");
         ShrinkPlan.SkipConfirmationText.Should().Be("Skipping wasm-opt at the caller's request");
     }
+
+    [Theory]
+    [InlineData(FrontendConfiguration.Release, null)]
+    [InlineData(FrontendConfiguration.Release, false)]
+    [InlineData(FrontendConfiguration.Debug, null)]
+    [InlineData(FrontendConfiguration.Debug, false)]
+    [InlineData(FrontendConfiguration.Debug, true)]
+    public void Decide_lets_dx_shrink_a_split_build_whatever_the_configuration_and_the_option(FrontendConfiguration configuration, bool? option)
+    {
+        //Act
+        var plan = ShrinkPlan.Decide(configuration, option, wasmSplit: true);
+
+        //Assert
+        plan.Shrink.Should().BeTrue();
+        plan.DxShrinks.Should().BeTrue();
+        plan.LibraryShrinks.Should().BeFalse("wasm-opt must not be run a second time over the pieces of a split bundle");
+        plan.SkipRequested.Should().BeFalse();
+        plan.NeedsWasmOpt.Should().BeTrue();
+        plan.SkipVariableValue.Should().Be("0");
+        plan.DxRanWasmOpt(configuration, "Skipping wasm-opt at the caller's request").Should().BeTrue();
+    }
 }

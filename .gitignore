@@ -460,6 +460,24 @@ samples/WorkSite/frontend/platform/
 samples/WorkSite/frontend/src/generated/
 samples/WorkSite/frontend/.cargo/
 
+# ---------------------------------------------------------------------------
+# samples/ApplicationSplitter
+# ---------------------------------------------------------------------------
+# Rust build output of the three frontend applications.
+samples/ApplicationSplitter/frontends/*/target/
+# Tailwind's generated stylesheets (dx rewrites them on every build).
+samples/ApplicationSplitter/frontends/*/assets/tailwind.css
+# The built frontend applications and the frontend manifest, copied into the backend's
+# static-file folder by the build program.
+samples/ApplicationSplitter/backend/ApplicationSplitter.Api/wwwroot/*
+!samples/ApplicationSplitter/backend/ApplicationSplitter.Api/wwwroot/.gitkeep
+# Build output written into each frontend when it is materialized (the platform's
+# FrontendBuilder library): the shared crate and the platform's crates (platform/), the client
+# code generated from the backend, and the cargo configuration that points cargo at the crates.
+samples/ApplicationSplitter/frontends/*/platform/
+samples/ApplicationSplitter/frontends/*/src/generated/
+samples/ApplicationSplitter/frontends/*/.cargo/
+
 # The vendored crate folders and the build tools' source are exact copies of what crates.io
 # published (the dioxus-cli source with the recorded patches). Every vendored file has a recorded
 # checksum and cargo refuses to build when one is missing, so NOTHING above may hide a file inside

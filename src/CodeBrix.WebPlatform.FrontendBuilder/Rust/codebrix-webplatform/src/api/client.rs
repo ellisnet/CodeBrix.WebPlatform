@@ -6,7 +6,10 @@
 //!   state (anything but GET/HEAD);
 //! - on 401 from a route that needs sign-in: one refresh call (shared by every request that is
 //!   waiting on it) and one retry; if that fails too the application is told the session ended;
-//! - non-success answers parsed into [`ApiError`];
+//! - a success answer read as JSON ([`send_json`]), as nothing ([`send_empty`]) or as the bytes
+//!   it is ([`send_bytes`], for a file the frontend reads itself); a non-success answer parsed
+//!   into [`ApiError`] whichever was asked, because an error is always the standard JSON problem
+//!   body;
 //! - a note of the state-changing requests in flight (any of them may set or clear the session
 //!   cookies), which the SignalR client waits for before it negotiates a hub connection.
 //!
@@ -58,9 +61,43 @@ pub struct ClientConfig {
     pub on_session_ended: Option<Rc<dyn Fn()>>,
 }
 
+/// How [`send_once`] reads an answer's body.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BodyKind {
+    /// As text: JSON, or nothing the caller reads.
+    Text,
+    /// As the bytes it is: a file.
+    Bytes,
+}
+
+/// An answer's body, read the way its [`BodyKind`] asked.
+#[derive(Debug, PartialEq)]
+enum RawBody {
+    Text(String),
+    Bytes(Vec<u8>),
+}
+
+impl RawBody {
+    /// The body as text; bytes that are not UTF-8 are replaced, as when an answer is read as text.
+    fn into_text(self) -> String {
+        match self {
+            RawBody::Text(text) => text,
+            RawBody::Bytes(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+        }
+    }
+
+    /// The body as bytes.
+    fn into_bytes(self) -> Vec<u8> {
+        match self {
+            RawBody::Text(text) => text.into_bytes(),
+            RawBody::Bytes(bytes) => bytes,
+        }
+    }
+}
+
 struct RawResponse {
     status: u16,
-    body: String,
+    body: RawBody,
 }
 
 thread_local! {
@@ -83,8 +120,8 @@ fn changes_state(method: &Method) -> bool {
     *method != Method::GET && *method != Method::HEAD
 }
 
-/// Sends one request and reads the whole answer.
-async fn send_once(method: &Method, path: &str, body: Option<&str>) -> Result<RawResponse, ApiError> {
+/// Sends one request and reads the whole answer, its body as `read` asks.
+async fn send_once(method: &Method, path: &str, body: Option<&str>, read: BodyKind) -> Result<RawResponse, ApiError> {
     let url = format!("{}{}", browser::origin(), path);
     let mut request = CLIENT
         .with(|client| client.request(method.clone(), url))
@@ -109,7 +146,10 @@ async fn send_once(method: &Method, path: &str, body: Option<&str>) -> Result<Ra
         request.send().await.map_err(|_| ApiError::Network)?
     };
     let status = response.status().as_u16();
-    let body = response.text().await.map_err(|_| ApiError::Network)?;
+    let body = match read {
+        BodyKind::Text => RawBody::Text(response.text().await.map_err(|_| ApiError::Network)?),
+        BodyKind::Bytes => RawBody::Bytes(response.bytes().await.map_err(|_| ApiError::Network)?.into()),
+    };
     Ok(RawResponse { status, body })
 }
 
@@ -238,10 +278,10 @@ pub async fn refresh_session() -> bool {
             let worker = slot.clone();
             spawn_forever(async move {
                 let config = config();
-                let ok = match send_once(&Method::POST, &refresh_path, None).await {
+                let ok = match send_once(&Method::POST, &refresh_path, None, BodyKind::Text).await {
                     Ok(response) if (200..300).contains(&response.status) => {
                         if let Some(on_refreshed) = &config.on_refreshed {
-                            on_refreshed(&response.body);
+                            on_refreshed(&response.body.into_text());
                         }
                         true
                     }
@@ -262,15 +302,16 @@ fn session_ended() {
     }
 }
 
-/// Runs a request with the refresh-and-retry rule. Returns the body of a 2xx answer.
-async fn execute(method: Method, path: &str, body: Option<String>, auth: Auth) -> Result<String, ApiError> {
-    let first = send_once(&method, path, body.as_deref()).await?;
+/// Runs a request with the refresh-and-retry rule. Returns the body of a 2xx answer, read as
+/// `read` asks.
+async fn execute(method: Method, path: &str, body: Option<String>, auth: Auth, read: BodyKind) -> Result<RawBody, ApiError> {
+    let first = send_once(&method, path, body.as_deref(), read).await?;
     let response = if first.status == 401 && auth == Auth::Session {
         if !refresh_session().await {
             session_ended();
             return Err(ApiError::Unauthorized);
         }
-        let second = send_once(&method, path, body.as_deref()).await?;
+        let second = send_once(&method, path, body.as_deref(), read).await?;
         if second.status == 401 {
             session_ended();
             return Err(ApiError::Unauthorized);
@@ -279,10 +320,16 @@ async fn execute(method: Method, path: &str, body: Option<String>, auth: Auth) -
     } else {
         first
     };
+    outcome(response)
+}
+
+/// What the final answer of a request means: its body for a 2xx, otherwise the [`ApiError`] its
+/// problem body describes (read as text however the body was read).
+fn outcome(response: RawResponse) -> Result<RawBody, ApiError> {
     if (200..300).contains(&response.status) {
         Ok(response.body)
     } else {
-        Err(ApiError::from_response(response.status, &response.body))
+        Err(ApiError::from_response(response.status, &response.body.into_text()))
     }
 }
 
@@ -293,13 +340,21 @@ pub fn body<B: Serialize>(value: &B) -> Result<String, ApiError> {
 
 /// Sends a request and reads the JSON answer of a success as `T`.
 pub async fn send_json<T: DeserializeOwned>(method: Method, path: &str, body: Option<String>, auth: Auth) -> Result<T, ApiError> {
-    let text = execute(method, path, body, auth).await?;
+    let text = execute(method, path, body, auth, BodyKind::Text).await?.into_text();
     serde_json::from_str(&text).map_err(|_| ApiError::Decode)
 }
 
 /// Sends a request whose success answer carries nothing the caller reads (a 204, for example).
 pub async fn send_empty(method: Method, path: &str, body: Option<String>, auth: Auth) -> Result<(), ApiError> {
-    execute(method, path, body, auth).await.map(|_| ())
+    execute(method, path, body, auth, BodyKind::Text).await.map(|_| ())
+}
+
+/// Sends a request and returns the body of a success answer as the bytes it is (a file the
+/// frontend reads itself, such as model or glyph data). Everything else is as for [`send_json`]:
+/// the request marker, the session refresh and retry, the note of a state change in flight, and
+/// an error answer (the standard JSON problem body) turned into an [`ApiError`].
+pub async fn send_bytes(method: Method, path: &str, body: Option<String>, auth: Auth) -> Result<Vec<u8>, ApiError> {
+    execute(method, path, body, auth, BodyKind::Bytes).await.map(RawBody::into_bytes)
 }
 
 /// Puts the client's settings back (tests share threads when run with one test thread).
@@ -355,5 +410,49 @@ mod tests {
     #[test]
     fn body_writes_json() {
         assert_eq!(body(&vec![1, 2]).unwrap(), "[1,2]");
+    }
+
+    #[test]
+    fn a_success_read_as_bytes_keeps_every_byte() {
+        let bytes = vec![0x00, 0xff, 0xfe, 0x80, b'{', 0x0a];
+        let response = RawResponse { status: 200, body: RawBody::Bytes(bytes.clone()) };
+        assert_eq!(outcome(response).unwrap().into_bytes(), bytes);
+    }
+
+    #[test]
+    fn a_success_read_as_text_is_the_text() {
+        let response = RawResponse { status: 201, body: RawBody::Text("[1,2]".to_string()) };
+        assert_eq!(outcome(response).unwrap().into_text(), "[1,2]");
+    }
+
+    #[test]
+    fn a_failure_read_as_bytes_is_the_problem_its_body_describes() {
+        let problem = r#"{"title":"That item no longer exists.","status":404,"code":"not_found"}"#;
+        let response = RawResponse { status: 404, body: RawBody::Bytes(problem.as_bytes().to_vec()) };
+        let error = outcome(response).unwrap_err();
+        assert_eq!(error, ApiError::from_response(404, problem));
+        assert!(error.is_not_found());
+        assert_eq!(error.message(), "That item no longer exists.");
+    }
+
+    #[test]
+    fn an_empty_401_read_as_bytes_means_the_session_is_gone() {
+        let response = RawResponse { status: 401, body: RawBody::Bytes(Vec::new()) };
+        assert_eq!(outcome(response).unwrap_err(), ApiError::Unauthorized);
+    }
+
+    #[test]
+    fn a_failure_whose_body_is_not_text_gets_a_readable_default() {
+        let response = RawResponse { status: 500, body: RawBody::Bytes(vec![0xff, 0x00, 0xfe]) };
+        let error = outcome(response).unwrap_err();
+        assert_eq!(error.code(), "server_error");
+        assert_eq!(error.message(), "The server had a problem. Try again in a moment.");
+    }
+
+    #[test]
+    fn a_body_converts_between_text_and_bytes() {
+        assert_eq!(RawBody::Text("ab".to_string()).into_bytes(), b"ab".to_vec());
+        assert_eq!(RawBody::Bytes(b"ab".to_vec()).into_text(), "ab");
+        assert_eq!(RawBody::Bytes(vec![b'a', 0xff]).into_text(), "a\u{fffd}");
     }
 }

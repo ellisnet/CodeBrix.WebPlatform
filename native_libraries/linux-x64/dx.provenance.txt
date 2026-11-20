@@ -6,11 +6,17 @@ This program was BUILT HERE, from the source in this repository, by:
 
 inside a digest-pinned manylinux container with the network DISABLED. Nothing
 was downloaded during the build: every crate came from the vendored tool
-crates. It was built twice from scratch on 2026-11-19 with byte-identical results.
+crates. It was built three times on 2026-11-19 with byte-identical results:
+runs 16 and 17, and a re-build at 23:28 UTC, after the adoption, as a check.
 
 Source            : dioxus-cli 0.7.10 (upstream commit 57d6794ad60b949e5bd8aa282f6f8c3dc97a365e) with the
-                    repository's six patches (tools/dx-native-tools/vendoring/
-                    dioxus-cli/PATCH-NOTES.txt); every dx command is there
+                    repository's SEVEN patches (0007 swaps in the repository's patched copy of the
+                    bundle splitter, tools/dx-native-tools/sources/wasm-split-cli) (tools/dx-native-tools/vendoring/
+                    dioxus-cli/PATCH-NOTES.txt); every dx command is there.
+                    Patch 0003 carries the bundle-splitting loader part
+                    (2026-11-19): without esbuild, `__wasm_split.js` is copied
+                    beside the glue file as `__wasm_split-dxh<hash>.js` and the
+                    glue file's imports of it are pointed at that name
 Folder            : tools/dx-native-tools/sources/dioxus-cli (TOOL_SOURCES_DIR in
                     tools/dx-native-tools/linux/pins.env), read-only
 libgit2-sys       : the declarations-only stand-in tools/dx-native-tools/sources/
@@ -23,8 +29,10 @@ LINKS libgit2     : libgit2 1.9.7 as a SHARED LIBRARY, NEEDED as
                     reaches a build through that package
 --version         : "dioxus 0.7.10 (57d6794)" (with the library on LD_LIBRARY_PATH)
 
-Built             : 2026-11-19 07:18:02 UTC
-Build time        : 98s for this program (cargo, inside the container)
+Built             : 2026-11-19 20:44:32 UTC (run 17; run 16 and the re-build of 23:28 UTC
+                    gave the same bytes) - the THIRD rebuild of 2026-11-19: dioxus-cli
+                    patch 0007 and the patched wasm-split-cli (see BUILD-PROVENANCE.txt)
+Build time        : 89s for this program (cargo, inside the container)
 Build host        : Dell Precision 7770 laptop, LMDE 7, x86_64, podman 5.4.2
                     (the x86_64 laptop itself - native)
 Network           : DISABLED during this build (interfaces: lo)
@@ -46,11 +54,11 @@ Command           : cargo build --release --locked --offline --target
                     then llvm-strip --strip-all
 
 File             : dx
-Size (as linked) : 77192208 bytes (not kept)
-Size (stripped)  : 59518520 bytes  <- the shipped file
-Size (gzip -9 -n): 21799353 bytes
-SHA256           : fd89b04855e604d364b8b8b0c8ce43212af2161a94a6bb54f17f524c3d761865
-Build-id (sha1)  : d03e9dd642319160e797574615db61029bb842f3
+Size (as linked) : 77245640 bytes (not kept)
+Size (stripped)  : 59540120 bytes  <- the shipped file
+Size (gzip -9 -n): 21797290 bytes
+SHA256           : e939e876db1ab645c47375f26f476611ac8e2d95bdbd6893037fa2e77133c9eb
+Build-id (sha1)  : ab15a554bd3e48172dd0483af069f77ae40112b1
 ELF              : ELF64, Advanced Micro Devices X86-64, DYN (Position-Independent Executable file)
 NEEDED           : libdl.so.2 libgit2-49e408b.so.1.9 libgcc_s.so.1 libpthread.so.0 libm.so.6 libc.so.6 ld-linux-x86-64.so.2
 glibc floor      : 2.28 (allowed <= 2.28)
@@ -67,11 +75,14 @@ Gate              : ELF class/machine, stripped, no RPATH/RUNPATH/TEXTREL,
                     RUN on the build host (LMDE 7, glibc 2.41) with libgit2 on LD_LIBRARY_PATH, and
                     WITHOUT it (does not start: exit 127, the loader names
                     libgit2-49e408b.so.1.9); the functional gate: the new dx + wasm-bindgen
-                    built a scratch copy of the WorkSite frontend (.wasm 1,827,964 bytes, 17
-                    site files), the adopted 2026-11-18 tools built a fresh copy of the same
-                    snapshot at the same path BYTE-IDENTICALLY, a DX_SKIP_WASM_OPT release
-                    build with no wasm-opt succeeded (.wasm 2,069,920 bytes), and `dx new`
-                    from a local git template with no git program on PATH succeeded - ALL PASSED
+                    built a scratch copy of the WorkSite frontend (.wasm 1,829,873 bytes, 17
+                    site files), the tools then in native_libraries/linux-x64 built the same
+                    copy at the same path BYTE-IDENTICALLY, a DX_SKIP_WASM_OPT
+                    release build with no wasm-opt succeeded (.wasm 2,071,909 bytes), and
+                    `dx new` from a local git template with no git program on PATH
+                    succeeded - ALL PASSED. The WorkSite frontend is not split, so the gate
+                    does not exercise the bundle-splitting change; it was proved separately
+                    (BUILD-PROVENANCE.txt)
 
 LICENCE AND NOTICES FILES BESIDE THIS ONE:
   LICENSE-Dioxus.txt              dx's licence (Apache-2.0 text; dioxus-cli is

@@ -147,6 +147,50 @@ public class RustClientGeneratorTests
     }
 
     [Fact]
+    public void Generate_writes_a_bytes_reader_beside_the_address_builder_of_a_file_endpoint()
+    {
+        //Act
+        var api = File("api.rs");
+
+        //Assert
+        api.Should().Contain("        format!(\"/api/Widgets/export.csv{}\", query_string)\n    }\n\n    /// `GET /api/Widgets/export.csv` (needs sign-in), the file read as bytes.\n    pub async fn export_bytes(from: Option<Date>, label: &str) -> ApiResult<Vec<u8>> {\n        let query_string = QueryString::new().push_opt(\"from\", from).push(\"label\", label).build();\n        client::send_bytes(Method::GET, &format!(\"/api/Widgets/export.csv{}\", query_string), None, Auth::Session).await\n    }");
+    }
+
+    [Fact]
+    public void Generate_passes_a_literal_path_to_the_bytes_reader_and_an_owned_one_to_the_address_builder()
+    {
+        //Act
+        var api = File("api.rs");
+
+        //Assert
+        api.Should().Contain("    pub fn manual_url() -> String {\n        \"/api/Widgets/manual.pdf\".to_string()\n    }");
+        api.Should().Contain("    pub async fn manual_bytes() -> ApiResult<Vec<u8>> {\n        client::send_bytes(Method::GET, \"/api/Widgets/manual.pdf\", None, Auth::Session).await\n    }");
+    }
+
+    [Fact]
+    public void Generate_gives_the_bytes_reader_the_route_values_and_sign_in_rule_of_its_action()
+    {
+        //Act
+        var api = File("api.rs");
+
+        //Assert
+        api.Should().Contain("    /// The address of `GET /api/Widgets/{id}/picture.png` (open to everyone), a file for the browser to fetch.\n    pub fn picture_url(id: &str) -> String {\n        format!(\"/api/Widgets/{}/picture.png\", encode(id))\n    }");
+        api.Should().Contain("    /// `GET /api/Widgets/{id}/picture.png` (open to everyone), the file read as bytes.\n    pub async fn picture_bytes(id: &str) -> ApiResult<Vec<u8>> {\n        client::send_bytes(Method::GET, &format!(\"/api/Widgets/{}/picture.png\", encode(id)), None, Auth::Public).await\n    }");
+    }
+
+    [Fact]
+    public void Generate_writes_no_bytes_reader_for_an_endpoint_that_answers_json()
+    {
+        //Act
+        var api = File("api.rs");
+
+        //Assert
+        api.Should().NotContain("pub async fn get_bytes");
+        api.Should().NotContain("pub async fn list_bytes");
+        api.Should().NotContain("send_bytes(Method::POST");
+    }
+
+    [Fact]
     public void Generate_writes_a_descriptor_and_a_type_per_hub()
     {
         //Act

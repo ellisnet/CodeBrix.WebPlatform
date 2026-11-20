@@ -27,4 +27,16 @@ internal sealed class FunctionView
 
     /// <summary><c>None</c> or <c>Some(client::body(body)?)</c>.</summary>
     public string Body { get; set; }
+
+    /// <summary>For a file endpoint: the name of the function that reads the file as bytes; otherwise empty.</summary>
+    public string BytesName { get; set; } = string.Empty;
+
+    /// <summary>For a file endpoint: the doc line of the function that reads the file as bytes; otherwise empty.</summary>
+    public string BytesDoc { get; set; } = string.Empty;
+
+    /// <summary>For a file endpoint: the Rust type that function's <c>ApiResult</c> carries; otherwise empty.</summary>
+    public string BytesReturnType { get; set; } = string.Empty;
+
+    /// <summary>For a file endpoint: the path argument that function hands the shared client (a string literal, or a borrowed <c>format!</c> call); otherwise empty.</summary>
+    public string BytesPath { get; set; } = string.Empty;
 }

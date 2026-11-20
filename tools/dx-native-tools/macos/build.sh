@@ -219,7 +219,7 @@ build_slice() {
         echo "Xcode            : $XCODE, SDK macosx $SDK_VERSION, $CLANG_VERSION"
         echo "Rust             : $RUSTC_VERSION / $CARGO_VERSION"
         echo "Deployment target: MACOSX_DEPLOYMENT_TARGET=$minos (checked against minos)"
-        echo "Sources          : $TOOL_SOURCES_DIR (dioxus-cli $DX_CRATE_VERSION, upstream commit $DX_GIT_SHA, six patches; wasm-bindgen-cli $WASM_BINDGEN_VERSION)"
+        echo "Sources          : $TOOL_SOURCES_DIR (dioxus-cli $DX_CRATE_VERSION, upstream commit $DX_GIT_SHA, the recorded patches; wasm-bindgen-cli $WASM_BINDGEN_VERSION)"
         echo "libgit2          : $LIBGIT2_VERSION from $LIBGIT2_PACKAGE_ID $LIBGIT2_PACKAGE_VERSION (nupkg sha256 $LIBGIT2_NUPKG_SHA256), linked as $LIBGIT2_INSTALL_NAME_MACOS; not shipped by this build"
         echo "RUSTFLAGS        : --remap-path-prefix for the sources, the build root and \$HOME"
         echo "Stripping        : strip, then codesign --force --sign - (ad hoc)"

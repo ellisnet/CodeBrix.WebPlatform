@@ -13,6 +13,8 @@
     <File Path="THIRD-PARTY-NOTICES.txt" />
   </Folder>
   <Folder Name="/Tests/">
+    <Project Path="tests/CodeBrix.WebPlatform.Backend.Tests/CodeBrix.WebPlatform.Backend.Tests.csproj" />
+    <Project Path="tests/CodeBrix.WebPlatform.Backend.Tests.SampleBackend/CodeBrix.WebPlatform.Backend.Tests.SampleBackend.csproj" />
     <Project Path="tests/CodeBrix.WebPlatform.BackendMapper.Tests/CodeBrix.WebPlatform.BackendMapper.Tests.csproj" />
     <Project Path="tests/CodeBrix.WebPlatform.BackendMapper.Tests.BrokenBackend/CodeBrix.WebPlatform.BackendMapper.Tests.BrokenBackend.csproj" />
     <Project Path="tests/CodeBrix.WebPlatform.BackendMapper.Tests.SampleBackend/CodeBrix.WebPlatform.BackendMapper.Tests.SampleBackend.csproj" />
@@ -21,6 +23,7 @@
     <Project Path="tests/CodeBrix.WebPlatform.FrontendBuilder.Tests/CodeBrix.WebPlatform.FrontendBuilder.Tests.csproj" />
     <Project Path="tests/CodeBrix.WebPlatform.LibraryChecker.Tests/CodeBrix.WebPlatform.LibraryChecker.Tests.csproj" />
   </Folder>
+  <Project Path="src/CodeBrix.WebPlatform.Backend/CodeBrix.WebPlatform.Backend.csproj" />
   <Project Path="src/CodeBrix.WebPlatform.BackendMapper/CodeBrix.WebPlatform.BackendMapper.csproj" />
   <Project Path="src/CodeBrix.WebPlatform.Core/CodeBrix.WebPlatform.Core.csproj" />
   <Project Path="libs/CodeBrix.WebPlatform.LibraryChecker/CodeBrix.WebPlatform.LibraryChecker.csproj" />

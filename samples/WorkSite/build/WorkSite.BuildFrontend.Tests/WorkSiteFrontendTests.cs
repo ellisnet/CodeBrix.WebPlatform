@@ -5,12 +5,12 @@ using System.Threading.Tasks;
 using CodeBrix.WebPlatform.BackendMapper;
 using CodeBrix.WebPlatform.BackendMapper.Model;
 using CodeBrix.WebPlatform.BackendMapper.Rust;
+using CodeBrix.WebPlatform.Core.Mapping;
 using CodeBrix.WebPlatform.FrontendBuilder;
 using CodeBrix.WebPlatform.FrontendBuilder.Crates;
 using CodeBrix.WebPlatform.FrontendBuilder.Prerequisites;
 using CodeBrix.WebPlatform.FrontendBuilder.Tools;
 using SilverAssertions;
-using WorkSite.Api.Infrastructure;
 using WorkSite.BuildFrontend.Tests.Helpers;
 using Xunit;
 
@@ -83,7 +83,7 @@ public class WorkSiteFrontendTests
         var map = MapBackend();
 
         //Assert
-        map.RequestMarker.Should().Be(RequestedWithMiddleware.HeaderValue);
+        map.RequestMarker.Should().Be(WireRequestMarkerAttribute.GetValue(typeof(WorkSite.Api.Program).Assembly));
         map.SessionRefresh.ActionName.Should().Be("Refresh");
         map.SessionRefresh.RouteTemplate.Should().Be("/api/auth/refresh");
         map.SessionRefreshController.Name.Should().Be("Auth");

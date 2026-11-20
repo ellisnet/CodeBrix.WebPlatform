@@ -39,6 +39,22 @@ public static class PlatformCrates
     /// </summary>
     public const string StampFileName = ".codebrix-platform-crates";
 
+    /// <summary>
+    /// The start of the marker line: a lock file whose leading comment lines include a line that
+    /// starts with this text is kept in step by <see cref="PlatformFrontend.MaterializeAsync"/>.
+    /// The rest of the sentence may be reworded in a later version; this start stays.
+    /// </summary>
+    public const string LockFileMarkerPrefix = "# CodeBrix.WebPlatform keeps this file in step";
+
+    /// <summary>
+    /// The marker line <see cref="PlatformFrontend.MaterializeAsync"/> writes as the THIRD line of
+    /// a starting <c>Cargo.lock</c>, directly after cargo's own two header comment lines (cargo
+    /// keeps a comment there when it rewrites the file). While the line is there, Materialize
+    /// updates exactly the entries that name a version of a crate the vendor folder no longer
+    /// holds; removing the line hands the file to the developer.
+    /// </summary>
+    public const string LockFileMarker = LockFileMarkerPrefix + " with the platform's crates. Remove this line to manage the file yourself.";
+
     private const string LockResourceName = "CodeBrix.WebPlatform.FrontendBuilder.PlatformCrates/Cargo.lock";
 
     /// <summary>
@@ -85,8 +101,8 @@ public static class PlatformCrates
     /// <summary>
     /// The platform's <c>Cargo.lock</c>: the versions of the platform's crates.
     /// <see cref="PlatformFrontend.MaterializeAsync"/> writes it into a frontend that has no lock
-    /// file yet, so that cargo starts from the platform's versions; from then on the lock file is
-    /// the application's own.
+    /// file yet, so that cargo starts from the platform's versions, with <see cref="LockFileMarker"/>
+    /// added as its third line; from then on the lock file is the application's own.
     /// </summary>
     public static string LockFileText
     {
@@ -100,31 +116,21 @@ public static class PlatformCrates
     }
 
     /// <summary>
-    /// Makes a folder hold exactly the crates of an archive. Nothing is done when the folder's
-    /// stamp says it was written from the same archive; otherwise the archive is unpacked next
-    /// to it and swapped in, and the stamp is written last.
+    /// Makes a folder hold exactly the platform's crates and the crates the registered bundles
+    /// add. Nothing is done when the folder's stamp says it was written from the same archives;
+    /// otherwise everything is unpacked next to it and swapped in, and the stamp is written last.
     /// </summary>
-    /// <param name="archive">The archive.</param>
+    /// <param name="merge">The platform's archive and the checked bundles.</param>
     /// <param name="directory">The vendor folder; it belongs to this method.</param>
     /// <returns>True when the folder was (re)written.</returns>
-    /// <exception cref="FrontendBuildException">The archive is missing or cannot be read, or the
-    /// folder holds something this library did not write.</exception>
-    internal static bool ExtractTo(string archive, string directory)
+    /// <exception cref="FrontendBuildException">An archive cannot be read, or the folder holds
+    /// something this library did not write.</exception>
+    internal static bool ExtractTo(CrateBundleMerge merge, string directory)
     {
-        if (!File.Exists(archive))
-        {
-            throw new FrontendBuildException(MissingMessage(archive));
-        }
-
         var root = Path.GetFullPath(directory);
         var stamp = Path.Combine(root, StampFileName);
         RequireOwned(root);
-        string hash;
-        using (var stream = File.OpenRead(archive))
-        {
-            hash = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
-        }
-
+        var hash = merge.Stamp;
         if (File.Exists(stamp) && string.Equals(File.ReadAllText(stamp).Trim(), hash, StringComparison.Ordinal))
         {
             return false;
@@ -135,12 +141,12 @@ public static class PlatformCrates
         var staging = Path.Combine(parent, "." + Path.GetFileName(root) + "-" + Guid.NewGuid().ToString("N"));
         try
         {
-            ZipFile.ExtractToDirectory(archive, staging);
+            merge.ExtractInto(staging);
         }
         catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
         {
             DeleteQuietly(staging);
-            throw new FrontendBuildException($"The platform's crates could not be unpacked from '{archive}': {exception.Message}", exception);
+            throw new FrontendBuildException($"The crates could not be unpacked into '{root}' (from '{merge.PlatformArchive}' and the registered crate bundles): {exception.Message}", exception);
         }
 
         File.WriteAllText(Path.Combine(staging, StampFileName), hash + "\n");
@@ -152,6 +158,17 @@ public static class PlatformCrates
         Directory.Move(staging, root);
         return true;
     }
+
+    /// <summary>
+    /// Makes a folder hold exactly the crates of the platform's archive (no bundles).
+    /// </summary>
+    /// <param name="archive">The archive.</param>
+    /// <param name="directory">The vendor folder; it belongs to this method.</param>
+    /// <returns>True when the folder was (re)written.</returns>
+    /// <exception cref="FrontendBuildException">The archive is missing or cannot be read, or the
+    /// folder holds something this library did not write.</exception>
+    internal static bool ExtractTo(string archive, string directory)
+        => ExtractTo(CrateBundleMerge.Check(archive, null), directory);
 
     /// <summary>
     /// Removes a vendor folder this library wrote (it carries the stamp). Does nothing when the
@@ -173,6 +190,40 @@ public static class PlatformCrates
         return true;
     }
 
+    /// <summary>
+    /// The crates of a materialized vendor folder, by name, with every version it holds (read
+    /// from each crate folder's Cargo.toml). Empty when the folder does not exist.
+    /// </summary>
+    /// <param name="directory">The vendor folder.</param>
+    internal static IReadOnlyDictionary<string, HashSet<string>> ReadVendoredCrates(string directory)
+    {
+        var crates = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        foreach (var folder in ListCrates(directory))
+        {
+            var manifest = Path.Combine(directory, folder, "Cargo.toml");
+            if (!File.Exists(manifest))
+            {
+                continue;
+            }
+
+            var (name, version) = CrateBundleMerge.ReadPackage(File.ReadAllText(manifest, Encoding.UTF8));
+            if (name == null || version == null)
+            {
+                continue;
+            }
+
+            if (!crates.TryGetValue(name, out var versions))
+            {
+                versions = new HashSet<string>(StringComparer.Ordinal);
+                crates[name] = versions;
+            }
+
+            versions.Add(version);
+        }
+
+        return crates;
+    }
+
     /// <summary>The crate folders (name-version) of a materialized vendor folder, sorted.</summary>
     /// <param name="directory">The vendor folder.</param>
     internal static IReadOnlyList<string> ListCrates(string directory)
@@ -189,7 +240,7 @@ public static class PlatformCrates
         }
     }
 
-    private static string MissingMessage(string path)
+    internal static string MissingMessage(string path)
         => $"'{path}' does not exist. The CodeBrix.WebPlatform.FrontendBuilder package copies its {FolderName} folder beside the build program when the program is built; restore and build the build program again.";
 
     private static void DeleteQuietly(string directory)

@@ -123,7 +123,8 @@
     looks for <application base folder>/frontend-crates/platform-crates.zip.
   -->
   <PropertyGroup>
-    <_PlatformCratesArchive>$(MSBuildProjectDirectory)\$(BaseIntermediateOutputPath)frontend-crates\platform-crates.zip</_PlatformCratesArchive>
+    <!-- Path.Combine, so that an absolute intermediate folder (dotnet build with an artifacts path) is used as it is. -->
+    <_PlatformCratesArchive>$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(BaseIntermediateOutputPath)', 'frontend-crates', 'platform-crates.zip'))</_PlatformCratesArchive>
   </PropertyGroup>
 
   <ItemGroup>

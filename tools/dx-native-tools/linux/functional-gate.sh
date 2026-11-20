@@ -250,8 +250,9 @@ if [ -x "$REF_DX" ] && [ -x "$REF_WB" ]; then
     cp "$REF_DX" "$SCRATCH/bin/dx$EXE"; cp "$REF_WB" "$SCRATCH/bin/wasm-bindgen$EXE"
     LOG5="$SCRATCH/dx-build-today.log"
     # shellcheck disable=SC2086
-    ( cd "$COPY" && env PATH="$WASM_OPT_DIR:$SCRATCH/bin:$PATH" DX_HOME="$SCRATCH/dx-home-today" \
-        $RUNNER sh -c 'exec dx '"$FUNCTIONAL_DX_ARGS" ) > "$LOG5" 2>&1
+    # Today's dx is linked to libgit2 like the new one, so it gets the library the same way.
+    ( cd "$COPY" && env PATH="$WASM_OPT_DIR:$SCRATCH/bin:$PATH" DX_HOME="$SCRATCH/dx-home-today" CBX_LOADER_VAR="$LOADER_VAR" CBX_LIBGIT2_DIR="$LIBGIT2_DIR" \
+        $RUNNER sh -c "$LOADER_EXPORT"'exec dx '"$FUNCTIONAL_DX_ARGS" ) > "$LOG5" 2>&1
     RC5=$?
     cp "$SCRATCH/bin-new/dx$EXE" "$SCRATCH/bin-new/wasm-bindgen$EXE" "$SCRATCH/bin/"
     TODAY_PUBLIC="$(find "$COPY/target/dx" -type d -path '*/release/web/public' 2>/dev/null | sed -n 1p)"
@@ -259,7 +260,7 @@ if [ -x "$REF_DX" ] && [ -x "$REF_WB" ]; then
         TODAY_WASM="$(find "$TODAY_PUBLIC" -name '*.wasm' | sed -n 1p)"
         TODAY_SIZE="$(wc -c < "$TODAY_WASM" | tr -d ' ')"
         if diff -r "$TODAY_PUBLIC" "$NEW_PUBLIC" > "$SCRATCH/today-diff.txt" 2>&1; then
-            pass "today's tools ($("$REF_DX" --version 2>&1 | sed -n 1p), $REFERENCE_TOOLS_DIR) build the same copy at the same path BYTE-IDENTICALLY: every one of the $(find "$TODAY_PUBLIC" -type f | wc -l | tr -d ' ') site files, .wasm $TODAY_SIZE bytes both"
+            pass "today's tools ($(env "$LOADER_ENV" "$REF_DX" --version 2>&1 | sed -n 1p), $REFERENCE_TOOLS_DIR) build the same copy at the same path BYTE-IDENTICALLY: every one of the $(find "$TODAY_PUBLIC" -type f | wc -l | tr -d ' ') site files, .wasm $TODAY_SIZE bytes both"
             TODAY_RESULT="byte-identical ($TODAY_SIZE bytes)"
         else
             fail "the site built by today's tools differs from the new tools' (.wasm $TODAY_SIZE bytes against $WASM_SIZE; $SCRATCH/today-diff.txt)"

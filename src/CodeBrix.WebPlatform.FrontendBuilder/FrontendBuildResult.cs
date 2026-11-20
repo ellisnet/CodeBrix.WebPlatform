@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using CodeBrix.WebPlatform.FrontendBuilder.Prerequisites;
 using CodeBrix.WebPlatform.FrontendBuilder.Tools;
 
@@ -15,7 +16,43 @@ public sealed class FrontendBuildResult
         Tools = tools;
         WebRootDirectory = webRootDirectory;
         WebRootFileCount = webRootFileCount;
+        Applications = new[] { this };
     }
+
+    /// <summary>
+    /// The name of the application this result is about: "app" for the application that has no
+    /// name of its own (the one at the site root).
+    /// </summary>
+    public string ApplicationName { get; internal set; } = CodeBrix.WebPlatform.Core.Applications.FrontendApplication.DefaultName;
+
+    /// <summary>
+    /// One result per frontend application, in the order of the options; the first one is this
+    /// object. A build program with one application reads this object and can ignore the list.
+    /// </summary>
+    public IReadOnlyList<FrontendBuildResult> Applications { get; internal set; }
+
+    /// <summary>Whether this application was built with bundle splitting.</summary>
+    public bool WasmSplit { get; internal set; }
+
+    /// <summary>
+    /// The folder, inside <see cref="WebRootDirectory"/>, that holds this application's site:
+    /// the web root itself for the application at the site root, otherwise the sub-folder of
+    /// the application's name. <c>null</c> when no web root was given.
+    /// </summary>
+    public string WebRootApplicationDirectory { get; internal set; }
+
+    /// <summary>
+    /// The frontend manifest that was written into the web root for the backend, or <c>null</c>
+    /// when no web root was given.
+    /// </summary>
+    public string ManifestFile { get; internal set; }
+
+    /// <summary>
+    /// The compressed copies written beside this application's files in the web root (see
+    /// <see cref="PlatformFrontendOptions.CompressOutput"/>): which files, their sizes before and
+    /// after, and the time it took. <c>null</c> when no web root was given.
+    /// </summary>
+    public FrontendCompressionResult Compression { get; internal set; }
 
     /// <summary>The kind of build that was made.</summary>
     public FrontendConfiguration Configuration { get; }

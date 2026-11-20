@@ -22,6 +22,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!--
+      A local build until the package is published; see the nuget.config at the repository root.
+      The same version as CodeBrix.WebPlatform.Core in ..\libs\WorkSite.Core\WorkSite.Core.csproj
+      and WebPlatformPackageVersion in ..\..\build\WorkSite.BuildFrontend\WorkSite.BuildFrontend.csproj.
+    -->
+    <PackageReference Include="CodeBrix.WebPlatform.Backend.ApacheLicenseForever" Version="1.0.324.250" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.15" />
   </ItemGroup>
 

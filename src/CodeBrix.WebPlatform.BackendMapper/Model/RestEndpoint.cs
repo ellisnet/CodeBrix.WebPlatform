@@ -32,7 +32,8 @@ public sealed class RestEndpoint
     /// <summary>True when the endpoint needs a signed-in user.</summary>
     public bool RequiresSignIn { get; internal set; }
 
-    /// <summary>True when the answer is a file for the browser (<c>[WireFile]</c>), not JSON.</summary>
+    /// <summary>True when the answer is a file (<c>[WireFile]</c>), not JSON: the generated code gets an
+    /// address builder and a reader of the bytes for it.</summary>
     public bool IsFile { get; internal set; }
 
     /// <summary>True when this is the action that renews an expired session

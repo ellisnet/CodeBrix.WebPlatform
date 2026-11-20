@@ -9,17 +9,22 @@ instead. Everything below is about the repository itself: how it is laid out,
 how it builds, how it is tested, how it is packaged, how the third-party code
 it carries is kept and checked, and the conventions the source follows.
 
-The WorkSite sample application under samples/WorkSite has a maintainer file
-of its own, samples/WorkSite/MAINTAINER-README.txt. Read that one when you are
-changing the sample.
+Each sample application has a maintainer file of its own:
+samples/WorkSite/MAINTAINER-README.txt and
+samples/ApplicationSplitter/MAINTAINER-README.txt. Read the sample's when you
+are changing it.
 
 
 PURPOSE AND SCOPE
 =================
-This repository produces eight NuGet packages:
+This repository produces nine NuGet packages:
 
     PackageId:  CodeBrix.WebPlatform.Core.ApacheLicenseForever
     Project:    src/CodeBrix.WebPlatform.Core/CodeBrix.WebPlatform.Core.csproj
+
+    PackageId:  CodeBrix.WebPlatform.Backend.ApacheLicenseForever
+    Project:    src/CodeBrix.WebPlatform.Backend/
+                CodeBrix.WebPlatform.Backend.csproj
 
     PackageId:  CodeBrix.WebPlatform.BackendMapper.ApacheLicenseForever
     Project:    src/CodeBrix.WebPlatform.BackendMapper/
@@ -37,7 +42,7 @@ This repository produces eight NuGet packages:
 
     Assembly names and root namespaces are the package ids without the
     .ApacheLicenseForever suffix.
-    License:    Apache-2.0 (all eight). Every package this repository
+    License:    Apache-2.0 (all of them). Every package this repository
                 produces carries the .ApacheLicenseForever suffix.
     Consumer documentation: AGENT-README.txt (repo root), ONE file shared by
                 all the packages and packed into each.
@@ -48,25 +53,39 @@ see THE MAINTAINER TOOL). It is no part of any package.
 
 CodeBrix.WebPlatform is a platform for web applications with a .NET backend
 (REST controllers and SignalR hubs) and a Rust frontend compiled to
-WebAssembly. The project is chiefly about how the FRONTEND gets built; how an
-application's backend works inside is the application's business, beyond what
-BackendMapper reads from it.
+WebAssembly: ONE backend and one or more frontend applications (the one
+without a name at the site root, named ones below their names). The project
+is chiefly about how the FRONTEND gets built; how an application's backend
+works inside is the application's business, beyond what BackendMapper reads
+from it and the plumbing the Backend package gives it.
 
   Core            what every platform backend references: the contract
                   attributes, the backend's declarations about itself (its
-                  request marker, its session-refresh action) and the
-                  standard error body.
+                  request marker, its session-refresh action), the
+                  standard error body, the description of the frontend
+                  applications (FrontendApplication, FrontendApplicationSet,
+                  the manifest's names) and the crate-bundle registry
+                  (CrateBundle, CrateBundles). No dependencies.
+  Backend         run time, in the backend: the ASP.NET Core plumbing in one
+                  services call and one pipeline call (serving the frontend
+                  applications from the manifest the build writes, the
+                  problem bodies, the unknown-API answer, the request-marker
+                  and hub-origin checks, the security headers). The only
+                  package with ASP.NET Core code.
   BackendMapper   build-time only: reads a compiled backend's metadata and
                   writes the frontend's Rust client code through
                   CodeBrix.Templating templates.
   FrontendBuilder build-time only: the library a build PROGRAM calls. It
                   checks the machine's prerequisites, materializes the
-                  frontend (builds and maps the backend, writes the generated
-                  code, the shared Rust crate it carries embedded, the
-                  platform's crates it carries as one archive, the cargo
+                  frontend applications (builds and maps the backend, writes
+                  the generated code, the shared Rust crate it carries
+                  embedded, the platform's crates it carries as one archive
+                  together with the registered crate bundles', the cargo
                   configuration and, when it is missing, the Tailwind
                   stylesheet by running the installed Tailwind once), and
-                  builds or serves the site with dx. It
+                  builds every application into the web root (with the
+                  manifest, and bundle splitting on request) or serves one
+                  with dx. It
                   hands the build program the notices for what the platform
                   compiles into a site.
   <Platform>      build-time only: the prebuilt dx and wasm-bindgen programs
@@ -94,8 +113,14 @@ WorkSite sample has rules of its own; the two sets coexist.)
     files, no `eval`, no inline scripts, no wasm-bindgen snippets.
   - CORE IS A PLAIN .NET 10 LIBRARY with no ASP.NET Core dependence and no
     NuGet dependencies. It is deployed inside every backend, so it stays
-    small. ASP.NET Core plumbing does not go into Core; a separate backend
-    package is to be discussed with the repository owner if a need appears.
+    small. ASP.NET Core plumbing does not go into Core: it goes into the
+    Backend package, which references Core and the ASP.NET Core shared
+    framework. A package that brings a crate bundle (made in another
+    repository) depends on Core only, pinned to one exact Core version.
+  - THE BACKEND PACKAGE knows nothing about any one application either: what
+    differs is an option (PlatformBackendOptions), and which frontend
+    applications exist is read from the manifest the frontend build writes;
+    the backend's code names none.
   - BACKENDMAPPER NEVER SHIPS with an application and never runs the backend.
     It reads metadata only (System.Reflection.MetadataLoadContext).
   - FRONTENDBUILDER NEVER SHIPS with an application either, and knows
@@ -116,8 +141,10 @@ WorkSite sample has rules of its own; the two sets coexist.)
     patches, the notices and the no-Node rule. An application's own code
     and crates, the sample's included, are the application's business.
   - NO NEW NUGET PACKAGE, crate or assembly without the repository owner's
-    approval by name. BackendMapper's approved dependencies are
-    CodeBrix.Templating and System.Reflection.MetadataLoadContext;
+    approval by name. Backend's approved dependencies are Core and
+    CodeBrix.TomlParse (with the ASP.NET Core shared framework);
+    BackendMapper's are CodeBrix.Templating and
+    System.Reflection.MetadataLoadContext;
     FrontendBuilder's are Core, BackendMapper, CodeBrix.WebPlatform.WasmShrink,
     CodeBrix.LibGit2 (the libgit2 library dx needs) and CodeBrix.RustTools;
     the host-tools packages have none; the maintainer tool adds
@@ -137,6 +164,33 @@ REPOSITORY LAYOUT
                                              contract, and WireRequestMarker /
                                              WireSessionRefresh)
       Problems/                              ApiProblem, ApiProblemCodes
+      Applications/                          FrontendApplication,
+                                             FrontendApplicationSet,
+                                             FrontendManifest (the names only)
+      Crates/                                CrateBundle, CrateBundles
+
+    src/CodeBrix.WebPlatform.Backend/        packable
+      (root)                                 AddPlatformBackend,
+                                             UsePlatformBackend,
+                                             PlatformBackendOptions,
+                                             PlatformBackendPaths
+      Applications/                          FrontendManifestReader (strict;
+                                             TOML through CodeBrix.TomlParse),
+                                             FrontendManifestException
+      Problems/                              ApiProblems, ApiProblemWriter,
+                                             ApiProblemResult,
+                                             InvalidModelStateResponse
+      Internal/                              the middleware, the status-code
+                                             handler, the fallbacks and the
+                                             unknown-API answer
+                                             (FrontendServing), the file
+                                             provider that hides the
+                                             manifest and the compressed
+                                             copies, the marker resolver,
+                                             the precompressed-file answer,
+                                             the Accept-Encoding reading
+                                             (ContentCodings) and the rules
+                                             of the response compression
 
     src/CodeBrix.WebPlatform.BackendMapper/  packable
       (root)                                 BackendMapper, BackendMapOptions,
@@ -172,10 +226,25 @@ REPOSITORY LAYOUT
       Stylesheet/                            StylesheetOutcome; internal
                                              StylesheetRules (Materialize's
                                              Tailwind-stylesheet step)
-      Crates/                                PlatformCrates, CrateMode;
-                                             internal CargoConfiguration
+      Applications/                          FrontendApplicationOptions,
+                                             FrontendManifestWriter;
+                                             internal ApplicationPlan (each
+                                             application's paths and
+                                             settings) and WebRootWriter
+                                             (fills the web root)
+      Crates/                                PlatformCrates, CrateMode,
+                                             CrateBundleOutcome,
+                                             LockFileRepair; internal
+                                             CargoConfiguration,
+                                             CrateBundleMerge (the strict
+                                             rule, the merged vendor folder)
+                                             and LockFileRules /
+                                             LockFileOutcome (the lock-file
+                                             marker and stale entries)
       Internal/                              process runner, output tail,
-                                             execute permission
+                                             execute permission, ShrinkPlan,
+                                             OutputCompressor (the web
+                                             root's .br / .gz copies)
       buildTransitive/                       copies frontend-crates/ into a
                                              consuming build's output
       Rust/codebrix-webplatform/             the shared Rust crate's source
@@ -210,6 +279,7 @@ REPOSITORY LAYOUT
       Maintenance/                           vendor, vendor-tools, proof
 
     tests/CodeBrix.WebPlatform.Core.Tests/
+    tests/CodeBrix.WebPlatform.Backend.Tests/
     tests/CodeBrix.WebPlatform.BackendMapper.Tests/
     tests/CodeBrix.WebPlatform.FrontendBuilder.Tests/
     tests/CodeBrix.WebPlatform.FrontendBuilder.HostTools.Tests/
@@ -220,6 +290,9 @@ REPOSITORY LAYOUT
                                              read (FrontendBuilder.Tests
                                              materializes from SampleBackend
                                              too); see EXTRAS-README.txt
+    tests/CodeBrix.WebPlatform.Backend.Tests.SampleBackend/
+                                             the backend the Backend tests
+                                             start in a test server
 
     tools/dx-native-tools/                   builds dx and wasm-bindgen for the
                                              host-tools packages (start at its
@@ -253,11 +326,16 @@ REPOSITORY LAYOUT
     samples/WorkSite/                        the sample application; its own
                                              solution, maintainer file and
                                              notices. See EXTRAS-README.txt.
+    samples/ApplicationSplitter/             the sample of several frontend
+                                             applications and code splitting;
+                                             its own solution and maintainer
+                                             file (no notices file: nothing
+                                             third-party of its own)
 
-    CodeBrix.WebPlatform.slnx                the solution: the eight packable
+    CodeBrix.WebPlatform.slnx                the solution: the packable
                                              projects, the maintainer tool,
                                              and in its Tests folder the test
-                                             projects and the two fixture
+                                             projects and the fixture
                                              backends; its Solution Items
                                              folder carries .gitignore,
                                              AGENT-README.txt,
@@ -266,12 +344,13 @@ REPOSITORY LAYOUT
                                              MAINTAINER-README.txt,
                                              nuget.config, README-INDEX.txt,
                                              README.md and
-                                             THIRD-PARTY-NOTICES.txt. WorkSite
-                                             is NOT in it and must stay out.
+                                             THIRD-PARTY-NOTICES.txt. The
+                                             samples are NOT in it and must
+                                             stay out.
 
     nuget.config, temp-packages/             TEMPORARY: the one local package
                                              feed, for this solution and for
-                                             WorkSite. See TEMPORARY
+                                             the samples. See TEMPORARY
                                              PACKAGES below.
 
     global.json                              selects the
@@ -311,9 +390,11 @@ is not. Rust/platform-crates/Cargo.lock is embedded too, as
 
 THE CRATES ARCHIVE. Rust/vendor is NOT embedded and NOT packed as loose files.
 The target _CreatePlatformCratesArchive (in the project file) zips it with
-MSBuild's ZipDirectory task into obj/frontend-crates/platform-crates.zip -
-incrementally: only when a file of Rust/vendor or the crate set's Cargo.lock
-is newer than the archive (Debug and Release share it). The archive and
+MSBuild's ZipDirectory task into obj/frontend-crates/platform-crates.zip (the
+project's intermediate folder; under the artifacts path when a build passes
+--artifacts-path) - incrementally: only when a file of Rust/vendor or the
+crate set's Cargo.lock is newer than the archive (Debug and Release share
+it). The archive and
 Rust/notices/THIRD-PARTY-NOTICES-PlatformCrates.txt are None items that are
 packed under tools/frontend-crates/ and copied to the output folder as
 frontend-crates/ (so a project reference - the tests, the maintainer tool -
@@ -327,6 +408,10 @@ THE HOST-TOOLS PACKAGES pack native_libraries/<rid>/ (the *.provenance.txt
 files excepted) under tools/frontend-tools/<rid>/ and copy it to
 frontend-tools/<rid>/ the same two ways. A platform whose programs have not
 been built yet packs its small assembly only.
+
+The Backend project references Core, the ASP.NET Core shared framework
+(a FrameworkReference) and CodeBrix.TomlParse (from nuget.org), which reads
+the frontend manifest.
 
 FrontendBuilder references CodeBrix.WebPlatform.WasmShrink, CodeBrix.LibGit2
 and CodeBrix.RustTools, all from nuget.org. WasmShrink's buildTransitive
@@ -376,7 +461,10 @@ package's copy in HostTools.Tests) through the library, with the
 CodeBrix.LibGit2 package's libgit2 - `dx --version`, dx without the library
 (it must not start) and `dx new` from a local template made with the
 CodeBrix.LibGit2 API, with no git program on PATH; they are skipped on a
-machine with no adopted programs. No test builds a frontend with dx. The
+machine with no adopted programs. The lock-file tests that need cargo
+(Crates/LockFileCargoTests.cs, see THE FRONTEND'S LOCK FILE) run the
+installed cargo offline on tiny made-up crates, and are skipped, with the
+reason, on a machine without cargo. No test builds a frontend with dx. The
 LibraryChecker tests run the whole gate
 against this repository and so need cargo (offline); they do not start the
 proof build. The HostTools tests check, for the machine they run on, that the
@@ -397,9 +485,88 @@ against the ASP.NET Core runtime installed beside the .NET runtime the tests
 run on.
 
 The generated Rust is checked as text in RustClientGeneratorTests. That it
-COMPILES is proved by the WorkSite sample, whose frontend is built from it:
-after a change to the templates or to ViewBuilder, refresh the temporary
-packages and build the sample (see the WorkSite maintainer file).
+COMPILES is proved by the samples, whose frontends are built from it: after
+a change to the templates or to ViewBuilder, refresh the temporary packages
+and build WorkSite (see the WorkSite maintainer file).
+
+HOW THE BACKEND LIBRARY IS TESTED. Backend.Tests starts real ASP.NET Core
+hosts in a test server (Microsoft.AspNetCore.TestHost) over
+Backend.Tests.SampleBackend, a class library with controllers (some with
+routes outside /api, to prove that a controller wins over a fallback), a
+hub, a stand-in sign-in scheme and the backend's own pipeline lines after
+UsePlatformBackend. Temporary web roots with an index.html per application
+stand in for a built frontend. The manifest tests include a ROUND TRIP with
+FrontendBuilder's own writer: the test project compiles
+src/CodeBrix.WebPlatform.FrontendBuilder/Applications/FrontendManifestWriter.cs
+as a LINKED SOURCE FILE (not a project reference to FrontendBuilder), so the
+reader is tested against the real writer, byte for byte, without the test
+project referencing a build-time library. Keep FrontendManifestWriter.cs free
+of anything but Core and the base class library, or the link breaks.
+
+HOW SEVERAL FRONTEND APPLICATIONS AND THE CRATE BUNDLES ARE TESTED.
+FrontendBuilder.Tests covers the application plans, the web-root writer and
+the manifest writer (Applications/), materializing several applications and
+ServeAsync's choice of application (PlatformFrontendApplicationsTests.cs),
+and the strict rule of the crate bundles over the platform's archive
+(Crates/CrateBundleMergeTests.cs, with small bundles made by the tests).
+Core.Tests covers the name rules, the application set and the bundle
+registry. That a split build really works in a browser is checked with the
+ApplicationSplitter sample (its maintainer file says how).
+
+THE FRONTEND'S LOCK FILE AND ITS MARKER
+(PlatformFrontend.MaterializeAsync with Crates/LockFileRules.cs; consumer view
+in AGENT-README.txt, THE FRONTEND'S Cargo.lock)
+
+  - The starting Cargo.lock is the embedded platform lock file with
+    PlatformCrates.LockFileMarker inserted as the THIRD line, directly after
+    cargo's two header comment lines. A lock file is "marked" when one of its
+    leading comment lines starts with PlatformCrates.LockFileMarkerPrefix
+    (keep that prefix stable; the rest of the sentence may be reworded).
+  - In CrateMode.PlatformCratesOnly, after the vendor folder and every
+    frontend's cargo configuration are written, MaterializeAsync reads the
+    lock file's crates.io entries (CodeBrix.RustTools' lock-file parser) and
+    the vendor folder's crates (each folder's Cargo.toml), and calls an
+    entry STALE when the folder holds that crate only in other versions. A
+    crate the folder does not carry, and a locked version the folder holds
+    beside another, are not stale. A starting lock file written in the same
+    run is not compared: it is the platform's own, and the strict rule keeps
+    bundles from bringing other versions of the platform's crates.
+  - MARKED: the repair is `cargo update --offline -p <name> ...` (name@version
+    where the lock names several versions of the crate, which cargo would
+    otherwise refuse as ambiguous) in the frontend folder. cargo, not our
+    code, rewrites the file: a text edit would have to reproduce cargo's
+    resolution (a moved crate can bring new dependencies, and checksums come
+    from the vendored crates), and `cargo update -p` unlocks exactly the named
+    crates and keeps every other entry. Afterwards the file is read again: no
+    entry may still be stale and the marker must be there (should a cargo
+    ever drop it, it is put back on the third line). On any failure the
+    original bytes are written back and a FrontendBuildException says what
+    to do.
+  - UNMARKED: the file is never written. The result carries the stale entries,
+    the exact command and a warning (also on Output). It is deliberately not
+    an exception in MaterializeAsync, because the command needs the vendor
+    folder and the cargo configuration MaterializeAsync writes; BuildAsync
+    and ServeAsync check again before dx starts and throw with the same
+    message, so the developer reads ours and not cargo's from inside dx's
+    output.
+  - CrateMode.ApplicationAddsCrates: nothing is compared or repaired
+    (crates.io keeps every version, so nothing goes stale that way).
+
+THE CARGO-BEHAVIOUR CAVEAT. That cargo keeps a comment on the third line is
+OBSERVED behaviour (its lock-file writer carries the original file's leading
+comment lines over, after its own two header lines), not a documented
+promise: a comment at the end of the file is deleted, and one above the
+header makes cargo write the header again. The guard is
+tests/CodeBrix.WebPlatform.FrontendBuilder.Tests/Crates/LockFileCargoTests.cs,
+which on the installed cargo proves that the marker survives an ordinary
+offline build, a build in which cargo rewrites the lock file and a
+`cargo update -p`; that the embedded lock file with the marker is accepted
+by `cargo metadata --offline --locked` unchanged (against Rust/vendor); and
+that MaterializeAsync repairs exactly the moved entry of a marked lock file
+(which then resolves with --locked, the marker still on the third line)
+and leaves an unmarked one byte-identical with the command in the result.
+After a new Rust release, run those tests; if one fails, cargo changed and
+the placement must be looked at again before anything ships.
 
 THE SHARED CRATE'S RUST TESTS
 
@@ -421,6 +588,81 @@ depend only on the platform's crates: the check `LibraryChecker vendor`
 fails when its own Cargo.lock names anything else.
 
 
+COMPRESSION: THE MECHANISM
+==========================
+(consumer view: AGENT-README.txt, COMPRESSION)
+
+THE COPIES AT BUILD TIME. PlatformFrontend.BuildAsync, after
+WebRootWriter.Write has filled the web root, calls
+Internal/OutputCompressor.Compress once per application with the
+application's folder in the web root and the list of the files dx built
+(enumerated from dx's output folder, so the developer's own files in the web
+root are never in it). For each file whose extension is in
+OutputCompressor.CompressibleExtensions it compresses the bytes in memory -
+BrotliEncoder.TryCompress at quality 11, window 24; GZipStream at
+CompressionLevel.SmallestSize with the header's OS byte set to 255 so that
+the bytes do not depend on the machine - and writes <name>.br / <name>.gz
+only when the copy is smaller; a copy that is not asked for or not smaller
+is deleted (that is how dx's own pre_compress copies are replaced). The files
+are done in parallel (Parallel.For); the result is sorted by path, so it does
+not depend on the order. Afterwards, in every folder that holds a file of
+the list, a .br / .gz that is not in the list and whose file is missing is
+deleted (stale). A .br / .gz in the list with no file beside it is an
+application's own file and is left alone. ServeAsync never calls it. Only
+System.IO.Compression is used.
+
+THE COPIES AT RUN TIME. Internal/ManifestHidingFileProvider hides a copy BY
+NAME (IsCopyAddress: the last segment, with the same Windows spellings as for
+the manifest, ends in .br / .gz and the address without the suffix is a
+file) and in directory listings; GetCopy reads a copy from the inner
+provider. Internal/PrecompressedFileMiddleware runs just before
+UseStaticFiles, in the main pipeline and in each fallback branch
+(FrontendServing.UseFiles), only when ServePrecompressedFiles is on. For a
+GET / HEAD with no endpoint delegate, a known content type and an existing
+file, it appends Vary: Accept-Encoding when a copy exists, hands a Range
+request on to the static files (the file itself), and otherwise asks
+ContentCodings.Choose; when a coding wins it answers itself: 200 with
+Content-Encoding, the file's content type, the copy's length, Last-Modified
+(whole seconds) and ETag (the static files' formula on the copy's time and
+length, so it differs from the file's), the conditional headers in RFC 9110's
+order (Precondition: 412 / 304), HEAD without a body, the body by
+SendFileAsync. The manifest stays unchanged; nothing is cached, so each such
+request costs two file lookups more.
+
+THE ANSWERS AS THEY ARE SENT. With CompressResponses not None,
+UsePlatformBackend puts ASP.NET Core's ResponseCompressionMiddleware FIRST in
+its part of the pipeline (so the status-code pages, the marker and Origin
+refusals are inside it), constructed directly with
+Internal/PlatformResponseCompressionProvider - not registered in the
+services, so an application's own AddResponseCompression is untouched. The
+provider chooses the coding with ContentCodings (the same reading as for the
+copies; Brotli and gzip at CompressionLevel.Fastest) and refuses: an answer
+marked as a web-root file (FrontendServing.FrontendFileItem, set by the
+static files' OnPrepareResponse and by the precompressed answer); anything
+below /api/hubs or with HubMetadata; an answer IsCompressedAnswer does not
+take for the mode. That decision reads the matched endpoint's metadata per
+request: an answer of an action carrying Core's WireFileAttribute is taken
+when its type is not compressed already (JSON included; text/event-stream
+never); the JSON answers of any other action only with FileAnswersAndJson;
+nothing else. It then defers to the framework's ResponseCompressionProvider
+(EnableForHttps, MimeTypes "*/*") for the HTTPS opt-out feature,
+Content-Range and an existing Content-Encoding.
+
+THE TESTS. FrontendBuilder.Tests/Internal/OutputCompressorTests.cs (made-up
+sites: which files, the four values, smaller-only, determinism, stale and dx
+copies, the numbers) and PlatformFrontendCompressionTests.cs (the default;
+BuildAsync refuses a bad value; ServeAsync does not read it). Backend.Tests:
+Serving/PrecompressedFilesTests.cs and PrecompressedFilesSwitchedOffTests.cs
+(negotiation, headers, 304 / 412, HEAD, Range, the fallback index, copies
+not addressable), Plumbing/ResponseCompressionTests.cs (off by default, the
+two modes, the exclusions, a hub connecting over a WebSocket),
+Internal/ContentCodingsTests.cs, PlatformResponseCompressionProviderTests.cs
+and the copy cases in ManifestHidingFileProviderTests.cs. The fixture
+backend's FilesController holds the file answers, with and without
+[WireFile]. In a browser:
+the ApplicationSplitter sample (its maintainer file).
+
+
 PACKAGING AND PUBLISHING
 ========================
 GeneratePackageOnBuild is true in every library, so every build emits fresh
@@ -432,10 +674,12 @@ It is monotonically increasing but is NOT SemVer. Two builds inside the same
 UTC minute produce the SAME version - never publish two packages from one
 minute. Do not replace the version block with a literal <Version>.
 
-SHIP THE FAMILY TOGETHER. BackendMapper references Core, and FrontendBuilder
-references both, as projects; when packed, those become package dependencies
-on the versions of the same build. Publish ALL EIGHT packages from ONE build
-of the solution, so they match: a frontend's shared crate and crates (from
+SHIP THE FAMILY TOGETHER. Backend and BackendMapper reference Core, and
+FrontendBuilder references Core and BackendMapper, as projects; when packed,
+those become package dependencies on the versions of the same build. Publish
+ALL the packages from ONE build of the solution, so they match: the backend's
+manifest reader (Backend) reads what the frontend build (FrontendBuilder)
+writes, a frontend's shared crate and crates (from
 FrontendBuilder) are the ones the generated code (from BackendMapper) was
 written against, and the host-tools packages' dx and wasm-bindgen match the
 platform's crates. Check that the .nupkg files carry the same version: a
@@ -576,7 +820,9 @@ first.
 PATCHES
 =======
 A third-party source may be changed only as a last resort and only with the
-repository owner's approval. Today the one patched source is the Dioxus CLI.
+repository owner's approval. The patched sources are the Dioxus CLI and the bundle splitter it uses
+(wasm-split-cli); each has its archive, patches and PATCH-NOTES.txt in a folder
+of its own under tools/dx-native-tools/vendoring/.
 
   - The pristine source is the .crate archive in
     tools/dx-native-tools/vendoring/<tool>/, with its crates.io checksum in
@@ -634,8 +880,10 @@ including which other libraries have to move with it. Read it first.
  6. BUILD AND TEST. The solution (the package re-packs the crates), the
     shared crate's Rust tests, the tools' native builds when a tool changed
     (tools/dx-native-tools), the temporary feed refreshed and the WorkSite
-    sample built, tested and looked at in a browser, and `LibraryChecker
-    proof`. Check the package sizes (PACKAGING AND PUBLISHING).
+    sample built, tested and looked at in a browser, the ApplicationSplitter
+    sample built and looked at in a browser (its split application is the
+    check of bundle splitting), and `LibraryChecker proof`. Check the
+    package sizes (PACKAGING AND PUBLISHING).
  7. UPDATE THE RECORDS. The library's UPGRADE-README.txt and PATCH-NOTES.txt
     must describe what is now true.
 
@@ -698,7 +946,7 @@ both:
     its own Cargo.lock; a patch removes that line.
 
 Never commit: any `target` folder, temp-packages/, tools/dx-native-tools/
-output/, and what the sample's build writes (see its maintainer file). The
+output/, and what the samples' builds write (see their maintainer files). The
 .gitignore at the repository root covers all of them.
 
 
@@ -714,11 +962,14 @@ reproducible: a rebuild gives byte-identical programs. The versions are
 pinned in tools/dx-native-tools/linux/pins.env and named again in each
 package's HostTools class (and checked by the HostTools tests).
 
-dx's six patches (tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt):
+dx's patches (tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt;
+patch 0007 swaps in the patched bundle splitter, whose own two patches are in
+tools/dx-native-tools/vendoring/wasm-split-cli):
   0001 image encoders without imagequant / mozjpeg
   0002 libgit2-sys -> the declarations-only stand-in (no libgit2 source;
        dx links the prebuilt libgit2 of the CodeBrix.LibGit2 package)
-  0003 web builds without esbuild
+  0003 web builds without esbuild (and, for a build with bundle splitting,
+       the generated loader shipped beside the glue file)
   0004 the regenerated Cargo.lock
   0005 no prebuilt OpenSSL archive
   0006 DX_SKIP_WASM_OPT: an unshrunk release build on request
@@ -770,8 +1021,10 @@ option, or stays behind in WorkSite.
     step.
 
 The SignalR client moved this way, and so did the vendored crates, the tool
-sources, the licence gate and the tool build: what is general is the
-platform's, and the sample holds only what is its own.
+sources, the licence gate, the tool build and the backend's plumbing (the
+serving of the built frontend, the problem bodies, the X-Requested-With and
+hub Origin checks and the security headers, now the Backend package): what
+is general is the platform's, and the sample holds only what is its own.
 
 
 TEMPORARY PACKAGES
@@ -782,43 +1035,73 @@ it) as a package source for EXACTLY these package ids; everything else comes
 from nuget.org:
 
     CodeBrix.WebPlatform.Core.ApacheLicenseForever           built here
+    CodeBrix.WebPlatform.Backend.ApacheLicenseForever        built here
     CodeBrix.WebPlatform.BackendMapper.ApacheLicenseForever  built here
     CodeBrix.WebPlatform.FrontendBuilder.ApacheLicenseForever
                                                              built here
     CodeBrix.WebPlatform.FrontendBuilder.LinuxX64.ApacheLicenseForever,
       .LinuxArm64, .WindowsX64, .MacOSArm64, .MacOSX64 (same suffix)
                                                              built here
-(those eight and nothing else; CodeBrix.RustTools, CodeBrix.RustTools.Docker,
-CodeBrix.LibGit2 and CodeBrix.WebPlatform.WasmShrink come from nuget.org)
+(those nine of this repository, nothing else; CodeBrix.TomlParse,
+CodeBrix.RustTools, CodeBrix.RustTools.Docker, CodeBrix.LibGit2 and
+CodeBrix.WebPlatform.WasmShrink come from nuget.org)
 
-The one feed serves both solutions. NuGet finds nuget.config by walking up
-from each project, so every project under the repository uses it:
+CodeBrix.TomlParse IS PUBLISHED and comes from nuget.org (a local build of it
+was served from this feed until 2026-11-19). The Backend package needs a
+release in which reading into the untyped model refuses a duplicate key by
+default: the manifest reader relies on that. To take a newer published
+version, set it in src/CodeBrix.WebPlatform.Backend/
+CodeBrix.WebPlatform.Backend.csproj, then refresh the packages of this
+repository as below.
+
+The one feed serves the root solution and the samples. NuGet finds
+nuget.config by walking up from each project, so every project under the
+repository uses it:
     samples/WorkSite/backend/libs/WorkSite.Core   Core
+    samples/WorkSite/backend/WorkSite.Api         Backend (it brings Core and
+                                                  TomlParse)
     samples/WorkSite/build/WorkSite.BuildFrontend FrontendBuilder (it brings
                                                   Core and BackendMapper; and
                                                   from nuget.org RustTools,
                                                   WasmShrink and LibGit2)
                                                   and the host-tools package
                                                   of the machine
+    samples/ApplicationSplitter/backend/ApplicationSplitter.Api
+                                                  Backend
+    samples/ApplicationSplitter/build/ApplicationSplitter.BuildFrontend
+                                                  FrontendBuilder and the
+                                                  host-tools package of the
+                                                  machine
 A fresh clone cannot restore those projects until the packages are published
 or the same .nupkg files are put in temp-packages/.
 
-AFTER CHANGING A LIBRARY OF THIS REPOSITORY (WorkSite does not see the change
-until this is done; do it once, after the last library change):
+AFTER CHANGING A LIBRARY OF THIS REPOSITORY (the samples do not see the
+change until this is done; do it once, after the last library change):
   1. dotnet build CodeBrix.WebPlatform.slnx --configuration Release
-  2. The eight new .nupkg files are in src/<project>/bin/Release/. Check that
-     they carry the SAME version (the date stamp); if not, build again.
-  3. In temp-packages/, delete the older CodeBrix.WebPlatform.Core,
-     .BackendMapper, .FrontendBuilder and the five
-     .FrontendBuilder.<Platform> files, and copy the eight new ones in.
-  4. Set that version in
+  2. The nine new .nupkg files are in src/<project>/bin/Release/. Check that
+     they carry the SAME version (the date stamp); if not, build again. A
+     build that crosses a UTC minute can also give packages whose
+     DEPENDENCY versions differ: check the <dependency> versions in each
+     package's nuspec too, and build again when they do not all name that
+     one version.
+  3. In temp-packages/, delete the older CodeBrix.WebPlatform.Core, .Backend,
+     .BackendMapper, .FrontendBuilder and .FrontendBuilder.<Platform> files,
+     and copy the nine new ones in.
+  4. Set that version in the samples' project files:
        samples/WorkSite/backend/libs/WorkSite.Core/WorkSite.Core.csproj
+       samples/WorkSite/backend/WorkSite.Api/WorkSite.Api.csproj
+         (the Backend package)
        samples/WorkSite/build/WorkSite.BuildFrontend/
          WorkSite.BuildFrontend.csproj
          (one property, WebPlatformPackageVersion, for the FrontendBuilder
-         package and the five host-tools references)
-  5. Build WorkSite.slnx. Every refresh has a new version, so NuGet's cache
-     never serves an old copy.
+         package and the host-tools references)
+       samples/ApplicationSplitter/backend/ApplicationSplitter.Api/
+         ApplicationSplitter.Api.csproj
+       samples/ApplicationSplitter/build/ApplicationSplitter.BuildFrontend/
+         ApplicationSplitter.BuildFrontend.csproj
+         (each with one property, WebPlatformPackageVersion)
+  5. Build WorkSite.slnx and ApplicationSplitter.slnx. Every refresh has a
+     new version, so NuGet's cache never serves an old copy.
 
 CodeBrix.WebPlatform.WasmShrink IS PUBLISHED and comes from nuget.org (it was
 served from this feed until 2026-11-18). To take a newer published version,
@@ -859,7 +1142,7 @@ crates (src/CodeBrix.WebPlatform.FrontendBuilder/Rust/vendor, shipped in the
 FrontendBuilder package as an archive), the tool sources and their crates
 (tools/dx-native-tools/sources; dioxus-cli patched), and the programs built
 from them (native_libraries/, shipped in the host-tools packages). The
-sample carries none.
+samples carry none.
 
 
 CODING CONVENTIONS
@@ -952,8 +1235,8 @@ Documentation
 
 NOTES
 =====
-  - WorkSite consumes the libraries as NuGet packages from the temporary
-    feed until they are published. After changing a library, WorkSite does
+  - The samples consume the libraries as NuGet packages from the temporary
+    feed until they are published. After changing a library, a sample does
     not see the change until the feed is refreshed (TEMPORARY PACKAGES).
   - The family's document collector reads README-INDEX.txt; keep every path
     it lists real.

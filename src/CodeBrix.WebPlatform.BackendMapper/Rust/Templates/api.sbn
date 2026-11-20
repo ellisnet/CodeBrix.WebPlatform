@@ -37,6 +37,14 @@ pub mod {{ c.module }} {
 {{~ end ~}}
         {{ f.path }}
     }
+
+    /// {{ f.bytes_doc }}
+    pub async fn {{ f.bytes_name }}({{ f.parameters }}) -> ApiResult<{{ f.bytes_return_type }}> {
+{{~ if f.query_statement != "" ~}}
+        {{ f.query_statement }}
+{{~ end ~}}
+        client::send_bytes(Method::{{ f.method }}, {{ f.bytes_path }}, {{ f.body }}, {{ f.auth }}).await
+    }
 {{~ else ~}}
     pub async fn {{ f.name }}({{ f.parameters }}) -> ApiResult<{{ f.return_type }}> {
 {{~ if f.query_statement != "" ~}}

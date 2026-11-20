@@ -7,7 +7,7 @@ CodeBrix.WebPlatform.FrontendBuilder.<Platform> packages (folder
 frontend-tools/<rid>/ of a consuming build). It lists the third-party code
 compiled into that program.
 
-dx itself is the dioxus-cli crate, version 0.7.10, MODIFIED by six patches
+dx itself is the dioxus-cli crate, version 0.7.10, MODIFIED by seven patches
 and used under the Apache License 2.0 (it is offered under "MIT OR
 Apache-2.0"): see LICENSE-Dioxus.txt beside this file. Nothing listed below
 is relicensed: every crate stays under its own license, and anyone who takes
@@ -36,6 +36,13 @@ C code. Nothing from OpenSSL is compiled into or linked by dx: the
 openssl-sys crate below is a dependency of git2 on Linux that the program
 never uses (its declarations are not linked in), and libgit2 loads the
 system's OpenSSL itself when it needs it.
+
+THE BUNDLE SPLITTER IS MODIFIED. The crate wasm-split-cli listed below is
+the crates.io crate wasm-split-cli 0.7.10 of the Dioxus project ("MIT OR
+Apache-2.0", used under Apache-2.0) with two changes to its call graph made
+by CodeBrix.WebPlatform; the patched source is in the repository's tool
+sources (tools/dx-native-tools/sources/wasm-split-cli) and the changes are
+recorded in tools/dx-native-tools/vendoring/wasm-split-cli.
 
 MOZILLA PUBLIC LICENSE 2.0. Thirteen crates dx is built from are under the
 Mozilla Public License 2.0 (smartstring declares "MPL-2.0+", version 2.0 or
@@ -3685,8 +3692,7 @@ wasm-encoder 0.214.0
 wasm-split-cli 0.7.10
   Declared license: MIT OR Apache-2.0
   Used under:       Apache-2.0
-  Source:           https://crates.io/crates/wasm-split-cli/0.7.10
-  Checksum:         sha256:28e4ed1e468d3d223a67299368fa9515ddd234f653b11e070f02109e9fdb0d10
+  Source:           local path
 
 wasm-used 0.7.10
   Declared license: MIT OR Apache-2.0

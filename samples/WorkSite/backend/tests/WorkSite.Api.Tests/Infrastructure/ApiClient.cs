@@ -6,7 +6,8 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
-using WorkSite.Api.Infrastructure;
+using CodeBrix.WebPlatform.Core.Mapping;
+using WorkSite.Api;
 using Xunit;
 
 namespace WorkSite.Api.Tests.Infrastructure;
@@ -18,6 +19,9 @@ namespace WorkSite.Api.Tests.Infrastructure;
 /// </summary>
 public sealed class ApiClient : IDisposable
 {
+    /// <summary>The backend's declared request marker, which the frontend sends in X-Requested-With.</summary>
+    private static readonly string RequestMarker = WireRequestMarkerAttribute.GetValue(typeof(Program).Assembly);
+
     private readonly HttpClient _http;
     private readonly Dictionary<string, (string Value, string Path)> _cookies = new(StringComparer.Ordinal);
 
@@ -102,7 +106,7 @@ public sealed class ApiClient : IDisposable
     {
         if (withRequestedWith)
         {
-            request.Headers.Add(RequestedWithMiddleware.HeaderName, RequestedWithMiddleware.HeaderValue);
+            request.Headers.Add(WireRequestMarkerAttribute.HeaderName, RequestMarker);
         }
 
         var path = request.RequestUri.IsAbsoluteUri ? request.RequestUri.AbsolutePath : "/" + request.RequestUri.OriginalString.TrimStart('/');

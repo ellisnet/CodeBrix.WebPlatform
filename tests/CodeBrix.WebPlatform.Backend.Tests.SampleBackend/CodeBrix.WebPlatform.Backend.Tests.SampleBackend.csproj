@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    A small backend for the CodeBrix.WebPlatform.Backend tests: a few controllers (one needs
+    sign-in), a hub, a stand-in sign-in scheme and the application's own pipeline lines. The tests
+    host it in memory, with the library's two calls around it.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CodeBrix.WebPlatform.Core\CodeBrix.WebPlatform.Core.csproj" />
+  </ItemGroup>
+
+</Project>

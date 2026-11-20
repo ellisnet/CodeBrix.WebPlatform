@@ -483,7 +483,7 @@ $info = @(
     "Build host       : $([Environment]::OSVersion.VersionString), $env:PROCESSOR_ARCHITECTURE, $env:COMPUTERNAME",
     "Visual Studio    : $VsPath",
     "Rust             : $($Rust.Rustc) / $($Rust.Cargo)",
-    "Sources          : $($Pins.TOOL_SOURCES_DIR) (dioxus-cli $($Pins.DX_CRATE_VERSION), upstream commit $($Pins.DX_GIT_SHA), six patches; wasm-bindgen-cli $($Pins.WASM_BINDGEN_VERSION))",
+    "Sources          : $($Pins.TOOL_SOURCES_DIR) (dioxus-cli $($Pins.DX_CRATE_VERSION), upstream commit $($Pins.DX_GIT_SHA), the recorded patches; wasm-bindgen-cli $($Pins.WASM_BINDGEN_VERSION))",
     "libgit2          : $($Pins.LIBGIT2_VERSION) from $($Pins.LIBGIT2_PACKAGE_ID) $($Pins.LIBGIT2_PACKAGE_VERSION) (nupkg sha256 $($Pins.LIBGIT2_NUPKG_SHA256)), $Libgit2Dll sha256 $($Pins.LIBGIT2_SHA256_WIN_X64), taken from $($Libgit2.From); import library made here from $($Libgit2.Exports) exports, sha256 $($Libgit2.ImportLibSha); not shipped by this build",
     "dx               : cargo build --release --locked --offline --target $Triple --features $($Pins.DX_FEATURES)",
     "wasm-bindgen     : cargo build --release --locked --offline --target $Triple",

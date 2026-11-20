@@ -67,6 +67,16 @@ public sealed class ThingsController : ControllerBase
     [WireFile]
     [Authorize]
     public IActionResult FileByPost() => throw new NotSupportedException();
+
+    [HttpGet("h")]
+    [Authorize]
+    [ProducesResponseType(204)]
+    public IActionResult ReportBytes() => throw new NotSupportedException();
+
+    [HttpGet("i")]
+    [WireFile]
+    [Authorize]
+    public IActionResult Report() => throw new NotSupportedException();
 }
 
 public sealed class UntypedHub : Hub

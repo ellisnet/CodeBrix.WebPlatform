@@ -1,0 +1,40 @@
+diff -ruN a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -941,13 +941,13 @@
+             .collect();
+ 
+         let mut old_to_new = HashMap::new();
+-        let mut new_call_graph: HashMap<Node, HashSet<Node>> = HashMap::new();
+ 
++        // CodeBrix change: the local map `new_call_graph` that was filled here and below is gone;
++        // its edges now go straight into `self.call_graph` (see the change further down).
++        // tools/dx-native-tools/vendoring/wasm-split-cli/PATCH-NOTES.txt, patch 0001.
+         for (new_name, new_func) in new_names.iter() {
+             if let Some(old_func) = old_names.get(new_name) {
+                 old_to_new.insert(*old_func, new_func);
+-            } else {
+-                new_call_graph.insert(Node::Function(*new_func), HashSet::new());
+             }
+         }
+ 
+@@ -1026,8 +1026,18 @@
+         }
+ 
+         // We're going to attach the recovered children to the main function
++        //
++        // CodeBrix change: upstream wrote these edges into a local map that nothing read, so the
++        // recovered children (the closure `invoke` shims that only dissolved describe functions
++        // referenced) and the functions only wasm-bindgen made were never reachable from main.
++        // They stay in the main module anyway (they sit in the function table), so a function
++        // they call that a split module also reaches was deleted from main while still called,
++        // and walrus panicked ("assertion failed: !self.dead.contains(&id)"). The edges now go
++        // into the call graph reachability is computed from, as in upstream's open pull request
++        // DioxusLabs/dioxus#5795 (commit 3f6e5a9). See
++        // tools/dx-native-tools/vendoring/wasm-split-cli/PATCH-NOTES.txt, patch 0001.
+         let main_fn = self.source_module.funcs.by_name("main").context("Failed to find `main` function - was this built with LTO, --emit-relocs, and debug symbols?")?;
+-        let main_fn_entry = new_call_graph.entry(Node::Function(main_fn)).or_default();
++        let main_fn_entry = self.call_graph.entry(Node::Function(main_fn)).or_default();
+         main_fn_entry.extend(recovered_children);
+ 
+         // Also attach any truly new symbols to the main function. Usually these are the shim functions

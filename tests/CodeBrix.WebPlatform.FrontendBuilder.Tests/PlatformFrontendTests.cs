@@ -25,7 +25,8 @@ public class PlatformFrontendTests
             Frontends.WriteCratesArchive(folder);
         }
 
-        return new PlatformFrontend(options, folder.Combine("build-program"));
+        // No bundles: what another test registers for the whole process must not show up here.
+        return new PlatformFrontend(options, folder.Combine("build-program")) { CrateBundlesOverride = Array.Empty<CodeBrix.WebPlatform.Core.Crates.CrateBundle>() };
     }
 
     private static HostTools FakeTools(TempFolder folder)
@@ -170,28 +171,6 @@ public class PlatformFrontendTests
 
         //Assert
         act.Should().Throw<FrontendBuildException>().WithMessage("*is not a frontend folder*Cargo.toml*");
-    }
-
-    [Fact]
-    public void CopySite_replaces_the_old_site_and_keeps_gitkeep()
-    {
-        //Arrange
-        using var folder = new TempFolder();
-        folder.Write("site/index.html", "<html>new</html>");
-        folder.Write("site/assets/app-123.wasm", "wasm");
-        folder.Write("wwwroot/.gitkeep", string.Empty);
-        folder.Write("wwwroot/index.html", "<html>old</html>");
-        folder.Write("wwwroot/assets/app-OLD.wasm", "old wasm");
-
-        //Act
-        var copied = PlatformFrontend.CopySite(folder.Combine("site"), folder.Combine("wwwroot"));
-
-        //Assert
-        copied.Should().Be(2);
-        File.ReadAllText(folder.Combine("wwwroot/index.html")).Should().Be("<html>new</html>");
-        File.Exists(folder.Combine("wwwroot/assets/app-123.wasm")).Should().BeTrue();
-        File.Exists(folder.Combine("wwwroot/assets/app-OLD.wasm")).Should().BeFalse();
-        File.Exists(folder.Combine("wwwroot/.gitkeep")).Should().BeTrue();
     }
 
     [Fact]
@@ -464,7 +443,7 @@ public class PlatformFrontendTests
         configuration.Should().Contain("replace-with = \"codebrix-webplatform-crates\"");
         configuration.Should().Contain("directory = \"platform/vendor\"");
         configuration.Should().Contain("offline = true");
-        File.ReadAllText(folder.Combine("frontend/Cargo.lock")).Should().Be(PlatformCrates.LockFileText);
+        File.ReadAllText(folder.Combine("frontend/Cargo.lock")).Should().Be(LockFileRules.AddMarker(PlatformCrates.LockFileText));
     }
 
     [Fact]

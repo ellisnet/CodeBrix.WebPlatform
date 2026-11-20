@@ -12,7 +12,25 @@ tools/dx-native-tools/linux - building dx and wasm-bindgen for linux-x64 and
     to libgit2 through the stand-in; image rebuilt with the OpenSSL headers);
     every gate passed, the functional gate's new checks included; two linux-x64
     runs byte-identical; wasm-bindgen unchanged. ADOPTED into
-    ../../../native_libraries/ on 2026-11-19 (../BUILD-PROVENANCE.txt). <<<
+    ../../../native_libraries/ on 2026-11-19 (../BUILD-PROVENANCE.txt).
+    STATUS 2026-11-19, later: both RIDs REBUILT again after patch 0003 was
+    extended (without esbuild, a `--wasm-split` build's loader is copied
+    beside the glue file under a hashed name); every gate passed, the
+    functional gate included (functional-gate.sh's comparison with today's
+    tools fixed to give the reference dx the libgit2 library); two linux-x64
+    runs byte-identical; the new dx builds the unsplit WorkSite frontend
+    byte-identically to the dx it replaces; wasm-bindgen and the licence
+    files unchanged. ADOPTED into ../../../native_libraries/ on 2026-11-19
+    (../BUILD-PROVENANCE.txt).
+    STATUS 2026-11-19, third rebuild (the programs shipped now): both RIDs
+    REBUILT after the bundle splitter's call graph was fixed (patch 0007 and
+    the patched copy ../sources/wasm-split-cli: SEVEN patches); every gate
+    passed, the linux-x64 functional gate included; two linux-x64 runs
+    byte-identical, and a later linux-x64 re-build the same day matched the
+    adopted files byte for byte; linux-arm64 built once (its reproducibility
+    not re-checked); wasm-bindgen unchanged; THIRD-PARTY-NOTICES-Dioxus.txt
+    regenerated. ADOPTED into ../../../native_libraries/ on 2026-11-19
+    (../BUILD-PROVENANCE.txt). <<<
 
 NOTHING HERE INSTALLS ANYTHING ON YOUR MACHINE. Every script checks what it
 needs, and if something is missing it names it, prints the command that
@@ -104,7 +122,7 @@ OpenSSL headers were added is refused by container-build.sh with that advice)
 
 WHY linux-arm64 IS CROSS-COMPILED, NOT BUILT UNDER qemu
 --------------------------------------------------------------------------------
-dx is about 560 crates. Under qemu every rustc process would be emulated, which
+dx is several hundred crates. Under qemu every rustc process would be emulated, which
 turns a ninety-second build into hours. Rust cross-compiles by design; the only
 thing that must be right is the target's C library, and the cross linker links
 against the sysroot of the pinned aarch64 image itself, so the glibc floor is

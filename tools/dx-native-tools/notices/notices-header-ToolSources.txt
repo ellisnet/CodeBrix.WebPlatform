@@ -14,7 +14,7 @@ Dioxus CLI ("dx"), modified
             (https://github.com/DioxusLabs/dioxus); the pristine archive is in
             tools/dx-native-tools/vendoring/dioxus-cli
   License:  MIT OR Apache-2.0; used under Apache-2.0
-  Changes:  this copy is MODIFIED. The changes are the six numbered patch
+  Changes:  this copy is MODIFIED. The changes are the seven numbered patch
             files in tools/dx-native-tools/vendoring/dioxus-cli and are
             described in PATCH-NOTES.txt there. Each changed place in the
             source carries a comment that starts "CodeBrix change:".
@@ -29,6 +29,20 @@ libgit2-sys stand-in, ours (declarations taken from upstream)
             this repository never carries. README.txt there is its notice.
   License:  MIT OR Apache-2.0 (upstream's LICENSE-MIT and LICENSE-APACHE,
             verbatim, beside it)
+
+wasm-split-cli (dx's WebAssembly bundle splitter), modified
+  Where:    tools/dx-native-tools/sources/wasm-split-cli
+  Origin:   the wasm-split-cli crate, version 0.7.10,
+            https://crates.io/crates/wasm-split-cli
+            (https://github.com/DioxusLabs/dioxus); the pristine archive is in
+            tools/dx-native-tools/vendoring/wasm-split-cli
+  License:  MIT OR Apache-2.0; used under Apache-2.0
+  Changes:  this copy is MODIFIED by the two numbered patch files in
+            tools/dx-native-tools/vendoring/wasm-split-cli, described in
+            PATCH-NOTES.txt there; dx's Cargo.toml puts it in place of the
+            crates.io crate, which is therefore not in the vendor folder.
+            Each changed place carries a comment that starts "CodeBrix
+            change:".
 
 wasm-bindgen CLI, unmodified
   Where:    tools/dx-native-tools/sources/wasm-bindgen-cli
