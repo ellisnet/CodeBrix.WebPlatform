@@ -963,7 +963,7 @@ pinned in tools/dx-native-tools/linux/pins.env and named again in each
 package's HostTools class (and checked by the HostTools tests).
 
 dx's patches (tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt;
-patch 0007 swaps in the patched bundle splitter, whose own two patches are in
+patch 0007 swaps in the patched bundle splitter, whose own patches are in
 tools/dx-native-tools/vendoring/wasm-split-cli):
   0001 image encoders without imagequant / mozjpeg
   0002 libgit2-sys -> the declarations-only stand-in (no libgit2 source;
@@ -973,6 +973,15 @@ tools/dx-native-tools/vendoring/wasm-split-cli):
   0004 the regenerated Cargo.lock
   0005 no prebuilt OpenSSL archive
   0006 DX_SKIP_WASM_OPT: an unshrunk release build on request
+  0007 wasm-split-cli -> the patched copy in tools/dx-native-tools/sources/
+       wasm-split-cli, whose patches are:
+         0001 the edges recovered for wasm-bindgen's closure shims reach the
+              call graph (the "!self.dead.contains(&id)" panic)
+         0002 a call_indirect's type index is not read as a symbol
+         0003 a split module's element and data segments are written in a
+              fixed order (before, the order of a HashMap / HashSet, so the
+              same source gave other split modules and other file names on
+              every build)
 Every dx command is there (`dx new`, `dx init`, `dx components` included).
 BUILD PREREQUISITE on Linux: the OpenSSL DEVELOPMENT HEADERS (the derived
 build image installs them; a bare Debian host needs `sudo apt install
@@ -980,6 +989,50 @@ libssl-dev`), because dx's project templates bring git2's `https` feature and
 with it the openssl-sys crate, whose build script reads them. Nothing of
 OpenSSL is linked into dx; the build gate proves it. libgit2's source never
 enters this repository; `LibraryChecker vendor` checks that.
+
+
+REPRODUCIBLE APPLICATION BUILDS
+===============================
+(consumer view: AGENT-README.txt, CODE SPLITTING, FILE NAMES AND THE
+BROWSER'S CACHE)
+
+THE PROMISE, AS FAR AS IT IS PROVED: the same source, built in the same
+folder with the same tools, gives the same web root - every file name and
+every byte, the compressed copies and the manifest included - split or not.
+Release file names carry a hash of the content (dx's -dxh<hash>), so an
+unchanged application keeps its names and a browser its cached copies.
+Proved on 2026-11-19 with the ApplicationSplitter sample (three applications,
+sales split) built from clean several times through its build program, and
+with WorkSite's frontend (unsplit; the functional gate of the tool build
+compares two builds byte for byte).
+
+WHAT IT TOOK: the bundle splitter wrote each split module's element and data
+segments in the order of a HashMap / HashSet, which differs in every
+process, so every piece, the loader and the glue file were renamed on every
+build. wasm-split-cli patch 0003 fixes the order (its PATCH-NOTES.txt). Only
+split builds were affected.
+
+WHAT IS NOT PROMISED, and why (all upstream behaviour in the platform's
+vendored crates, which are never edited):
+  - ANOTHER FOLDER gives other bytes. rustc writes the absolute paths of the
+    vendored crates into the code (panic locations), and dx's asset!() macro
+    (manganis) names each asset's link section from a hash of the asset's
+    absolute path (the __ASSETS__<hash> exports). A --remap-path-prefix
+    would cover the first, not the second: dx needs the absolute path to
+    find the asset.
+  - A CHANGE OF LENGTH in a source file renames most pieces: the wasm-split
+    macro names each split point from a SHA-256 of its name and its span's
+    position in the compiled source (wasm-split-macro, LoaderNames), and
+    the main file's data moves. A change of the same length renames only
+    that page's piece, the loader, the glue file (and index.html's bytes).
+  - TAILWIND SCANS THE FRONTEND FOLDER for class names, skipping what
+    .gitignore files exclude; the root .gitignore excludes target/. A copy
+    of a frontend without such a line gives a stylesheet that depends on
+    the build output (measured: 38,257 against 36,089 bytes).
+
+HOW TO CHECK after a tool change: build ApplicationSplitter twice from clean
+(delete each frontend's target/ and the web root's content) and compare the
+web roots file by file (names and SHA-256). Its maintainer file says how.
 
 
 THE NODE-FREE PROOF

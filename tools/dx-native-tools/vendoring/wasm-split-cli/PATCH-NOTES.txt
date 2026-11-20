@@ -27,17 +27,23 @@ The patches, in the order they apply:
   0002-no-edges-from-type-index-relocations.patch  a call_indirect's type
                                                    index is not read as a
                                                    symbol
+  0003-deterministic-split-module-sections.patch   the same input gives the
+                                                   same split modules, byte
+                                                   for byte
 
-Both patches change src/lib.rs only. They belong together: 0001 is the fix of
-the panic, and 0002 keeps 0001 from pinning most of a split route's code into
-the main module (see the Effect of each).
+All three patches change src/lib.rs only. 0001 and 0002 belong together: 0001
+is the fix of the panic, and 0002 keeps 0001 from pinning most of a split
+route's code into the main module (see the Effect of each). 0003 is a separate
+fix (reproducible output) and has its own section below.
 
-Status of both: approved by the repository owner 2026-11-19 ("diagnose and
-fix").
+Status of 0001 and 0002: approved by the repository owner 2026-11-19
+("diagnose and fix"). Status of 0003: made under the repository owner's GO of
+2026-11-19 for the investigation of the changing file names of a split
+application and "fixing whatever you need to fix".
 
 
-THE BUG BOTH PATCHES FIX
-------------------------
+THE BUG 0001 AND 0002 FIX
+-------------------------
 `dx build --platform web --release --wasm-split` panicked right after "Emitting
 main bundle split module":
 
@@ -131,15 +137,62 @@ Effect: the call graph no longer has those false edges. Removing edges that
 Drop when: with 0001, when upstream fixes the type-index lookup.
 
 
+0003-deterministic-split-module-sections.patch
+----------------------------------------------
+What:   src/lib.rs, two places where the splitter writes a split module:
+        - create_ifunc_initializers collects the function-table entries a
+          split module fills in a BTreeMap keyed by table offset instead of a
+          HashMap, so it adds its element segments in offset order;
+        - clear_data_segments takes the module's data symbols in sorted order
+          (by symbol number) instead of in the iteration order of a HashSet
+          when it adds one data segment per symbol.
+        Nothing else: what is emitted is the same, only its order is fixed.
+        Upstream has exactly this change as an open pull request,
+        DioxusLabs/dioxus#5992 ("wasm-split: emit split modules
+        deterministically", a BTreeMap by table offset and the data segments
+        in Node order), and an open issue, #6090 ("dx build --wasm-split gives
+        different split modules (and hashed names) for identical input")
+        (both checked 2026-11-19; neither merged nor closed).
+Why:    Rust's HashMap and HashSet are seeded at random in every process, so
+        their iteration order differs from one run of dx to the next. Walrus
+        writes element and data segments in the order they were added, so two
+        builds of the SAME source gave every split module (module_*.wasm)
+        different bytes - the same sections, the same sizes, the element and
+        data sections in another order - and with them other content hashes in
+        their file names, another __wasm_split.js (which lists those names)
+        and another glue .js (which carries a hash of the loader). An
+        application whose source did not change was renamed on every build,
+        and every visitor's browser downloaded all of it again. Measured on
+        the ApplicationSplitter sample's sales application: rustc's .wasm, the
+        main module and chunk_0 were identical across two clean builds; all
+        ten module_*.wasm differed only in their data section (and, in the
+        larger ones, their element section). The standalone splitter run
+        three times on the same two input files gave three different sets of
+        split modules; with this patch, three identical ones.
+Effect: a split build is a pure function of its input: the same source gives
+        the same split modules, the same names, the same loader and the same
+        glue file. Sizes do not change (the same segments, in a fixed order).
+        Unsplit builds do not run the splitter and are unaffected.
+        NOT changed: SplitModule::relies_on_chunks stays a HashSet. dx lists
+        a split module's chunks in the loader in that set's order, but the
+        splitter always makes exactly one chunk (build_split_chunks pushes one
+        set), so the set holds at most one number and its order cannot vary.
+        If upstream ever makes more than one chunk, that list must be sorted
+        too.
+Drop when: upstream merges #5992 or an equivalent fix and the repository
+        takes a stable release that has it.
+
+
 UPGRADING
 ---------
 When dx is upgraded, the crate's version changes with it (dx asks for the same
 release of wasm-split-cli). Take the new release's .crate from crates.io (or
-the local cargo cache) and record its checksum, check upstream for #5795 and
-the type-index fix first, re-apply the patches that are still needed, and
+the local cargo cache) and record its checksum, check upstream for #5795,
+the type-index fix and #5992 first, re-apply the patches that are still needed, and
 change the [patch] path and version in dx's Cargo.toml (dioxus-cli patch
 0007) to match. Then rebuild and check a split build with a field only on a
-split page, as above.
+split page, as above, and build a split application twice from clean: every
+file name and every byte must be the same (0003).
 
 ================================================================================
 END OF PATCH NOTES

@@ -22,7 +22,17 @@ tools/dx-native-tools/linux - building dx and wasm-bindgen for linux-x64 and
     byte-identically to the dx it replaces; wasm-bindgen and the licence
     files unchanged. ADOPTED into ../../../native_libraries/ on 2026-11-19
     (../BUILD-PROVENANCE.txt).
-    STATUS 2026-11-19, third rebuild (the programs shipped now): both RIDs
+    STATUS 2026-11-19, fourth rebuild (the programs shipped now): both RIDs
+    REBUILT after the bundle splitter's output was made reproducible (its
+    patch 0003: a split build gives the same files, byte for byte, from the
+    same source; still SEVEN dioxus-cli patches, now THREE splitter
+    patches); every gate passed, the linux-x64 functional gate included
+    (the new dx builds the unsplit WorkSite frontend byte-identically to the
+    dx it replaces); each RID built twice, byte-identical both times
+    (linux-x64 runs 19 and 20, linux-arm64 runs 21 and 22); wasm-bindgen and
+    the four licence and notices files unchanged. ADOPTED into
+    ../../../native_libraries/ on 2026-11-19 (../BUILD-PROVENANCE.txt).
+    STATUS 2026-11-19, third rebuild (replaced by the fourth): both RIDs
     REBUILT after the bundle splitter's call graph was fixed (patch 0007 and
     the patched copy ../sources/wasm-split-cli: SEVEN patches); every gate
     passed, the linux-x64 functional gate included; two linux-x64 runs

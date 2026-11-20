@@ -83,10 +83,14 @@ FOLDER MAP
                           libgit2-sys crate (README.txt there is its notice:
                           what was taken from upstream, the three changes)
     wasm-bindgen-cli/     wasm-bindgen-cli 0.2.130, unpatched
+    wasm-split-cli/       dx's bundle splitter, wasm-split-cli 0.7.10 with its
+                          recorded patches (dx's patch 0007 puts it in place
+                          of the crates.io crate)
     vendor/               every crate the two are built from (cargo vendor)
     .cargo/config.toml    replaces crates.io with vendor/
   vendoring/<tool>/       per tool: the pristine crates.io archive, its
-                          .sha256, the numbered patches (dioxus-cli),
+                          .sha256, the numbered patches (dioxus-cli,
+                          wasm-split-cli),
                           PATCH-NOTES.txt and UPGRADE-README.txt
   BUILD-PROVENANCE.txt    what was actually built, when, by what, with what
                           hashes and gate results - one section per RID
@@ -176,7 +180,8 @@ THE FIVE RUNTIME IDENTIFIERS
 
 BUILT = built here, gated and adopted into ../../native_libraries/<rid>/.
 The adopted programs are the 2026-11-19 builds from the current sources: seven
-patches, dx linked against libgit2 (BUILD-PROVENANCE.txt).
+dioxus-cli patches and three splitter patches, dx linked against libgit2
+(BUILD-PROVENANCE.txt).
 PENDING = the script is written but has never been run; the owner runs it on
 his Windows x64 machine and his Apple Silicon Mac. Until then that platform's
 package packs with its small assembly only.

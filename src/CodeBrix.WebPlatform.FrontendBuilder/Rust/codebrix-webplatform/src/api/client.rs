@@ -10,6 +10,10 @@
 //!   it is ([`send_bytes`], for a file the frontend reads itself); a non-success answer parsed
 //!   into [`ApiError`] whichever was asked, because an error is always the standard JSON problem
 //!   body;
+//! - the browser's HTTP cache: a file read with GET or HEAD through [`send_bytes`] may be stored
+//!   and is revalidated with the server on every call (fetch cache mode "no-cache"), so the
+//!   backend's `Cache-Control` and `ETag` decide whether it is downloaded again; every other
+//!   request is never stored ("no-store");
 //! - a note of the state-changing requests in flight (any of them may set or clear the session
 //!   cookies), which the SignalR client waits for before it negotiates a hub connection.
 //!
@@ -120,6 +124,46 @@ fn changes_state(method: &Method) -> bool {
     *method != Method::GET && *method != Method::HEAD
 }
 
+/// What the browser's HTTP cache may do with a request (the fetch `cache` mode).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CacheMode {
+    /// "no-store": the browser neither uses a stored answer nor stores this one.
+    NoStore,
+    /// "no-cache": the browser may store the answer, as the server's `Cache-Control` allows,
+    /// but asks the server every time, sending the stored copy's `ETag` along, and uses the
+    /// copy only when the server answers 304 Not Modified.
+    NoCache,
+}
+
+/// The cache mode of a request: "no-cache" for a file read as bytes with GET or HEAD (the
+/// generated `_bytes` functions, through [`send_bytes`]), so that an unchanged file is not
+/// downloaded again; "no-store" for everything else - every JSON and empty answer, the session
+/// refresh, and any request that changes state.
+fn cache_mode(method: &Method, read: BodyKind) -> CacheMode {
+    if read == BodyKind::Bytes && !changes_state(method) {
+        CacheMode::NoCache
+    } else {
+        CacheMode::NoStore
+    }
+}
+
+/// Sets the browser's fetch options on a request: the session cookies of the same origin, and
+/// the cache mode.
+#[cfg(target_arch = "wasm32")]
+fn with_browser_options(request: reqwest::RequestBuilder, cache: CacheMode) -> reqwest::RequestBuilder {
+    let request = request.fetch_credentials_same_origin();
+    match cache {
+        CacheMode::NoStore => request.fetch_cache_no_store(),
+        CacheMode::NoCache => request.fetch_cache_no_cache(),
+    }
+}
+
+/// On the host (the crate's tests) there is no browser and nothing to set.
+#[cfg(not(target_arch = "wasm32"))]
+fn with_browser_options(request: reqwest::RequestBuilder, _cache: CacheMode) -> reqwest::RequestBuilder {
+    request
+}
+
 /// Sends one request and reads the whole answer, its body as `read` asks.
 async fn send_once(method: &Method, path: &str, body: Option<&str>, read: BodyKind) -> Result<RawResponse, ApiError> {
     let url = format!("{}{}", browser::origin(), path);
@@ -136,10 +180,7 @@ async fn send_once(method: &Method, path: &str, body: Option<&str>, read: BodyKi
             .header("Content-Type", "application/json")
             .body(body.to_string());
     }
-    #[cfg(target_arch = "wasm32")]
-    {
-        request = request.fetch_credentials_same_origin().fetch_cache_no_store();
-    }
+    request = with_browser_options(request, cache_mode(method, read));
     let response = {
         // The browser stores the answer's cookies before `send` resolves.
         let _in_flight = changes_state(method).then(StateChangeInFlight::begin);
@@ -352,7 +393,12 @@ pub async fn send_empty(method: Method, path: &str, body: Option<String>, auth: 
 /// Sends a request and returns the body of a success answer as the bytes it is (a file the
 /// frontend reads itself, such as model or glyph data). Everything else is as for [`send_json`]:
 /// the request marker, the session refresh and retry, the note of a state change in flight, and
-/// an error answer (the standard JSON problem body) turned into an [`ApiError`].
+/// an error answer (the standard JSON problem body) turned into an [`ApiError`]. The one
+/// difference: a GET or HEAD is sent with the fetch cache mode "no-cache", so the browser may keep
+/// the answer (as far as its `Cache-Control` allows) and asks the server every time whether it
+/// changed - an unchanged file then costs a 304 instead of a download. A backend that answers
+/// `Cache-Control: no-store` (as it should for private data) is never stored. Any other method is
+/// "no-store", like [`send_json`] and [`send_empty`].
 pub async fn send_bytes(method: Method, path: &str, body: Option<String>, auth: Auth) -> Result<Vec<u8>, ApiError> {
     execute(method, path, body, auth, BodyKind::Bytes).await.map(RawBody::into_bytes)
 }
@@ -374,6 +420,27 @@ mod tests {
         assert!(changes_state(&Method::POST));
         assert!(changes_state(&Method::PUT));
         assert!(changes_state(&Method::DELETE));
+    }
+
+    #[test]
+    fn a_file_read_with_get_or_head_is_revalidated_not_refused_by_the_cache() {
+        assert_eq!(cache_mode(&Method::GET, BodyKind::Bytes), CacheMode::NoCache);
+        assert_eq!(cache_mode(&Method::HEAD, BodyKind::Bytes), CacheMode::NoCache);
+    }
+
+    #[test]
+    fn a_file_read_with_a_state_changing_method_is_never_stored() {
+        assert_eq!(cache_mode(&Method::POST, BodyKind::Bytes), CacheMode::NoStore);
+        assert_eq!(cache_mode(&Method::PUT, BodyKind::Bytes), CacheMode::NoStore);
+        assert_eq!(cache_mode(&Method::PATCH, BodyKind::Bytes), CacheMode::NoStore);
+        assert_eq!(cache_mode(&Method::DELETE, BodyKind::Bytes), CacheMode::NoStore);
+    }
+
+    #[test]
+    fn json_and_empty_answers_are_never_stored_whatever_the_method() {
+        for method in [Method::GET, Method::HEAD, Method::POST, Method::PUT, Method::PATCH, Method::DELETE] {
+            assert_eq!(cache_mode(&method, BodyKind::Text), CacheMode::NoStore, "{method}");
+        }
     }
 
     #[test]

@@ -241,6 +241,34 @@ What to check:
     no horizontal overflow at narrow (360 px) and desktop widths.
 
 
+CHECKING THAT A BUILD IS REPRODUCIBLE
+=====================================
+An unchanged application must keep its file names (they carry a hash of the
+content) so that a returning visitor's browser reuses what it has; sales,
+which is split, is the case that broke before (see REPRODUCIBLE APPLICATION
+BUILDS in the root maintainer file). After a change to the platform's tools:
+
+  1. Delete each frontend's target/ and the generated files (platform/,
+     .cargo/, src/generated/, assets/tailwind.css) and the web root's content
+     (.gitkeep excepted), run `build`, and keep the list of every file of the
+     web root with its SHA-256.
+  2. Do it again, from clean, and compare: every name and every byte must be
+     the same, in all three applications, the compressed copies and the
+     manifest included. An incremental `build` (nothing deleted) must give
+     the same files too.
+  3. Change one string in one sales page WITHOUT changing the file's length
+     and build: only that page's piece, the loader (__wasm_split-dxh...js),
+     the main script (splitter-sales-dxh...js), their compressed copies and
+     index.html may change. (A change of length renames most of the pieces
+     and the main .wasm: upstream names the split points from their position
+     in the source.)
+
+Build in the same folder each time: a copy of the sample in another folder
+gives other names (the compiled code carries absolute paths). A copy must
+keep the repository's .gitignore, whose line for the frontends' target/
+keeps Tailwind from reading the build output.
+
+
 TEMPORARY PACKAGES
 ==================
 The sample uses CodeBrix packages that are not on nuget.org yet: the

@@ -14,7 +14,7 @@
       ONE version for every CodeBrix.WebPlatform package of this repository: they are built and
       refreshed together.
     -->
-    <WebPlatformPackageVersion>1.0.324.250</WebPlatformPackageVersion>
+    <WebPlatformPackageVersion>1.0.324.293</WebPlatformPackageVersion>
   </PropertyGroup>
 
   <ItemGroup>

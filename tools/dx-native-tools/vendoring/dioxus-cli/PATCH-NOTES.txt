@@ -26,7 +26,8 @@ The patches, in the order they apply:
   0006-release-build-without-wasm-opt.patch DX_SKIP_WASM_OPT: an unshrunk
                                             release build on request
   0007-wasm-split-cli-call-graph.patch      wasm-split-cli -> the patched copy
-                                            (the splitter's call graph)
+                                            (the splitter's call graph, and
+                                            its reproducible output)
 
 
 0001-image-crate-encoders.patch
@@ -207,7 +208,7 @@ What:   - Cargo.toml - a [patch.crates-io.wasm-split-cli] section that replaces
           patched copy of the same release in
           tools/dx-native-tools/sources/wasm-split-cli (path
           "../wasm-split-cli"). That copy is the crates.io archive in
-          tools/dx-native-tools/vendoring/wasm-split-cli plus the two patches
+          tools/dx-native-tools/vendoring/wasm-split-cli plus the patches
           recorded there, checked by `LibraryChecker patches` like this tool.
         - Cargo.lock - the wasm-split-cli entry loses its crates.io source and
           checksum (cargo's own result of the substitution; nothing else
@@ -219,11 +220,17 @@ Why:    `dx build --wasm-split` panicked ("assertion failed:
         field that reads its value, on a split page only. The splitter's call
         graph is fixed in the patched copy; the bug, the evidence, the two
         changes and upstream's status are in
-        tools/dx-native-tools/vendoring/wasm-split-cli/PATCH-NOTES.txt.
+        tools/dx-native-tools/vendoring/wasm-split-cli/PATCH-NOTES.txt. The
+        same copy also carries a later, separate fix (its patch 0003, added
+        2026-11-19): the splitter wrote a split module's element and data
+        segments in the random order of a HashMap / HashSet, so the same
+        source gave other split modules, and other content-hashed file names,
+        on every build. This patch (0007) did not change for it.
 Effect: a split build no longer panics there. The closure shims and what they
         call stay in the main module; split routes still get their own code.
-        Builds without --wasm-split do not run the splitter and are
-        unaffected.
+        With the splitter's patch 0003, a split build gives the same files,
+        names and bytes from the same source every time. Builds without
+        --wasm-split do not run the splitter and are unaffected.
 Drop when: the splitter's patches can be dropped (see that file).
 Status: approved by the repository owner 2026-11-19 ("diagnose and fix").
 On an upgrade: the Cargo.toml part is re-applied with 0001 to 0003, 0005 and

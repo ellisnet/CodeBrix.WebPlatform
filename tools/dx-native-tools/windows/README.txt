@@ -9,7 +9,13 @@ tools/dx-native-tools/windows - building dx.exe and wasm-bindgen.exe for win-x64
     script, record it in ../BUILD-PROVENANCE.txt, and rewrite this block.
     UPDATED 2026-11-19, STILL NEVER RUN: the six-patch dx (its git features
     back, linked against libgit2), the libgit2 package step and the import
-    library it makes, the DX_SKIP_WASM_OPT and `dx new` checks. <<<
+    library it makes, the DX_SKIP_WASM_OPT and `dx new` checks.
+    UPDATED 2026-11-19 again, STILL NEVER RUN: the script builds whatever the
+    tool sources hold, so it picks up dx's current patch set by itself - the
+    seven dioxus-cli patches, the seventh of which swaps in the patched bundle
+    splitter (sources/wasm-split-cli, its three patches: the call-graph fixes
+    0001 and 0002, and 0003, which makes a split build give the same files
+    from the same source). Nothing in the script names the patches. <<<
 
 WHAT THIS IS
 --------------------------------------------------------------------------------

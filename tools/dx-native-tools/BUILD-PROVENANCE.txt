@@ -12,7 +12,144 @@ its section here is updated from that build's output/<rid>/BUILD-INFO.txt and
 the <program>.provenance.txt beside it is written from the same values.
 
 ================================================================================
-ADOPTED 2026-11-19 (third rebuild) - the bundle splitter's call graph fixed
+ADOPTED 2026-11-19 (fourth rebuild) - a split build gives the same files from
+the same source
+================================================================================
+(The times below are UTC, which was already 2026-11-20; the builds ran on the
+evening of 2026-11-19, Pacific time, the same day as the earlier rebuilds.)
+Why: two builds of the SAME source with `dx build --wasm-split` gave every split
+module (module_*.wasm) other bytes, and so other content-hashed file names, and
+with them another loader (__wasm_split-dxh<hash>.js) and another glue .js; an
+unchanged split application was renamed on every build, and every returning
+visitor downloaded all of it again. Cause: the splitter (wasm-split-cli 0.7.10)
+wrote a split module's element segments in the iteration order of a HashMap
+and its data segments in the iteration order of a HashSet, both seeded at
+random in every process. Upstream: issue DioxusLabs/dioxus#6090 and pull
+request #5992 (exactly this change), both open. Made under the repository
+owner's GO of 2026-11-19 for this investigation and its fix.
+What changed in the source:
+  * wasm-split-cli gains patch 0003-deterministic-split-module-sections.patch
+    (vendoring/wasm-split-cli/PATCH-NOTES.txt): a BTreeMap by table offset for
+    the element segments, the data symbols in sorted order. THREE splitter
+    patches; sources/wasm-split-cli/src/lib.rs sha256
+    8a4b7f14c67558696ae604f4dd5e680882a929b2c0e7c5a1700d12455a791b95;
+  * dioxus-cli unchanged: still SEVEN patches (0007 points at the splitter's
+    copy); its Cargo.lock unchanged;
+  * notices: only the header of the repository-only
+    THIRD-PARTY-NOTICES-ToolSources.txt changed ("three numbered patch
+    files"); THIRD-PARTY-NOTICES-Dioxus.txt and -WasmBindgen.txt, and both
+    licence files, are byte-identical to the adopted ones.
+Runs (the same laptop, the same pinned image, reused; network off; cargo's
+target inside the container; 634 crates compiled for dx, 161 for
+wasm-bindgen; logs output/run19-... to run22-...):
+  run19 x64     2026-11-20 04:31:16 UTC - ADOPTED. 115s in the container (dx
+                95s, wasm-bindgen 18s), 242s end to end. Gate, host check and
+                functional gate passed every check
+                (output/run19-x64-deterministic-split.log)
+  run20 x64     04:36:16 UTC - the reproducibility check: 133s in the
+                container (dx 110s, wasm-bindgen 20s), 263s end to end, every
+                gate passed; dx, wasm-bindgen and the four licence and notices
+                files BYTE-IDENTICAL to run 19's
+                (output/run20-x64-deterministic-split-repeat.log; output/
+                linux-x64/ holds this run's files)
+  run21 arm64   04:40:40 UTC - ADOPTED. 131s in the container (dx 109s,
+                wasm-bindgen 20s), 136s end to end; gate passed; qemu run
+                04:42:55 UTC passed (output/run21-arm64-deterministic-split.log)
+  run22 arm64   04:43:59 UTC - the reproducibility check: 134s in the
+                container (dx 98s, wasm-bindgen 34s), 144s end to end; gate and
+                qemu run (04:46:20 UTC) passed; dx, wasm-bindgen and the four
+                licence and notices files BYTE-IDENTICAL to run 21's
+                (output/run22-arm64-deterministic-split-repeat.log; output/
+                linux-arm64/ holds this run's files)
+  linux-x64/dx    built 2026-11-20 04:31:16 UTC  59557184 bytes
+                  sha256 e3365fe76d6af33f0c2ff50bc62fb4a54f9ee0660324762bd5b5e2bb68a5e3fc
+  linux-arm64/dx  built 2026-11-20 04:40:40 UTC  53275536 bytes
+                  sha256 85481de06ce688a2ef5aebc95b23ca687221ed1d2dd1e38a6d55da039ae5418d
+  wasm-bindgen (both RIDs): unchanged, byte for byte.
+Proof of the change: the standalone splitter built from the source before
+and after 0003 and run three times on the same two input files (the
+ApplicationSplitter sample's sales application, rustc's and wasm-bindgen's
+.wasm): before, three different sets of split modules (the data section of
+every module and the element section of the larger ones in another order,
+the same sizes); after, three byte-identical sets, the main module and chunk
+unchanged by the patch. With the new dx, sales built twice from clean in the
+same folder: every file name and every byte identical (with the dx it
+replaces: every module_*.wasm, the loader, the glue .js and index.html
+differed). Through the packages of the same day (the host-tools packages
+carrying this dx), the ApplicationSplitter sample's build program built all
+three applications three times from clean, and once incrementally, in one
+folder: the 141 files of the web root identical in name and bytes every
+time; in another folder, the .wasm and .js files of all three got other
+names (absolute paths in the compiled code - see REPRODUCIBLE APPLICATION
+BUILDS in the root MAINTAINER-README.txt). WorkSite's frontend (unsplit),
+built twice from clean in one folder: its 17 files identical.
+Adopted into ../../native_libraries/linux-x64 and linux-arm64 on 2026-11-19
+(dx replaced; wasm-bindgen and the four licence and notices files came out
+byte-identical and were kept; dx.provenance.txt rewritten in both folders,
+wasm-bindgen.provenance.txt unchanged). The ADOPTED blocks below and the
+per-RID sections after them are HISTORY of the builds this one replaces;
+what they say about libgit2 (the same package and library checksums in runs
+19 to 22), the image and the toolchain (rustc and cargo 1.100.0) still holds.
+
+Source          : tools/dx-native-tools/sources; dioxus-cli's Cargo.lock sha256
+                  bbc7445ae86c9fac5a166939c49327e1389d3a8bb7a4d312228034fada8b6706
+                  (unchanged); 965 folders in sources/vendor (unchanged);
+                  wasm-bindgen-cli's Cargo.lock unchanged (653f29ed...)
+Image           : codebrix-dx-build-x86_64, reused (no image build in these runs)
+Network         : DISABLED during every build (interfaces: lo)
+
+linux-x64       : built 2026-11-20 04:31:16 UTC (run 19; run 20 gave
+                  byte-identical programs)
+  dx            : 59,557,184 bytes stripped (77,261,144 as linked);
+                  21,804,342 bytes gzip -9 -n
+                  sha256 e3365fe76d6af33f0c2ff50bc62fb4a54f9ee0660324762bd5b5e2bb68a5e3fc
+                  build-id d61692faf8f7f59715b96be93c1a5108dc31f4cf
+                  NEEDED libdl.so.2 libgit2-49e408b.so.1.9 libgcc_s.so.1
+                  libpthread.so.0 libm.so.6 libc.so.6 ld-linux-x86-64.so.2;
+                  glibc floor 2.28; no OpenSSL symbol imported; 624 packages
+                  compiled in
+  wasm-bindgen  : UNCHANGED - byte-identical to native_libraries/linux-x64
+                  (sha256 0efc609f5c0354d28eb907f211e09e5e104e7875e6e683f1a51dc0a891d9eb9a)
+  gates         : every check PASSED in runs 19 and 20 (GATE, HOST-CHECK and
+                  FUNCTIONAL-GATE lines in their logs). Functional, on a
+                  scratch copy of samples/WorkSite/frontend (not split): shrunk
+                  .wasm 1,832,805 bytes, 17 site files; the tools then in
+                  native_libraries/linux-x64 (the third rebuild's dx, sha256
+                  e939e876...) built the same copy at the same path
+                  BYTE-IDENTICALLY (all 17 files) - an unsplit build is
+                  unchanged by this rebuild; DX_SKIP_WASM_OPT=1 with no
+                  wasm-opt anywhere: exit 0, the "Skipping wasm-opt" line,
+                  .wasm 2,074,976 bytes; `dx new` from a local git template
+                  with no git program on PATH: passed
+linux-arm64     : built 2026-11-20 04:40:40 UTC (run 21; run 22 gave
+                  byte-identical programs), cross-compiled as before
+  dx            : 53,275,536 bytes stripped (76,217,400 as linked);
+                  20,251,110 bytes gzip -9 -n
+                  sha256 85481de06ce688a2ef5aebc95b23ca687221ed1d2dd1e38a6d55da039ae5418d
+                  build-id 95f3b7c269ea59efb36986e3d023439b651a2fbb
+                  NEEDED libdl.so.2 libgit2-49e408b.so.1.9 libgcc_s.so.1
+                  libpthread.so.0 libm.so.6 libc.so.6; glibc floor 2.28; no
+                  OpenSSL symbol imported; 624 packages
+  wasm-bindgen  : UNCHANGED - byte-identical to native_libraries/linux-arm64
+                  (sha256 924af54d6bd82843fd0a4e5a99515343d23036343388cc408fae169c7ca2bd26)
+  gates         : every check PASSED in runs 21 and 22; under qemu in the
+                  pinned aarch64 image: --version with libgit2 on
+                  LD_LIBRARY_PATH, ldd resolves; WITHOUT it dx does not start
+                  (exit 127). No functional gate (as before): the change was
+                  not exercised on arm64 (qemu is not silicon)
+  reproducible  : YES for this build: runs 21 and 22 byte-identical
+Licence files   : unchanged, byte for byte, in both RIDs:
+                  LICENSE-Dioxus.txt 603b882cf8c2e5dc44b1d19cb0a0466d105273d9247ee9225dd004fd93eabac7,
+                  LICENSE-WasmBindgen.txt a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2,
+                  THIRD-PARTY-NOTICES-Dioxus.txt af5aced036ddf6e69911f43f2c3223a0ccc2e9ea1687efcb37d195233f05320d,
+                  THIRD-PARTY-NOTICES-WasmBindgen.txt 8986a5d19391d56589c3014c63addd92e23e89e307c35e942bf2349d53851cc3
+                  (the files runs 19 to 22 packed)
+win-x64, osx-*  : STILL NEVER RUN; their scripts build from the same sources
+                  and pick the change up from there
+
+================================================================================
+ADOPTED 2026-11-19 (third rebuild) - the bundle splitter's call graph fixed;
+its dx REPLACED later the same day by the fourth rebuild (the block above)
 ================================================================================
 Why: `dx build --wasm-split` panicked ("assertion failed: !self.dead.contains(&id)",
 walrus) when a field handler that reads the field's value existed only in split
@@ -144,7 +281,8 @@ win-x64, osx-*  : STILL NEVER RUN; their scripts build from the same sources
 
 ================================================================================
 ADOPTED 2026-11-19 (second rebuild) - patch 0003 copies the bundle-splitting
-loader; its dx REPLACED later the same day by the third rebuild (the block above)
+loader; its dx REPLACED later the same day by the third rebuild (the block above,
+itself replaced by the fourth)
 ================================================================================
 Adopted into ../../native_libraries/linux-x64 and linux-arm64 on 2026-11-19,
 after the owner approved the change (dx replaced; wasm-bindgen came out
@@ -494,8 +632,8 @@ Functional gate  : PASSED - dx build --platform web --release --debug-symbols
                    the only printable strings that differ (strings-diff.txt)
 Adopted          : YES, 2026-11-18, into native_libraries/linux-x64/; dx REPLACED
                    2026-11-19 by the first rebuild, and again the same day by
-                   the second and the third (the three ADOPTED sections at the
-                   top)
+                   the second, the third and the fourth (the four ADOPTED
+                   sections at the top)
 Re-checked       : 2026-11-19 05:45 UTC, from tools/dx-native-tools/sources:
                    byte-identical programs; functional gate PASSED on the
                    materialized frontend (it now carries the platform's crates
@@ -548,8 +686,8 @@ Note             : qemu is not silicon, and no functional gate ran for arm64;
                    hardware before a release
 Adopted          : YES, 2026-11-18, into native_libraries/linux-arm64/; dx REPLACED
                    2026-11-19 by the first rebuild, and again the same day by
-                   the second and the third (the three ADOPTED sections at the
-                   top)
+                   the second, the third and the fourth (the four ADOPTED
+                   sections at the top)
 
 
 ================================================================================

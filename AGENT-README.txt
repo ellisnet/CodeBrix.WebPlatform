@@ -500,6 +500,14 @@ The generated code gets TWO functions for it, with the same arguments:
       generated call: the session refresh and retry for an action that needs
       sign-in, and an error answer (the standard JSON problem body) as an
       ApiError. The whole answer is read into memory before it is returned.
+      THE BROWSER'S CACHE: <name>_bytes asks with the fetch cache mode
+      "no-cache" - the browser may keep the answer and asks the server every
+      time whether it changed (If-None-Match with the stored ETag), so an
+      unchanged file costs a 304 instead of a download. The backend's own
+      answer decides: what its Cache-Control allows is kept, an answer with
+      Cache-Control: no-store never is. An action that answers private data
+      (one user's file) should answer Cache-Control: no-store. Every other
+      generated call is sent "no-store" and never stored.
 Both names are taken, so no other action of the same controller may be named
 <Name>Url or <Name>Bytes; BackendMapper reports such a clash as a problem.
 With the backend's CompressResponses = FileAnswers, the answers of [WireFile]
@@ -2422,6 +2430,33 @@ needs is unchanged: the pieces are WebAssembly from the same site, compiled
 under the 'wasm-unsafe-eval' the site needs anyway. ServeAsync never splits
 (see STEP 3).
 
+FILE NAMES AND THE BROWSER'S CACHE. In a Release build every .wasm, .js and
+.css file of the output carries a hash of its content in its name
+(name-dxh<hash>.ext), the pieces and the loader included. An UNCHANGED
+application built again IN THE SAME FOLDER gets the same file names and the
+same bytes, split or not, so a returning visitor's browser keeps using what
+it has. What a CHANGE renames depends on the change:
+  * a change that keeps the length of the source file (a word swapped for
+    one of the same length) renames that page's piece and the files that
+    name it - the loader, the main script - and index.html gets new bytes;
+    the main .wasm and every other piece keep their names;
+  * a change that makes a source file longer or shorter can rename every
+    piece and the main .wasm: the wasm-split macro of the platform's Dioxus
+    names each split point from its position in the compiled source, and
+    the main file's data moves. Expect the whole split application to be
+    downloaded again after such a change. The stylesheet (unless the change
+    adds or removes a class), the images and the generated snippets keep
+    their names.
+NOT the same: a build of the same source in ANOTHER folder. The compiled
+code carries the absolute paths of the frontend's folder and its crates
+(dx's asset references are named from them), so the main file, the pieces
+and everything that names them get other bytes and other names. Build a
+site that is deployed from one place in one fixed folder.
+KEEP target/ IGNORED: Tailwind looks for class names in every file of the
+frontend folder that a .gitignore does not exclude. Without a .gitignore
+line for target/ (the build output) it reads the build's own files, and the
+stylesheet - and its name - changes from one build to the next.
+
 
 CRATE BUNDLES
 =============
@@ -2614,6 +2649,12 @@ WHAT THE CRATE PROVIDES (Rust)
         - a success answer read as JSON (send_json), as nothing
           (send_empty) or as the bytes it is (send_bytes, which the
           generated <name>_bytes functions of [WireFile] actions call);
+        - the browser's HTTP cache: send_bytes with GET or HEAD uses the
+          fetch cache mode "no-cache" (the browser may keep the answer and
+          revalidates it with the server every time, so the backend's
+          Cache-Control and ETag decide whether it is downloaded again);
+          everything else - send_json, send_empty, the session refresh,
+          send_bytes with any other method - is "no-store";
         - any non-success answer becomes an ApiError, whichever of the three
           sent it (an error answer is always the standard JSON problem body);
         - it keeps note of the requests that change state while they are in
@@ -3336,6 +3377,13 @@ COMMON PITFALLS TO AVOID
   * Expecting <name>_bytes to stream. It reads the whole answer into memory
     before it returns; for a very large file hand <name>_url to the browser
     instead.
+
+  * Leaving private data cacheable. The browser may store a <name>_bytes
+    answer (it revalidates it every time, but keeps the copy). A [WireFile]
+    action that answers one user's data should answer
+    Cache-Control: no-store (Response.Headers.CacheControl = "no-store");
+    a public, unchanging file is best answered with an ETag, so a returning
+    visitor gets a 304.
 
   * A catch-all controller ("api/{**path}") or a health probe that answers
     with something other than ApiProblem: mark the controller [WireIgnore].

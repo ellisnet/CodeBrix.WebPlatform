@@ -557,7 +557,12 @@ impl<'a> Splitter<'a> {
     fn create_ifunc_initializers(&self, out: &mut Module, unique_symbols: &HashSet<Node>) {
         let ifunc_table = self.load_funcref_table(out);
 
-        let mut initializers = HashMap::new();
+        // CodeBrix change: a BTreeMap, not a HashMap, so that the element segments below are
+        // added - and written into the module - in the order of their table offsets. A HashMap
+        // iterates in an order that differs in every run of dx, so the same input gave split
+        // modules with differently ordered element sections, other bytes and other content-hashed
+        // file names. See tools/dx-native-tools/vendoring/wasm-split-cli/PATCH-NOTES.txt, patch 0003.
+        let mut initializers = BTreeMap::new();
         for segment in out.elements.iter_mut() {
             let ElementKind::Active { offset, .. } = &mut segment.kind else {
                 continue;
@@ -759,7 +764,16 @@ impl<'a> Splitter<'a> {
             };
 
             // And then assign chunks of the data to new data entries that will override the individual slots
-            for unique in unique_symbols {
+            //
+            // CodeBrix change: the symbols are taken in sorted order, not in the iteration order
+            // of the HashSet, which differs in every run of dx: the data segments added here are
+            // written into the module in the order they are added, so the same input gave split
+            // modules with differently ordered data sections, other bytes and other
+            // content-hashed file names. See
+            // tools/dx-native-tools/vendoring/wasm-split-cli/PATCH-NOTES.txt, patch 0003.
+            let mut unique_in_order = unique_symbols.iter().collect::<Vec<_>>();
+            unique_in_order.sort_unstable();
+            for unique in unique_in_order {
                 if let Node::DataSymbol(id) = unique {
                     if let Some(symbol) = self.data_symbols.get(id) {
                         if symbol.which_data_segment == idx {
