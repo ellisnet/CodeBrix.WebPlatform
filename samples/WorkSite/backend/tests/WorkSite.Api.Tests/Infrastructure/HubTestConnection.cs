@@ -26,6 +26,7 @@ public sealed class HubTestConnection : IAsyncDisposable
     private readonly ConcurrentDictionary<string, TaskCompletionSource<JsonElement>> _completions = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, List<JsonElement>> _streamItems = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, Channel<JsonElement[]>> _messages = new(StringComparer.Ordinal);
+    private readonly TaskCompletionSource<JsonElement> _handshake = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Task _reader;
     private int _nextId;
 
@@ -35,12 +36,18 @@ public sealed class HubTestConnection : IAsyncDisposable
         _reader = Task.Run(ReadLoopAsync);
     }
 
-    /// <summary>Opens a connection to a hub and completes the protocol handshake.</summary>
+    /// <summary>
+    /// Opens a connection to a hub and completes the protocol handshake: it returns only after the
+    /// server has answered the handshake. SignalR answers it just BEFORE it adds the connection to
+    /// the hub's connections, so a message sent to all connections at once may still miss this
+    /// one; a hub method call made after this returns is always handled after the adding.
+    /// </summary>
     /// <param name="factory">The application under test.</param>
     /// <param name="path">The hub's path, such as <c>/hubs/clock</c>.</param>
     /// <param name="signedInAs">The client whose session cookies are sent; null for a visitor.</param>
     /// <param name="origin">The <c>Origin</c> header; null to send none.</param>
     /// <returns>The open connection.</returns>
+    /// <exception cref="HubTestException">The server refused the handshake, or closed the connection before answering it.</exception>
     public static async Task<HubTestConnection> ConnectAsync(WorkSiteApiFactory factory, string path, ApiClient signedInAs = null,
         string origin = "https://localhost")
     {
@@ -60,7 +67,21 @@ public sealed class HubTestConnection : IAsyncDisposable
         };
         var socket = await client.ConnectAsync(new Uri("wss://localhost" + path), TestContext.Current.CancellationToken);
         var connection = new HubTestConnection(socket);
-        await connection.SendTextAsync("{\"protocol\":\"json\",\"version\":1}");
+        try
+        {
+            await connection.SendTextAsync("{\"protocol\":\"json\",\"version\":1}");
+            var answer = await connection._handshake.Task.WaitAsync(TimeSpan.FromSeconds(15), TestContext.Current.CancellationToken);
+            if (answer.TryGetProperty("error", out var error))
+            {
+                throw new HubTestException(error.GetString());
+            }
+        }
+        catch
+        {
+            await connection.DisposeAsync();
+            throw;
+        }
+
         return connection;
     }
 
@@ -220,6 +241,7 @@ public sealed class HubTestConnection : IAsyncDisposable
             //The connection is going away.
         }
 
+        _handshake.TrySetException(new HubTestException("The connection closed before the handshake was answered."));
         foreach (var completion in _completions.Values)
         {
             completion.TrySetException(new HubTestException("The connection closed before the answer arrived."));
@@ -244,7 +266,8 @@ public sealed class HubTestConnection : IAsyncDisposable
         var message = document.RootElement.Clone();
         if (!message.TryGetProperty("type", out var typeElement))
         {
-            //The handshake answer: {} on success.
+            //The handshake answer: {} on success, {"error":"..."} on refusal.
+            _handshake.TrySetResult(message);
             return;
         }
 

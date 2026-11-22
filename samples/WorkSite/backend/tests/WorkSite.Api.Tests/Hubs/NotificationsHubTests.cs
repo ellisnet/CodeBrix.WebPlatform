@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,8 +32,7 @@ public class NotificationsHubTests : IClassFixture<ApiFactory>
         var sent = NotificationTicker.Reminder(1, new DateTimeOffset(2026, 11, 18, 10, 0, 0, TimeSpan.Zero));
 
         //Act
-        await hub.Clients.All.Notify(sent);
-        var received = await connection.NextAsync("Notify", TimeSpan.FromSeconds(5));
+        var received = await NotifyUntilHeardAsync(hub, connection, sent);
 
         //Assert
         received[0].GetProperty("id").GetString().Should().Be(sent.Id.ToString());
@@ -56,5 +56,37 @@ public class NotificationsHubTests : IClassFixture<ApiFactory>
         reminders.Select(r => r.Id).Distinct().Count().Should().Be(12);
         reminders.Select(r => r.Kind).Distinct().Should().BeEquivalentTo(new[] { NotificationKind.Info, NotificationKind.Warning, NotificationKind.Success });
         NotificationTicker.Reminder(-1, at).Message.Should().NotBeNullOrEmpty();
+    }
+
+    /// <summary>
+    /// Sends a notification to all connections until the test connection hears it (for up to 5 s),
+    /// and returns the arguments of the message that carries it. SignalR answers the handshake just
+    /// before it adds the connection to the hub's connections, and this hub has no method whose
+    /// answer would prove the adding, so a single send can reach nobody - on a slow machine it
+    /// always did. A reminder of the app's own ticker that arrives meanwhile is passed over.
+    /// </summary>
+    private static async Task<JsonElement[]> NotifyUntilHeardAsync(IHubContext<NotificationsHub, INotificationsClient> hub,
+        HubTestConnection connection, Notification sent)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (true)
+        {
+            await hub.Clients.All.Notify(sent);
+            try
+            {
+                while (true)
+                {
+                    var received = await connection.NextAsync("Notify", TimeSpan.FromMilliseconds(200));
+                    if (received[0].GetProperty("id").GetString() == sent.Id.ToString())
+                    {
+                        return received;
+                    }
+                }
+            }
+            catch (TimeoutException) when (DateTime.UtcNow < deadline)
+            {
+                //Not heard yet: send again.
+            }
+        }
     }
 }
