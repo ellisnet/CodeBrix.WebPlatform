@@ -1,0 +1,52 @@
+wasm-bindgen -- macOS Apple Silicon (osx-arm64)
+================================================================================
+This program was BUILT HERE, from the source in this repository, by:
+
+    tools/dx-native-tools/macos/build.sh arm64
+
+on an Apple Silicon Mac, natively with the Xcode SDK (no container). Nothing
+was downloaded during the build: cargo ran --locked --offline against the
+vendored tool crates. This is the FIRST macOS build of these programs.
+
+Source            : wasm-bindgen-cli 0.2.130, unpatched
+Folder            : tools/dx-native-tools/sources (TOOL_SOURCES_DIR in
+                    tools/dx-native-tools/linux/pins.env), read-only
+--version         : "wasm-bindgen 0.2.130"
+
+Built             : 2026-11-22 19:26:49 UTC
+Build time        : dx 159s, wasm-bindgen 28s (332s with the gate)
+Build host        : macOS 27.2.1 (26B131), arm64, Apple M2 Pro
+Xcode             : SDK macosx 27.2, Apple clang version 21.0.0 (clang-2100.4.1.1)
+Toolchain         : rustc 1.100.0 (0ef1bc386 2026-11-09)
+                    cargo 1.100.0 (3acc79c0c 2026-11-05)
+Deployment target : MACOSX_DEPLOYMENT_TARGET=11.0 (minos checked by the gate)
+Command           : cargo +1.100.0 build --release --locked --offline --target
+                    aarch64-apple-darwin
+                    RUSTFLAGS: --remap-path-prefix for the sources, the build root and $HOME
+                    then strip, then codesign --force --sign - (ad hoc)
+
+File             : wasm-bindgen
+Size (stripped)  : 5169072 bytes  <- the shipped file
+Size (gzip -9 -n): 2069624 bytes
+SHA256           : 3c786214dd190fb13f4be1ccef141e3b13a5f259906f06171599f59bca4241df
+Mach-O           : thin arm64 slice (aarch64-apple-darwin), ad-hoc signed
+Links            : /usr/lib/libiconv.2.dylib /System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation /usr/lib/libSystem.B.dylib 
+
+Gate              : thin slice, only system libraries (no Homebrew, no
+                    libssl/libcrypto/libssh2/libz), no LC_RPATH, minos = 11.0,
+                    codesign --verify --strict, no build paths, `--version`,
+                    licence and notices files present;
+                    RUN natively on the build host (macOS 27.2.1, Apple M2 Pro);
+                    the functional gate, run by build.sh: the new dx + wasm-bindgen built a scratch copy of the WorkSite frontend (.wasm 1,833,689 bytes, 17 site files), a DX_SKIP_WASM_OPT release build with no wasm-opt succeeded (.wasm 2,075,942 bytes), and `dx new` from a local git template with no git program on PATH succeeded - ALL PASSED. No earlier osx-arm64 programs existed to compare with
+                    (tools/dx-native-tools/output/osx-arm64/GATE.txt and FUNCTIONAL-GATE.txt
+                    at the time of the build)
+
+LICENCE AND NOTICES FILES BESIDE THIS ONE:
+  LICENSE-Dioxus.txt              dx's licence (Apache-2.0 text; dioxus-cli is
+                                  MIT OR Apache-2.0)
+  LICENSE-WasmBindgen.txt         wasm-bindgen-cli's LICENSE-APACHE, verbatim
+  THIRD-PARTY-NOTICES-Dioxus.txt  every crate compiled into dx, with licence
+                                  texts (generated: LibraryChecker notices --write)
+  THIRD-PARTY-NOTICES-WasmBindgen.txt  the same for wasm-bindgen
+libgit2's own licence travels with the library, in its package.
+See tools/dx-native-tools/BUILD-PROVENANCE.txt.

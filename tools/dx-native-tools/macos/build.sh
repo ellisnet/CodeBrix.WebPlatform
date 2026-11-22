@@ -123,7 +123,10 @@ build_slice() {
     export CARGO_INCREMENTAL=0
     local secs_dx secs_wb
     for pair in "$DX_DIR:$DX_FEATURES" "$WASM_BINDGEN_DIR:$WASM_BINDGEN_FEATURES"; do
-        local dir="${pair%%:*}" features="${pair#*:}" log="$target/$dir.build.log" t0="$SECONDS"
+        # Two statements: macOS's bash 3.2 expands a whole `local` line before assigning any of
+        # it, so $dir would be unbound in log= (found on the first real run, 2026-11-22).
+        local dir="${pair%%:*}" features="${pair#*:}" t0="$SECONDS"
+        local log="$target/$dir.build.log"
         echo "--- cargo +$RUST_TOOLCHAIN build --release --locked --offline --target $triple ${features:+--features $features}   ($dir)"
         ( cd "$SOURCES/$dir" && CARGO_TARGET_DIR="$target/$dir" cargo "+$RUST_TOOLCHAIN" build --release --locked --offline --target "$triple" ${features:+--features "$features"} ) > "$log" 2>&1 \
             || { tail -60 "$log" >&2; echo "ERROR: cargo failed for $dir (log: $log)" >&2; exit 1; }

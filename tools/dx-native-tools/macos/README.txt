@@ -3,20 +3,18 @@ tools/dx-native-tools/macos - building dx and wasm-bindgen for osx-arm64 and
                               osx-x64
 ================================================================================
 
->>> STATUS 2026-11-18: build.sh is WRITTEN BUT NEVER RUN - it was written on
-    Linux, which has no Apple SDK. There are NO osx-* folders in
-    ../../../native_libraries/ yet; ../BUILD-PROVENANCE.txt lists both as
-    PENDING. Expect to fix something on the first real run; fix it in the
-    script, record it in ../BUILD-PROVENANCE.txt, and rewrite this block.
-    UPDATED 2026-11-19, STILL NEVER RUN: the six-patch dx (its git features
-    back, linked against libgit2), the libgit2 package step, the
-    DX_SKIP_WASM_OPT and `dx new` checks of the shared functional gate.
-    UPDATED 2026-11-19 again, STILL NEVER RUN: the script builds whatever the
-    tool sources hold, so it picks up dx's current patch set by itself - the
-    seven dioxus-cli patches, the seventh of which swaps in the patched bundle
-    splitter (sources/wasm-split-cli, its three patches: the call-graph fixes
-    0001 and 0002, and 0003, which makes a split build give the same files
-    from the same source). Nothing in the script names the patches. <<<
+>>> STATUS 2026-11-22: RUN FOR THE FIRST TIME, on the owner's Apple Silicon
+    Mac (Apple M2 Pro, macOS 27.2.1): both slices built, gated and adopted
+    into ../../../native_libraries/osx-arm64/ and osx-x64/
+    (../BUILD-PROVENANCE.txt, ADOPTED 2026-11-22). The first real run needed
+    two fixes to build.sh: its executable bit (it was committed 100644), and
+    a `local` line that used a variable it declared - macOS's bash 3.2
+    expands the whole line first, so `set -u` stopped the build. osx-x64's
+    functional gate was run by hand from an x86_64 shell (THE GATE, below);
+    neither slice has been run on an Intel Mac yet, and the HostTools tests
+    have not been run under an x64 .NET SDK. The script builds whatever the
+    tool sources hold (today seven dioxus-cli patches, three splitter
+    patches); nothing in it names the patches. <<<
 
 WHAT THIS IS
 --------------------------------------------------------------------------------
@@ -43,7 +41,8 @@ dyld finds it only through DYLD_LIBRARY_PATH naming a folder that holds
 libgit2-49e408b.1.9.dylib. macOS drops DYLD_* variables when it starts a
 protected program (/bin/sh, /usr/bin/env, /usr/bin/arch without -e), so set it
 for dx itself; the functional gate passes it through its shell under another
-name for that reason. UNVERIFIED until the first run. No OpenSSL is involved
+name for that reason. VERIFIED 2026-11-22 on both slices (without the
+library dx exits 134, dyld "Library not loaded"). No OpenSSL is involved
 on macOS (git2's OpenSSL dependency is for Linux only).
 
 THE MINIMUM macOS IS SET EXPLICITLY AND ENFORCED. MACOSX_DEPLOYMENT_TARGET is
@@ -141,7 +140,15 @@ DX_SKIP_WASM_OPT build without wasm-opt, and `dx new` from a local template
 with no git program on PATH. Without a wasm-opt it is reported SKIPPED and the
 slice must not be adopted. For osx-x64 on Apple Silicon it is SKIPPED too
 (the script runs dx natively): run it on an Intel Mac, or from an x86_64
-shell, before adopting.
+shell, before adopting. From the x86_64 shell it is the shared script with
+the arguments build.sh would pass (this is how osx-x64 was gated on
+2026-11-22), from this folder's parent:
+    W=$HOME/.nuget/packages/codebrix.webplatform.wasmshrink.apachelicenseforever/<FUNCTIONAL_WASMSHRINK_PACKAGE_VERSION>/tools/wasm-opt/osx-x64
+    WASM_OPT_DIR="$W" LIBGIT2_DIR="$PWD/output/libgit2/osx-x64" GATE_RID=osx-x64 \
+      arch -x86_64 /bin/bash linux/functional-gate.sh "$PWD/output/osx-x64/dx" \
+        "$PWD/output/osx-x64/wasm-bindgen" "$PWD/output/functional-gate-osx-x64" \
+      2>&1 | tee output/osx-x64/FUNCTIONAL-GATE.txt
+It must end "every check passed".
 
 OUTPUT (../output/osx-<arch>/)
 --------------------------------------------------------------------------------

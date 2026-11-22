@@ -12,6 +12,61 @@ its section here is updated from that build's output/<rid>/BUILD-INFO.txt and
 the <program>.provenance.txt beside it is written from the same values.
 
 ================================================================================
+ADOPTED 2026-11-22 - the FIRST macOS builds: osx-arm64 and osx-x64
+================================================================================
+What: macos/build.sh run for the first time, on the owner's Apple Silicon Mac
+(Mac mini, Apple M2 Pro, macOS 27.2.1 (26B131); Xcode SDK macosx 27.2, Apple
+clang 21.0.0; rustc/cargo 1.100.0 through rustup, `cargo +1.100.0`). Both
+slices built from the same tool sources as the 2026-11-19 (fourth rebuild)
+Linux programs: dioxus-cli 0.7.10 with its seven patches, the splitter with its
+three, wasm-bindgen-cli 0.2.130; --locked --offline, nothing downloaded (the
+libgit2 package came from the local NuGet cache).
+Two script fixes were needed on the first real run (macos/README.txt, STATUS):
+  * macos/build.sh was committed without its executable bit (100644): the
+    documented `./build.sh` failed with "permission denied". Now 100755.
+  * line 126 of build.sh declared `dir` and used `$dir` in the SAME `local`
+    statement; macOS's /bin/bash 3.2 expands the whole statement before
+    assigning any of it, so `set -u` stopped it with "dir: unbound variable".
+    Split into two statements.
+Runs (logs: output/osx-<arch>/GATE.txt, BUILD-INFO.txt, FUNCTIONAL-GATE.txt):
+  osx-arm64  2026-11-22 19:26:49 UTC - ADOPTED. dx 159s, wasm-bindgen 28s
+             (332s with the gate). Every gate check passed, the functional
+             gate included (.wasm 1,833,689 bytes shrunk, 2,075,942 with
+             DX_SKIP_WASM_OPT, 17 site files, `dx new` passed)
+             dx           sha256 388dc9811b05054ff73751d8a9a43c05a376751db6a5ba9e0788620a5da77bc6
+             wasm-bindgen sha256 3c786214dd190fb13f4be1ccef141e3b13a5f259906f06171599f59bca4241df
+  osx-x64    2026-11-22 19:30:08 UTC - ADOPTED. dx 148s, wasm-bindgen 27s.
+             Every static gate check passed and both programs ran under
+             Rosetta 2. build.sh reports the functional gate SKIPPED for x64
+             on Apple Silicon; it was then run by hand from an x86_64 shell,
+             as build.sh suggests - `arch -x86_64 /bin/bash
+             linux/functional-gate.sh` with the osx-x64 wasm-opt of
+             WasmShrink 1.0.323.365 and the same arguments build.sh passes -
+             and passed every check (.wasm 1,833,781 bytes shrunk, 2,076,007
+             with DX_SKIP_WASM_OPT, 17 site files, `dx new` passed). NOT yet
+             run on an Intel Mac.
+             dx           sha256 e806aa064de60f485ef41f25ba3b56f342dd9d22d6ed00ad8fd8d94e9cb114d9
+             wasm-bindgen sha256 b6a1cb7b8e6131789739523dd105e646347a3b9fea1ef725b428b76dc2f89ee1
+Verified as well:
+  * dx's libgit2 handling on macOS (marked UNVERIFIED until now): the load
+    command is @rpath/libgit2-49e408b.1.9.dylib, there is no LC_RPATH, dx
+    starts with the library's folder on DYLD_LIBRARY_PATH and does not start
+    without it (exit 134, dyld "Library not loaded"), on both slices;
+  * the packages: FrontendBuilder.MacOSArm64 and .MacOSX64 (Release) hold
+    the programs and the four files under tools/frontend-tools/osx-<arch>/;
+    tests/CodeBrix.WebPlatform.FrontendBuilder.HostTools.Tests ran on the
+    Mac (arm64 .NET 10.0.404): 7 passed, 0 skipped. NOT run under an x64
+    .NET SDK (none installed on the Mac), so the osx-x64 tests are not yet
+    run;
+  * through the library: with the nine packages in temp-packages, the
+    WorkSite build program's `check` reports the host tools and libgit2 OK
+    from the MacOSArm64 and LibGit2 packages, and its `build` built the
+    WorkSite frontend on the Mac (dx given libgit2 by the library on
+    DYLD_LIBRARY_PATH).
+Not reproducibility-checked: each slice was built once (the Linux programs
+were built twice for byte-identity; that check is still to do on the Mac).
+
+================================================================================
 ADOPTED 2026-11-19 (fourth rebuild) - a split build gives the same files from
 the same source
 ================================================================================
@@ -704,24 +759,48 @@ To do            : the owner runs it on his Windows x64 machine
                    replaces this section
 
 ================================================================================
-osx-arm64                                     PENDING - script written, NOT RUN
+osx-arm64                                     BUILT 2026-11-22, ADOPTED
 ================================================================================
-Route            : macos/build.sh arm64 - written 2026-11-18 on Linux, NEVER
-                   RUN. rustup 1.100.0, aarch64-apple-darwin,
+Route            : macos/build.sh arm64, natively on the Apple Silicon Mac:
+                   rustup 1.100.0, aarch64-apple-darwin,
                    MACOSX_DEPLOYMENT_TARGET=11.0 (enforced: minos), strip +
-                   ad-hoc codesign; gate: thin slice, system-only links, no
-                   LC_RPATH, minos, codesign --verify, no build paths,
-                   --version, linux/functional-gate.sh
-Binary           : NONE. native_libraries/osx-arm64/ does not exist yet
-To do            : run on the owner's Apple Silicon Mac (macos/README.txt)
+                   ad-hoc codesign; gate: thin slice, system-only links (plus
+                   @rpath/libgit2-49e408b.1.9.dylib for dx), no LC_RPATH,
+                   minos, codesign --verify, no build paths, --version (with
+                   and without libgit2), linux/functional-gate.sh
+Build host       : Mac mini, Apple M2 Pro, macOS 27.2.1 (26B131), Xcode SDK
+                   macosx 27.2, Apple clang 21.0.0
+Built            : 2026-11-22 19:26:49 UTC (once; not yet rebuilt for
+                   byte-identity)
+dx               : 52176896 bytes (gzip -9 -n 19606019), sha256
+                   388dc9811b05054ff73751d8a9a43c05a376751db6a5ba9e0788620a5da77bc6
+wasm-bindgen     : 5169072 bytes (gzip -9 -n 2069624), sha256
+                   3c786214dd190fb13f4be1ccef141e3b13a5f259906f06171599f59bca4241df
+Gate             : every check passed, the functional gate included
+Adopted          : YES, 2026-11-22, into native_libraries/osx-arm64/ (the
+                   ADOPTED section at the top); HostTools tests passed on the
+                   Mac (7 of 7)
 
 ================================================================================
-osx-x64                                       PENDING - script written, NOT RUN
+osx-x64                                       BUILT 2026-11-22, ADOPTED
 ================================================================================
-Route            : macos/build.sh x64 - as osx-arm64 with x86_64-apple-darwin and
-                   MACOSX_DEPLOYMENT_TARGET=10.15, cross-built on the Apple
-                   Silicon Mac; --version and the functional gate run under
-                   Rosetta 2
-Binary           : NONE. native_libraries/osx-x64/ does not exist yet
-To do            : as osx-arm64
+Route            : macos/build.sh x64 - as osx-arm64 with x86_64-apple-darwin
+                   and MACOSX_DEPLOYMENT_TARGET=10.15, cross-built on the Apple
+                   Silicon Mac; --version run under Rosetta 2; the functional
+                   gate (which build.sh skips for x64 on Apple Silicon) run by
+                   hand from an x86_64 shell: arch -x86_64 /bin/bash
+                   linux/functional-gate.sh <dx> <wasm-bindgen> <scratch>,
+                   with WASM_OPT_DIR (WasmShrink's osx-x64 wasm-opt),
+                   LIBGIT2_DIR and GATE_RID=osx-x64
+Build host       : as osx-arm64
+Built            : 2026-11-22 19:30:08 UTC (once; not yet rebuilt for
+                   byte-identity)
+dx               : 55957504 bytes (gzip -9 -n 21543459), sha256
+                   e806aa064de60f485ef41f25ba3b56f342dd9d22d6ed00ad8fd8d94e9cb114d9
+wasm-bindgen     : 5584400 bytes (gzip -9 -n 2311729), sha256
+                   b6a1cb7b8e6131789739523dd105e646347a3b9fea1ef725b428b76dc2f89ee1
+Gate             : every check passed (functional gate under Rosetta 2 as
+                   above); NOT yet run on an Intel Mac, and the HostTools
+                   tests not yet run under an x64 .NET SDK
+Adopted          : YES, 2026-11-22, into native_libraries/osx-x64/
 ================================================================================

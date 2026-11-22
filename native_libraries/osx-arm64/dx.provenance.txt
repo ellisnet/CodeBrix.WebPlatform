@@ -1,0 +1,68 @@
+dx -- macOS Apple Silicon (osx-arm64)
+================================================================================
+This program was BUILT HERE, from the source in this repository, by:
+
+    tools/dx-native-tools/macos/build.sh arm64
+
+on an Apple Silicon Mac, natively with the Xcode SDK (no container). Nothing
+was downloaded during the build: cargo ran --locked --offline against the
+vendored tool crates. This is the FIRST macOS build of these programs.
+
+Source            : dioxus-cli 0.7.10 (upstream commit 57d6794ad60b949e5bd8aa282f6f8c3dc97a365e) with the
+                    repository's SEVEN patches (0007 swaps in the patched bundle splitter,
+                    tools/dx-native-tools/sources/wasm-split-cli, with THREE patches of its own)
+                    (tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt and
+                    vendoring/wasm-split-cli/PATCH-NOTES.txt); every dx command is there
+Folder            : tools/dx-native-tools/sources (TOOL_SOURCES_DIR in
+                    tools/dx-native-tools/linux/pins.env), read-only
+libgit2-sys       : the declarations-only stand-in tools/dx-native-tools/sources/
+                    codebrix-libgit2-sys 0.18.3+1.9.7 - no libgit2 code is in dx
+LINKS libgit2     : libgit2 1.9.7 as a SHARED LIBRARY, load command
+                    @rpath/libgit2-49e408b.1.9.dylib, linked against the library of the
+                    published package CodeBrix.LibGit2.MitLicenseForever 1.0.323.362
+                    (runtimes/osx-arm64/native/libgit2-49e408b.dylib). dx has no LC_RPATH and
+                    DOES NOT START without the library on DYLD_LIBRARY_PATH (measured:
+                    exit 134, dyld "Library not loaded"); it is NOT in this folder - it
+                    reaches a build through that package
+--version         : "dioxus 0.7.10 (57d6794)" (with the library on DYLD_LIBRARY_PATH)
+
+Built             : 2026-11-22 19:26:49 UTC
+Build time        : dx 159s, wasm-bindgen 28s (332s with the gate)
+Build host        : macOS 27.2.1 (26B131), arm64, Apple M2 Pro
+Xcode             : SDK macosx 27.2, Apple clang version 21.0.0 (clang-2100.4.1.1)
+Toolchain         : rustc 1.100.0 (0ef1bc386 2026-11-09)
+                    cargo 1.100.0 (3acc79c0c 2026-11-05)
+Deployment target : MACOSX_DEPLOYMENT_TARGET=11.0 (minos checked by the gate)
+Command           : cargo +1.100.0 build --release --locked --offline --target
+                    aarch64-apple-darwin --features no-downloads,disable-telemetry
+                    with CODEBRIX_LIBGIT2_LIB_DIR (the package's library) and
+                    CODEBRIX_LIBGIT2_LINK_NAME=git2-49e408b
+                    DIOXUS_CLI_GIT_SHA=57d6794ad60b949e5bd8aa282f6f8c3dc97a365e
+                    RUSTFLAGS: --remap-path-prefix for the sources, the build root and $HOME
+                    then strip, then codesign --force --sign - (ad hoc)
+
+File             : dx
+Size (stripped)  : 52176896 bytes  <- the shipped file
+Size (gzip -9 -n): 19606019 bytes
+SHA256           : 388dc9811b05054ff73751d8a9a43c05a376751db6a5ba9e0788620a5da77bc6
+Mach-O           : thin arm64 slice (aarch64-apple-darwin), ad-hoc signed
+Links            : /usr/lib/libSystem.B.dylib /System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation /System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices /System/Library/Frameworks/Security.framework/Versions/A/Security @rpath/libgit2-49e408b.1.9.dylib /usr/lib/libobjc.A.dylib /System/Library/Frameworks/Foundation.framework/Versions/C/Foundation /usr/lib/libiconv.2.dylib 
+
+Gate              : thin slice, only system libraries, @rpath/libgit2-49e408b.1.9.dylib required (no Homebrew, no
+                    libssl/libcrypto/libssh2/libz), no LC_RPATH, minos = 11.0,
+                    codesign --verify --strict, no build paths, `--version`,
+                    licence and notices files present;
+                    RUN natively on the build host (macOS 27.2.1, Apple M2 Pro) with the library on DYLD_LIBRARY_PATH, and WITHOUT it (does not start);
+                    the functional gate, run by build.sh: the new dx + wasm-bindgen built a scratch copy of the WorkSite frontend (.wasm 1,833,689 bytes, 17 site files), a DX_SKIP_WASM_OPT release build with no wasm-opt succeeded (.wasm 2,075,942 bytes), and `dx new` from a local git template with no git program on PATH succeeded - ALL PASSED. No earlier osx-arm64 programs existed to compare with
+                    (tools/dx-native-tools/output/osx-arm64/GATE.txt and FUNCTIONAL-GATE.txt
+                    at the time of the build)
+
+LICENCE AND NOTICES FILES BESIDE THIS ONE:
+  LICENSE-Dioxus.txt              dx's licence (Apache-2.0 text; dioxus-cli is
+                                  MIT OR Apache-2.0)
+  LICENSE-WasmBindgen.txt         wasm-bindgen-cli's LICENSE-APACHE, verbatim
+  THIRD-PARTY-NOTICES-Dioxus.txt  every crate compiled into dx, with licence
+                                  texts (generated: LibraryChecker notices --write)
+  THIRD-PARTY-NOTICES-WasmBindgen.txt  the same for wasm-bindgen
+libgit2's own licence travels with the library, in its package.
+See tools/dx-native-tools/BUILD-PROVENANCE.txt.

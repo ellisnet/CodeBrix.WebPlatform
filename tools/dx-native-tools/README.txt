@@ -118,8 +118,8 @@ FOLDER MAP
                           fetch-libgit2.sh and functional-gate.sh (both
                           shared with macOS), README.txt
   windows/                win-x64: build.dx.ps1, README.txt. WRITTEN, UNRUN
-  macos/                  osx-arm64 and osx-x64: build.sh, README.txt. WRITTEN,
-                          UNRUN
+  macos/                  osx-arm64 and osx-x64: build.sh, README.txt. RUN
+                          2026-11-22 (both slices built and adopted)
   output/                 build results (git-ignored). Disposable. Includes
                           output/libgit2/ (the libgit2 package and, per RID,
                           the library under its link name and loader name)
@@ -151,8 +151,8 @@ the library findable:
             (the package's file is libgit2-49e408b.dylib) - in a folder on
             DYLD_LIBRARY_PATH (dx has no LC_RPATH). macOS removes DYLD_*
             variables when it starts a protected program such as /bin/sh or
-            /usr/bin/env, so set it for dx itself. UNVERIFIED until the first
-            Mac build.
+            /usr/bin/env, so set it for dx itself. VERIFIED 2026-11-22 on
+            both slices (without it: exit 134, dyld "Library not loaded").
   Windows   git2-49e408b.dll beside dx.exe or in a folder on PATH. UNVERIFIED
             until the first Windows build.
 
@@ -175,16 +175,18 @@ THE FIVE RUNTIME IDENTIFIERS
   linux-x64    linux/build.sh x64           dx, wasm-bindgen         BUILT
   linux-arm64  linux/build.sh arm64 (cross) dx, wasm-bindgen         BUILT
   win-x64      windows/build.dx.ps1         dx.exe, wasm-bindgen.exe PENDING
-  osx-arm64    macos/build.sh arm64         dx, wasm-bindgen         PENDING
-  osx-x64      macos/build.sh x64           dx, wasm-bindgen         PENDING
+  osx-arm64    macos/build.sh arm64         dx, wasm-bindgen         BUILT
+  osx-x64      macos/build.sh x64           dx, wasm-bindgen         BUILT
 
 BUILT = built here, gated and adopted into ../../native_libraries/<rid>/.
-The adopted programs are the 2026-11-19 builds from the current sources: seven
-dioxus-cli patches and three splitter patches, dx linked against libgit2
-(BUILD-PROVENANCE.txt).
+The adopted programs are built from the current sources: seven dioxus-cli
+patches and three splitter patches, dx linked against libgit2 - the Linux
+programs on 2026-11-19, the macOS programs on 2026-11-22 on the owner's Apple
+Silicon Mac (osx-x64's functional gate run from an x86_64 shell under Rosetta
+2; not yet run on an Intel Mac) (BUILD-PROVENANCE.txt).
 PENDING = the script is written but has never been run; the owner runs it on
-his Windows x64 machine and his Apple Silicon Mac. Until then that platform's
-package packs with its small assembly only.
+his Windows x64 machine. Until then that platform's package packs with its
+small assembly only.
 
 NOT SUPPORTED, and neither built nor scripted: linux-riscv64, win-arm64,
 android-*.
