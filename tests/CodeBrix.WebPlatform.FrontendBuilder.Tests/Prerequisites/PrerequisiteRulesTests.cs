@@ -1,3 +1,5 @@
+using System;
+using System.Linq;
 using CodeBrix.WebPlatform.FrontendBuilder.Prerequisites;
 using CodeBrix.WebPlatform.FrontendBuilder.Tests.Helpers;
 using CodeBrix.WebPlatform.FrontendBuilder.Tools;
@@ -164,5 +166,49 @@ public class PrerequisiteRulesTests
         notChecked.Message.Should().Be("libgit2 not checked: dx was not found.");
         older.Status.Should().Be(PrerequisiteStatus.Note);
         older.Message.Should().Contain("does not link libgit2");
+    }
+
+    [Fact]
+    public void Blocking_takes_every_missing_item_and_a_missing_wasm_opt_only_when_it_will_run()
+    {
+        //Arrange
+        var items = new[]
+        {
+            new PrerequisiteItem(PrerequisiteKind.Rust, PrerequisiteStatus.Ok, "Rust 1.100.0"),
+            new PrerequisiteItem(PrerequisiteKind.Tailwind, PrerequisiteStatus.Missing, "no Tailwind"),
+            new PrerequisiteItem(PrerequisiteKind.WasmOpt, PrerequisiteStatus.Missing, "no wasm-opt"),
+            new PrerequisiteItem(PrerequisiteKind.HostTools, PrerequisiteStatus.Ok, "dx"),
+            new PrerequisiteItem(PrerequisiteKind.Libgit2, PrerequisiteStatus.Note, "not checked"),
+        };
+
+        //Act
+        var shrinking = PrerequisiteRules.Blocking(items, needsWasmOpt: true);
+        var unshrunk = PrerequisiteRules.Blocking(items, needsWasmOpt: false);
+
+        //Assert
+        shrinking.Select(i => i.Kind).Should().Equal(PrerequisiteKind.Tailwind, PrerequisiteKind.WasmOpt);
+        unshrunk.Select(i => i.Kind).Should().Equal(PrerequisiteKind.Tailwind);
+    }
+
+    [Fact]
+    public void Refusal_names_what_cannot_start_and_lists_each_missing_item_with_its_message()
+    {
+        //Arrange
+        var blocking = new[]
+        {
+            new PrerequisiteItem(PrerequisiteKind.Rust, PrerequisiteStatus.Missing, "Rust 1.100.0 or later is needed." + Environment.NewLine + "    Update Rust with rustup"),
+            new PrerequisiteItem(PrerequisiteKind.Tailwind, PrerequisiteStatus.Missing, "Install tailwindcss."),
+        };
+
+        //Act
+        var message = PrerequisiteRules.Refusal("The build", blocking);
+
+        //Assert
+        var lines = message.Split(Environment.NewLine);
+        lines[0].Should().Be("The build cannot start: this machine is missing what it needs.");
+        lines[1].Should().Be("  - Rust 1.100.0 or later is needed.");
+        lines[2].Should().Be("        Update Rust with rustup");
+        lines[3].Should().Be("  - Install tailwindcss.");
+        lines[4].Should().Contain("CheckPrerequisitesAsync");
     }
 }

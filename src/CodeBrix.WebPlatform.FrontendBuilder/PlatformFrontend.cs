@@ -233,6 +233,25 @@ public sealed class PlatformFrontend
     }
 
     /// <summary>
+    /// Runs <see cref="CheckPrerequisitesAsync"/> and refuses, before anything is started, when
+    /// something the step needs is missing - Rust (or its WebAssembly target, or a version older
+    /// than the minimum), Tailwind, dx and wasm-bindgen, the libgit2 library, and wasm-opt when it
+    /// will be run - with the check's own message for each.
+    /// </summary>
+    /// <param name="what">What is refused, as the message's subject.</param>
+    /// <param name="needsWasmOpt">Whether the step runs wasm-opt.</param>
+    /// <param name="cancellationToken">Stops the probes.</param>
+    private async Task RequirePrerequisitesAsync(string what, bool needsWasmOpt, CancellationToken cancellationToken)
+    {
+        var report = await CheckPrerequisitesAsync(cancellationToken).ConfigureAwait(false);
+        var blocking = PrerequisiteRules.Blocking(report.Items, needsWasmOpt);
+        if (blocking.Count > 0)
+        {
+            throw new FrontendBuildException(PrerequisiteRules.Refusal(what, blocking));
+        }
+    }
+
+    /// <summary>
     /// Finds the dx and wasm-bindgen programs: in the host-tools package's folder beside the
     /// build program (<see cref="HostTools.FolderName"/>) when it exists, otherwise at
     /// <see cref="PlatformFrontendOptions.DxPath"/> and <see cref="PlatformFrontendOptions.WasmBindgenPath"/>.
@@ -627,9 +646,13 @@ public sealed class PlatformFrontend
     /// <param name="cancellationToken">Stops dx.</param>
     /// <returns>Where the first application's site is, and how it was built;
     /// <see cref="FrontendBuildResult.Applications"/> has one result per application.</returns>
-    /// <exception cref="FrontendBuildException">A program or the libgit2 library is missing, a
-    /// frontend's Cargo.lock names a version of a crate the vendor folder no longer holds (the
-    /// message gives the command that brings it in step; dx is not started), dx failed,
+    /// <exception cref="FrontendBuildException">Something the build needs is missing on this machine
+    /// - checked FIRST, before anything starts, with <see cref="CheckPrerequisitesAsync"/>: Rust
+    /// at the minimum version with its WebAssembly target, Tailwind at the minimum version, dx and
+    /// wasm-bindgen, the libgit2 library, and wasm-opt when the build shrinks (the message lists
+    /// each with how to fix it); a frontend's Cargo.lock names a version of a crate the vendor
+    /// folder no longer holds (the message gives the command that brings it in step; dx is not
+    /// started), dx failed,
     /// wasm-opt failed, <see cref="PlatformFrontendOptions.CompressOutput"/> is not a
     /// <see cref="FrontendCompression"/> value, or a compressed copy could not be written.</exception>
     public async Task<FrontendBuildResult> BuildAsync(FrontendConfiguration configuration = FrontendConfiguration.Release, string webRootDirectory = null, CancellationToken cancellationToken = default)
@@ -647,6 +670,8 @@ public sealed class PlatformFrontend
         }
 
         RequireLockFilesInStep(_plans);
+        var needsWasmOpt = _plans.Any(p => ShrinkPlan.Decide(configuration, Options.Shrink, p.WasmSplit).NeedsWasmOpt);
+        await RequirePrerequisitesAsync("The build", needsWasmOpt, cancellationToken).ConfigureAwait(false);
         var tools = FindHostTools();
         var built = new List<(ApplicationPlan Plan, string Output, bool Shrunk, WasmOptSource Source)>();
         foreach (var plan in _plans)
@@ -786,7 +811,9 @@ public sealed class PlatformFrontend
     /// <returns>dx's exit code.</returns>
     /// <exception cref="FrontendBuildException">There is no application of that name, or no name
     /// was given and it cannot be told which is meant (the message lists the names); the
-    /// frontend folder, a program or the libgit2 library is missing; or the frontend's Cargo.lock
+    /// frontend folder is missing; something dx serve needs is missing on this machine - checked
+    /// before dx is started, with <see cref="CheckPrerequisitesAsync"/>: Rust, Tailwind, dx and
+    /// wasm-bindgen, the libgit2 library (the message lists each with how to fix it); or the frontend's Cargo.lock
     /// names a version of a crate the vendor folder no longer holds (the message gives the
     /// command that brings it in step).</exception>
     public async Task<int> ServeAsync(string applicationName, CancellationToken cancellationToken = default)
@@ -794,6 +821,7 @@ public sealed class PlatformFrontend
         var plan = FindPlan(applicationName, forServe: true);
         var frontend = RequireFrontend(plan);
         RequireLockFilesInStep(new[] { plan });
+        await RequirePrerequisitesAsync("dx serve", false, cancellationToken).ConfigureAwait(false);
         var tools = FindHostTools();
         var arguments = new List<string> { "serve", "--platform", "web" };
         if (!plan.Application.IsDefault)

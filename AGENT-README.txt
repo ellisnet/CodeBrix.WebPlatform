@@ -213,8 +213,12 @@ checks all of it and says what is missing; it installs nothing):
     - the .NET SDK (the libraries target net10.0);
     - Rust (rustup), FrontendRequirements.MinimumRustVersion or later, with
       the WebAssembly target: `rustup target add wasm32-unknown-unknown`.
-      No C compiler is needed, and no network access for the platform's
-      crates;
+      Nothing in the platform compiles C code, and the platform's crates
+      need no network access; Rust itself needs the system linker it asks
+      for when it is installed (build scripts and macros are linked for the
+      build machine): build-essential on Linux, the Xcode Command Line Tools
+      on macOS, the Visual Studio Build Tools' "Desktop development with
+      C++" on Windows;
     - the standalone Tailwind program `tailwindcss` on PATH,
       FrontendRequirements.MinimumTailwindVersion or later (the standalone
       program, not the npm package: nothing here uses Node.js).
@@ -1822,7 +1826,8 @@ A contract problem in the backend keeps BackendMapper's BackendMapException
 (with every problem) as the InnerException.
 
 STEP 1 - CheckPrerequisitesAsync
-    Probes the machine and NEVER throws for something missing. The report has
+    Probes the machine and NEVER throws for something missing (BuildAsync and
+    ServeAsync run it too, and DO refuse - see STEP 3). The report has
     one PrerequisiteItem per PrerequisiteKind, in this order:
         Rust       rustc at MinimumRustVersion or later with the WebAssembly
                    target (detected with CodeBrix.RustTools; a missing piece
@@ -2029,6 +2034,19 @@ STEP 3 - BuildAsync / ServeAsync
     `cargo update --offline -p ...` command, and dx is not started - so the
     developer reads that message instead of cargo's "failed to select a
     version" from inside dx's output.
+    THEN BOTH RUN STEP 1 THEMSELVES and refuse, before anything is started,
+    when something they need is MISSING: Rust (too old, or without the
+    WebAssembly target), Tailwind (not on PATH, or older than
+    MinimumTailwindVersion), dx and wasm-bindgen, the libgit2 library, and -
+    for BuildAsync, only when the build will shrink - wasm-opt. The
+    FrontendBuildException's message starts "The build cannot start: ..."
+    (or "dx serve cannot start: ...") and lists each missing item with the
+    check's own advice. So a machine without Tailwind gets that sentence, not
+    dx's "Failed to hash asset .../assets/tailwind.css" - and never a build
+    that quietly keeps an old generated stylesheet. Calling
+    CheckPrerequisitesAsync first yourself is still useful to fail before
+    slower work (MaterializeAsync builds the backend), as WorkSite's build
+    program does.
 
     THE WEB ROOT. With a webRootDirectory (typically the backend's wwwroot),
     once EVERY application has been built, BuildAsync fills it:

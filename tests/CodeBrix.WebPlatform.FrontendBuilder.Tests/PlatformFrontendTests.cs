@@ -247,6 +247,43 @@ public class PlatformFrontendTests
     }
 
     [Fact]
+    public async Task BuildAsync_refuses_before_starting_anything_when_tailwind_is_missing()
+    {
+        //Arrange
+        using var folder = new TempFolder();
+        var options = Frontends.CreateOptions(folder);
+        var frontend = Create(options, folder);
+        frontend.TailwindProgram = "no-such-tailwind-program-codebrix-tests";
+
+        //Act
+        Func<Task> act = () => frontend.BuildAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        //Assert
+        var message = (await act.Should().ThrowAsync<FrontendBuildException>()).Which.Message;
+        message.Should().StartWith("The build cannot start: this machine is missing what it needs.");
+        message.Should().Contain("The standalone Tailwind program was not found on PATH").And.Contain(FrontendRequirements.MinimumTailwindVersion);
+        Directory.Exists(Path.Combine(options.FrontendDirectory, "target", "dx")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ServeAsync_refuses_before_starting_dx_when_tailwind_is_too_old()
+    {
+        //Arrange
+        using var folder = new TempFolder();
+        var options = Frontends.CreateOptions(folder);
+        options.MinimumTailwindVersion = "999.0.0";
+        var frontend = Create(options, folder);
+
+        //Act
+        Func<Task> act = () => frontend.ServeAsync(TestContext.Current.CancellationToken);
+
+        //Assert
+        var message = (await act.Should().ThrowAsync<FrontendBuildException>()).Which.Message;
+        message.Should().StartWith("dx serve cannot start: this machine is missing what it needs.");
+        message.Should().Contain("999.0.0");
+    }
+
+    [Fact]
     public void FindHostTools_takes_the_package_folder_beside_the_build_program()
     {
         //Arrange

@@ -149,4 +149,31 @@ internal static class PrerequisiteRules
     /// <param name="items">The findings.</param>
     public static IReadOnlyList<PrerequisiteItem> Ordered(IEnumerable<PrerequisiteItem> items)
         => items.OrderBy(i => (int)i.Kind).ToList();
+
+    /// <summary>
+    /// The findings a build or <c>dx serve</c> cannot start without: every missing one, except a
+    /// missing wasm-opt when nothing will be shrunk.
+    /// </summary>
+    /// <param name="items">The findings of the check.</param>
+    /// <param name="needsWasmOpt">Whether wasm-opt will be run.</param>
+    public static IReadOnlyList<PrerequisiteItem> Blocking(IEnumerable<PrerequisiteItem> items, bool needsWasmOpt)
+        => items.Where(i => i.Status == PrerequisiteStatus.Missing && (needsWasmOpt || i.Kind != PrerequisiteKind.WasmOpt)).ToList();
+
+    /// <summary>
+    /// The message of a build or <c>dx serve</c> refused before it started: what is missing and,
+    /// for each, how to fix it (the check's own messages).
+    /// </summary>
+    /// <param name="what">What was refused, as the sentence's subject: "The build", "dx serve".</param>
+    /// <param name="blocking">The missing prerequisites (<see cref="Blocking"/>).</param>
+    public static string Refusal(string what, IReadOnlyList<PrerequisiteItem> blocking)
+    {
+        var text = new StringBuilder($"{what} cannot start: this machine is missing what it needs.");
+        foreach (var item in blocking)
+        {
+            text.Append(Environment.NewLine).Append("  - ").Append(item.Message.Replace(Environment.NewLine, Environment.NewLine + "    "));
+        }
+
+        text.Append(Environment.NewLine).Append("Install what is missing, then try again (PlatformFrontend.CheckPrerequisitesAsync reports every prerequisite).");
+        return text.ToString();
+    }
 }

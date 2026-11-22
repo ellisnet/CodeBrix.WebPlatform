@@ -60,8 +60,10 @@ PREREQUISITES (Debian-based Linux, x86_64)
          sudo apt install unzip curl
   4. For the linux-x64 FUNCTIONAL gate only (it builds the WorkSite frontend,
      its deliberate subject, on the host with the new programs): Rust through
-     rustup with the WebAssembly target, the standalone tailwindcss program on
-     PATH (version in samples/WorkSite/tailwindcss), the WasmShrink package's
+     rustup, 1.100.0 or newer as the default toolchain, with the WebAssembly
+     target, the standalone tailwindcss program on PATH (version in
+     samples/WorkSite/tailwindcss; the commands for both are in BUILD
+     MACHINES in the root MAINTAINER-README.txt), the WasmShrink package's
      wasm-opt in the local NuGet cache (a restore of the repository's solution
      puts it there; or WASM_OPT_DIR=<folder>), the sample's frontend
      materialized once (platform/ with the platform's crates, src/generated/

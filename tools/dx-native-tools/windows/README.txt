@@ -62,20 +62,35 @@ shows any download.
 
 STEP BY STEP, ON THE WINDOWS x64 MACHINE
 --------------------------------------------------------------------------------
-  1. Install, once (nothing here installs them for you):
+  1. Install, once (nothing here installs them for you). The exact commands
+     for each, and how to check the machine, are in BUILD MACHINES (WINDOWS)
+     in the repository's root MAINTAINER-README.txt:
+       * the .NET SDK, 10.0.404 or later 10.0:
+             winget install Microsoft.DotNet.SDK.10
        * Visual Studio 2022 or newer, or its Build Tools, with the workload
          "Desktop development with C++" (MSVC links Rust programs and
          compiles the C code; dumpbin is used by the gate):
              winget install Microsoft.VisualStudio.2022.BuildTools
          then add the workload in the Visual Studio Installer;
-       * rustup, and EXACTLY the pinned Rust (RUST_TOOLCHAIN in
-         ..\linux\pins.env, today 1.100.0) with the Windows target, and the
-         WebAssembly target for the functional gate:
-             winget install Rustlang.Rustup
-             rustup toolchain install 1.100.0 --profile minimal --target x86_64-pc-windows-msvc
-             rustup target add wasm32-unknown-unknown
+       * rustup with TWO toolchains:
+           - the DEFAULT, 1.100.0 or newer (FrontendRequirements.
+             MinimumRustVersion), with the WebAssembly target - the
+             functional gate builds the WorkSite frontend with the default
+             cargo:
+                 winget install Rustlang.Rustup
+                 rustup default stable
+                 rustup target add wasm32-unknown-unknown
+           - EXACTLY the pinned Rust (RUST_TOOLCHAIN in ..\linux\pins.env,
+             today 1.100.0) with the Windows target, which build.dx.ps1
+             builds dx.exe and wasm-bindgen.exe with (cargo +1.100.0) -
+             installed beside the default, which it does not change:
+                 rustup toolchain install 1.100.0 --profile minimal --target x86_64-pc-windows-msvc
        * the standalone tailwindcss program on PATH, at the version in
-         samples\WorkSite\tailwindcss\version.txt (functional gate);
+         samples\WorkSite\tailwindcss\version.txt (functional gate):
+         tailwindcss-windows-x64.exe from that GitHub release, checked
+         against its sha256sums.txt, saved as tailwindcss.exe in a folder on
+         PATH - the PowerShell lines are in BUILD MACHINES; open a new
+         terminal afterwards;
        * git (only to make the local template repository the functional
          gate tests `dx new` with):
              winget install Git.Git

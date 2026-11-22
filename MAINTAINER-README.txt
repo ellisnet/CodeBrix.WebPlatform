@@ -14,6 +14,12 @@ samples/WorkSite/MAINTAINER-README.txt and
 samples/ApplicationSplitter/MAINTAINER-README.txt. Read the sample's when you
 are changing it.
 
+SETTING UP A MACHINE to build, test or package this repository - Linux,
+macOS or Windows: BUILD MACHINES (just before BUILDING) says what to install,
+which versions, how, and how to check. Building the platform's own programs
+dx and wasm-bindgen on a machine: THE HOST-TOOLS PROGRAMS, which names the
+README for each operating system.
+
 
 PURPOSE AND SCOPE
 =================
@@ -367,6 +373,133 @@ REPOSITORY LAYOUT
                                              canonical copies. Never edit.
 
 
+BUILD MACHINES
+==============
+The platform supports the five build platforms the standalone Tailwind
+program is released for, and no others: linux-x64, linux-arm64, osx-x64
+(Intel), osx-arm64 (Apple Silicon) and win-x64 (Windows x64 ONLY: Tailwind
+has no Windows ARM64 program). Every one of them must be able to build and
+test this repository, and the host-tools programs for each are built ON that
+platform (THE HOST-TOOLS PROGRAMS). No Node.js, npm or other JavaScript
+runtime is installed anywhere, ever.
+
+THE VERSIONS. The code is the authority; the numbers are today's.
+    .NET SDK   10.0.404 or a later 10.0 SDK (global.json pins 10.0.404 with
+               rollForward latestFeature). The libraries target net10.0.
+    Rust       1.100.0 OR NEWER, through rustup, as the DEFAULT toolchain,
+               with the target wasm32-unknown-unknown
+               (FrontendRequirements.MinimumRustVersion). Every build machine
+               has the same Rust as the main development machine, or newer.
+    Tailwind   the STANDALONE program (never the npm package), 4.3.5 OR NEWER
+               (FrontendRequirements.MinimumTailwindVersion), named
+               `tailwindcss` (tailwindcss.exe on Windows) on PATH. The
+               release the samples are built and checked with is in
+               samples/WorkSite/tailwindcss/version.txt: install that one.
+    git        to clone, and for the host-tools gate's `dx new` check.
+    The system LINKER Rust needs on the machine (rustc links build scripts
+    and procedural macros for the build machine itself, even when the
+    application is WebAssembly): build-essential on Linux, the Xcode Command
+    Line Tools on macOS, the Visual Studio Build Tools' "Desktop development
+    with C++" workload on Windows. Nothing in the platform compiles C code.
+THE HOST-TOOLS BUILD ALSO NEEDS EXACTLY THE PINNED RUST (RUST_TOOLCHAIN in
+tools/dx-native-tools/linux/pins.env, today 1.100.0), installed BESIDE the
+default toolchain - `rustup toolchain install 1.100.0 ...` adds it without
+changing the default; the build scripts use `cargo +1.100.0` and refuse to
+start without it. All five platforms' dx and wasm-bindgen come from that one
+compiler. Raising the pin is a change of pins.env (and of the Linux
+Containerfile, which names it too) and a rebuild of ALL FIVE platforms -
+never of one alone. (The pin and MinimumRustVersion are separate numbers that
+happen to be equal today: the minimum is what an APPLICATION build needs.)
+
+LINUX (Debian-based; x64 or arm64)
+    .NET      Microsoft's packages (https://learn.microsoft.com/dotnet/core/
+              install/linux-debian), or, without sudo, Microsoft's
+              dotnet-install.sh into ~/.dotnet:
+                  curl -sSLO https://dot.net/v1/dotnet-install.sh
+                  bash dotnet-install.sh --version 10.0.404 --install-dir ~/.dotnet
+              with DOTNET_ROOT=~/.dotnet and ~/.dotnet on PATH (~/.bashrc).
+    linker    sudo apt install build-essential git
+    Rust      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+              rustup default stable          (1.100.0 or newer)
+              rustup target add wasm32-unknown-unknown
+    Tailwind  (linux-arm64: use tailwindcss-linux-arm64 below)
+              mkdir -p ~/.local/bin && cd "$(mktemp -d)"
+              curl -sSLO https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.5/tailwindcss-linux-x64
+              curl -sSLO https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.5/sha256sums.txt
+              grep ' ./tailwindcss-linux-x64$' sha256sums.txt | sha256sum -c
+              install -m 755 tailwindcss-linux-x64 ~/.local/bin/tailwindcss
+              (~/.local/bin on PATH.)
+    Host tools: tools/dx-native-tools/linux/README.txt (a container engine,
+              qemu for the arm64 gate; both Linux platforms are built on an
+              x86_64 machine).
+
+MACOS (an Apple Silicon Mac builds BOTH osx-arm64 and osx-x64)
+    linker    xcode-select --install          (also git, clang, the SDK)
+              softwareupdate --install-rosetta --agree-to-license
+                                              (to RUN the osx-x64 programs)
+    .NET      the Arm64 SDK installer from https://dotnet.microsoft.com/
+              download/dotnet/10.0 (10.0.404 or later). To run the osx-x64
+              HostTools tests on Apple Silicon, ALSO the x64 SDK installer: it
+              installs to /usr/local/share/dotnet/x64 and runs under Rosetta
+              (/usr/local/share/dotnet/x64/dotnet test ...).
+    Rust      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+              rustup default stable          (1.100.0 or newer)
+              rustup target add wasm32-unknown-unknown
+              and, for the host-tools build, the pinned Rust beside it:
+              rustup toolchain install 1.100.0 --profile minimal \
+                  --target aarch64-apple-darwin --target x86_64-apple-darwin
+    Tailwind  (an Intel Mac: tailwindcss-macos-x64 instead)
+              mkdir -p ~/.local/bin && cd "$(mktemp -d)"
+              curl -sSLO https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.5/tailwindcss-macos-arm64
+              curl -sSLO https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.5/sha256sums.txt
+              grep ' ./tailwindcss-macos-arm64$' sha256sums.txt | shasum -a 256 -c
+              install -m 755 tailwindcss-macos-arm64 ~/.local/bin/tailwindcss
+              xattr -d com.apple.quarantine ~/.local/bin/tailwindcss 2>/dev/null
+              and put ~/.local/bin on PATH (~/.zprofile:
+              export PATH="$HOME/.local/bin:$PATH"). Without the xattr step
+              macOS may refuse to start the downloaded program.
+    Host tools: tools/dx-native-tools/macos/README.txt (build.sh, both
+              slices).
+
+WINDOWS (x64 only)
+    linker    winget install Microsoft.VisualStudio.2022.BuildTools
+              then, in the Visual Studio Installer, the workload "Desktop
+              development with C++" (MSVC's linker; dumpbin for the gate).
+    git       winget install Git.Git
+    .NET      winget install Microsoft.DotNet.SDK.10   (10.0.404 or later)
+    Rust      winget install Rustlang.Rustup
+              rustup default stable          (1.100.0 or newer; the host is
+                                              x86_64-pc-windows-msvc)
+              rustup target add wasm32-unknown-unknown
+              and, for the host-tools build, the pinned Rust beside it:
+              rustup toolchain install 1.100.0 --profile minimal --target x86_64-pc-windows-msvc
+    Tailwind  in PowerShell:
+              $bin = "$env:USERPROFILE\.local\bin"; New-Item -ItemType Directory -Force $bin | Out-Null
+              $url = 'https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.5'
+              Invoke-WebRequest "$url/tailwindcss-windows-x64.exe" -OutFile tailwindcss-windows-x64.exe
+              Invoke-WebRequest "$url/sha256sums.txt" -OutFile sha256sums.txt
+              $want = ((Select-String ' ./tailwindcss-windows-x64.exe$' sha256sums.txt).Line -split ' ')[0]
+              (Get-FileHash tailwindcss-windows-x64.exe -Algorithm SHA256).Hash.ToLower() -eq $want
+                  # must print True
+              Move-Item tailwindcss-windows-x64.exe "$bin\tailwindcss.exe"
+              [Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path','User') + ";$bin", 'User')
+              then open a NEW terminal (PATH is read when it starts).
+    Host tools: tools/dx-native-tools/windows/README.txt (build.dx.ps1).
+
+CHECKING A MACHINE, on every platform:
+    dotnet --version                    10.0.404 or later 10.0
+    rustc --version                     1.100.0 or newer (the default)
+    rustup target list --installed      lists wasm32-unknown-unknown
+    rustup toolchain list               lists 1.100.0-<host> (host tools only)
+    tailwindcss --help                  its first line names v4.3.5 or newer
+Then the platform's own check, from samples/WorkSite (after a restore):
+    dotnet run --project build/WorkSite.BuildFrontend -- check
+It reports Rust, Tailwind, wasm-opt, the host tools and libgit2, each Ok or
+MISSING with how to fix it. On a platform whose dx and wasm-bindgen have not
+been built and adopted yet, HostTools is MISSING - expected until THE
+HOST-TOOLS PROGRAMS are done there.
+
+
 BUILDING
 ========
 From the repository root:
@@ -685,6 +818,24 @@ written against, and the host-tools packages' dx and wasm-bindgen match the
 platform's crates. Check that the .nupkg files carry the same version: a
 build that crosses a UTC minute can give them different ones.
 
+BEFORE PUBLISHING, ALL FIVE PLATFORMS' HOST TOOLS MUST BE IN. A host-tools
+project whose native_libraries/<rid>/ folder is missing STILL PACKS - with its
+small assembly only, silently - and such a package must never be published.
+  1. native_libraries/ has all five folders - linux-x64, linux-arm64,
+     osx-arm64, osx-x64, win-x64 - each with dx and wasm-bindgen (dx.exe and
+     wasm-bindgen.exe for win-x64), the four LICENSE-*.txt and
+     THIRD-PARTY-NOTICES-*.txt files, and the two *.provenance.txt records;
+     tools/dx-native-tools/BUILD-PROVENANCE.txt lists none as PENDING.
+  2. tests/CodeBrix.WebPlatform.FrontendBuilder.HostTools.Tests passed ON
+     each platform (they test the platform they run on; elsewhere they are
+     skipped).
+  3. After the one Release build, every host-tools package holds its
+     programs:
+         unzip -l src/CodeBrix.WebPlatform.FrontendBuilder.<Platform>/bin/Release/*.nupkg | grep frontend-tools/
+     must list dx[.exe] and wasm-bindgen[.exe] for LinuxX64, LinuxArm64,
+     MacOSArm64, MacOSX64 and WindowsX64. A package that lists nothing
+     there was packed without its programs: do not publish.
+
 What ships inside each nupkg:
     the assembly and its XML documentation
     icon-codebrix-128.png    (PackageIcon)
@@ -957,7 +1108,17 @@ scripts in tools/dx-native-tools (Linux in a pinned container with the
 network off; Windows and macOS scripts written for the owner's machines),
 gated, and ADOPTED into native_libraries/<rid>/ with a provenance record.
 Start at tools/dx-native-tools/README.txt; what was built, and the
-reproducibility record, is in its BUILD-PROVENANCE.txt. The Linux build is
+reproducibility record, is in its BUILD-PROVENANCE.txt. The step-by-step
+README for each operating system (what to install first is in BUILD MACHINES
+above):
+    linux-x64, linux-arm64   tools/dx-native-tools/linux/README.txt
+                             (both built on one x86_64 Linux machine)
+    osx-arm64, osx-x64       tools/dx-native-tools/macos/README.txt
+                             (both built on one Apple Silicon Mac)
+    win-x64                  tools/dx-native-tools/windows/README.txt
+The built programs are COMMITTED into native_libraries/<rid>/ (ADOPTING A
+BUILT BINARY in tools/dx-native-tools/README.txt), so the one Release build
+that is published - on any machine - packs all five platforms. The Linux build is
 reproducible: a rebuild gives byte-identical programs. The versions are
 pinned in tools/dx-native-tools/linux/pins.env and named again in each
 package's HostTools class (and checked by the HostTools tests).

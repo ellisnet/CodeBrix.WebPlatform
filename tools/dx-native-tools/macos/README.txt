@@ -61,19 +61,33 @@ ships these programs signs them again with its own identity.
 
 STEP BY STEP, ON THE APPLE SILICON MAC
 --------------------------------------------------------------------------------
-  1. Install, once (nothing here installs them for you):
+  1. Install, once (nothing here installs them for you). The exact commands
+     for each, and how to check the machine, are in BUILD MACHINES (MACOS)
+     in the repository's root MAINTAINER-README.txt:
        * the Xcode Command Line Tools (clang, the macOS SDK, otool, lipo,
          strip, codesign):          xcode-select --install
-       * rustup (https://rustup.rs), then EXACTLY the pinned Rust
-         (RUST_TOOLCHAIN in ../linux/pins.env, today 1.100.0) with both Apple
-         targets, and the WebAssembly target for the functional gate:
-             rustup toolchain install 1.100.0 --profile minimal \
-                 --target aarch64-apple-darwin --target x86_64-apple-darwin
-             rustup target add wasm32-unknown-unknown
+       * the .NET SDK, 10.0.404 or later 10.0 (the Arm64 installer; ALSO the
+         x64 installer, run under Rosetta, for step 6's osx-x64 tests);
+       * rustup (https://rustup.rs) with TWO toolchains:
+           - the DEFAULT, 1.100.0 or newer (FrontendRequirements.
+             MinimumRustVersion), with the WebAssembly target - the
+             functional gate builds the WorkSite frontend with the default
+             cargo:
+                 rustup default stable
+                 rustup target add wasm32-unknown-unknown
+           - EXACTLY the pinned Rust (RUST_TOOLCHAIN in ../linux/pins.env,
+             today 1.100.0) with both Apple targets, which build.sh builds dx
+             and wasm-bindgen with (cargo +1.100.0) - installed beside the
+             default, which it does not change:
+                 rustup toolchain install 1.100.0 --profile minimal \
+                     --target aarch64-apple-darwin --target x86_64-apple-darwin
        * Rosetta 2, to RUN the osx-x64 slice (its --version and functional
          gate):                     softwareupdate --install-rosetta
        * the standalone tailwindcss program on PATH, at the version in
-         samples/WorkSite/tailwindcss/version.txt;
+         samples/WorkSite/tailwindcss/version.txt (tailwindcss-macos-arm64
+         from that GitHub release, checked against its sha256sums.txt,
+         installed as tailwindcss, and its quarantine attribute removed:
+         xattr -d com.apple.quarantine <path> - see BUILD MACHINES);
        * git (Xcode's), for the local template repository the functional gate
          tests `dx new` with;
        * the osx-<arch> wasm-opt for the functional gate comes from the
