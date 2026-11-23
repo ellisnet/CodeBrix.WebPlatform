@@ -79,8 +79,6 @@ All paths are inside samples/WorkSite.
   THIRD-PARTY-NOTICES.txt       WorkSite's own notices, written by hand (see
                                 NOTICES)
   .env.example                  the settings the containers need (no values)
-  tailwindcss/                  version.txt: the oldest Tailwind WorkSite
-                                accepts; UPGRADE-README.txt
   backend/
     WorkSite.Api/               the REST backend and the hubs; also serves
                                 the built frontend from its wwwroot
@@ -240,10 +238,9 @@ nothing):
   - the .NET 10 SDK;
   - Rust (rustup), at the platform's minimum version or later, with the
     WebAssembly target (`rustup target add wasm32-unknown-unknown`). No C
-    compiler: dx and wasm-bindgen come prebuilt in the host-tools package;
-  - the standalone Tailwind program on PATH, at the version in
-    tailwindcss/version.txt OR LATER (WorkSite passes that file's version to
-    the platform as its minimum);
+    compiler: dx and wasm-bindgen come prebuilt in the host-tools package,
+    and the standalone Tailwind program in its Styling package dependency
+    (nothing to install for Tailwind; one on PATH is never used);
   - Docker with Compose, to run the containers;
   - the ASP.NET Core HTTPS development certificate, trusted by your browsers
     (`dotnet dev-certs https --trust`, once).
@@ -287,8 +284,8 @@ package: build/WorkSite.BuildFrontend/WorkSite.BuildFrontend.csproj
 references all five, each only on its own platform, so the sample restores on
 any of them. What stays in build/WorkSite.BuildFrontend is WorkSite's own:
 its command line (Program, Builder), its paths and settings (WorkSiteLayout,
-BuilderPaths, WorkSiteFrontend - the type mapping is in CreateTypeMap - and
-the Tailwind version file it accepts), the containers (ContainerStep), .env
+BuilderPaths, WorkSiteFrontend - the type mapping is in CreateTypeMap), the
+containers (ContainerStep), .env
 (EnvFile), the development certificate (DevCertificateStep) and the notices
 file in wwwroot, with the small process runner those steps use.
 
@@ -308,9 +305,10 @@ repository root (see the root MAINTAINER-README.txt).
 A FRESH CLONE: the frontend does not compile, with cargo or with dx, until
 `generate` has written src/generated, platform/ and .cargo/ - and the
 Tailwind stylesheet main.rs names (assets/tailwind.css), which the platform's
-Materialize writes with the installed Tailwind when it is missing. So: clone,
-`generate`, `cargo check`. (Without Tailwind, `generate` says the stylesheet
-was not generated, and cargo fails on the asset!() until a build has run.)
+Materialize writes with the packaged Tailwind when it is missing. So: clone,
+`generate`, `cargo check`. (Should the packaged Tailwind be missing, `generate`
+says the stylesheet was not generated, and cargo fails on the asset!() until a
+build has run.)
 The repository's maintainer tests that use the sample as their subject (the
 Node-free proof build, the dx native build's functional gate) need it
 materialized too.

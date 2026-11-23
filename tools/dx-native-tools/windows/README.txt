@@ -85,12 +85,6 @@ STEP BY STEP, ON THE WINDOWS x64 MACHINE
              builds dx.exe and wasm-bindgen.exe with (cargo +1.100.0) -
              installed beside the default, which it does not change:
                  rustup toolchain install 1.100.0 --profile minimal --target x86_64-pc-windows-msvc
-       * the standalone tailwindcss program on PATH, at the version in
-         samples\WorkSite\tailwindcss\version.txt (functional gate):
-         tailwindcss-windows-x64.exe from that GitHub release, checked
-         against its sha256sums.txt, saved as tailwindcss.exe in a folder on
-         PATH - the PowerShell lines are in BUILD MACHINES; open a new
-         terminal afterwards;
        * git (only to make the local template repository the functional
          gate tests `dx new` with):
              winget install Git.Git
@@ -98,7 +92,10 @@ STEP BY STEP, ON THE WINDOWS x64 MACHINE
          CodeBrix.WebPlatform.WasmShrink package in the local NuGet cache
          (FUNCTIONAL_WASMSHRINK_PACKAGE_VERSION in ..\linux\pins.env); a
          restore of the repository's solution puts it there. -WasmOptDir
-         names another folder.
+         names another folder. tailwindcss.exe comes the same way, from the
+         CodeBrix.WebPlatform.Styling.Tailwind4.WindowsX64 package
+         (FUNCTIONAL_STYLING_PACKAGE_VERSION; -TailwindDir names another
+         folder) - nothing is installed for it.
   2. Clone (or pull) this repository and materialize the sample's frontend
      once (in samples\WorkSite:  dotnet run --project
      build\WorkSite.BuildFrontend -- generate), so its platform\ (shared crate

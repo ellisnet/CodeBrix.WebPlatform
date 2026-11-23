@@ -7,7 +7,8 @@ public enum PrerequisiteKind
     /// with the <see cref="FrontendRequirements.WebAssemblyTarget"/> target.</summary>
     Rust,
 
-    /// <summary>The standalone Tailwind program on PATH, at the minimum version or later.</summary>
+    /// <summary>The standalone Tailwind program from the Styling package beside the build program
+    /// (see <see cref="Tools.PackagedTailwind"/>), started once with <c>--help</c> to prove it runs.</summary>
     Tailwind,
 
     /// <summary>A <c>wasm-opt</c> to shrink release builds with (see <see cref="WasmOptSource"/>).</summary>

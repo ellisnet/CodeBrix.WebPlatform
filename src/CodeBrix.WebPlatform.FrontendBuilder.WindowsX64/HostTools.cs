@@ -8,7 +8,9 @@ namespace CodeBrix.WebPlatform.FrontendBuilder.WindowsX64;
 /// <c>win-x64</c>) and where a consuming build finds them. The package copies them into the
 /// output folder of the project that references it, as <c>frontend-tools/win-x64/</c>:
 /// <c>{application base folder}/frontend-tools/win-x64/dx.exe</c> and <c>wasm-bindgen.exe</c>, with
-/// their licence and third-party notices files beside them.
+/// their licence and third-party notices files beside them. The package depends on
+/// CodeBrix.WebPlatform.Styling.Tailwind4.WindowsX64.MitLicenseForever, which copies the standalone
+/// Tailwind CSS program beside them in the same way, as <c>tailwind/win-x64/</c>.
 /// </summary>
 /// <remarks>
 /// The programs are copied as files. A NuGet package records no file permissions: on Linux

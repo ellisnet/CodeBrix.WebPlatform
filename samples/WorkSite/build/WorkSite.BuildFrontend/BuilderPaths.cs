@@ -55,9 +55,6 @@ public sealed class BuilderPaths
     /// <summary>The committed example of the settings file.</summary>
     public string EnvExampleFile => Path.Combine(Layout.Root, ".env.example");
 
-    /// <summary>The file that holds the Tailwind version WorkSite expects (the oldest it accepts).</summary>
-    public string TailwindVersionFile => Path.Combine(Layout.Root, "tailwindcss", "version.txt");
-
     /// <summary>The notices file the site serves: WorkSite's own notices, then the platform's.</summary>
     public string WebRootNoticesFile => Path.Combine(WebRoot, "THIRD-PARTY-NOTICES.txt");
 

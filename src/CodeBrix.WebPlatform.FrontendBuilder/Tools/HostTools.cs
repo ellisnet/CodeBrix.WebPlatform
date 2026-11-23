@@ -74,7 +74,17 @@ public sealed class HostTools
     /// <param name="runtimeIdentifier">A runtime identifier.</param>
     /// <returns>The package id, or <c>null</c> for a machine the platform does not build on.</returns>
     public static string GetPackageId(string runtimeIdentifier)
-        => runtimeIdentifier != null && PackagePlatforms.TryGetValue(runtimeIdentifier, out var platform)
-            ? $"CodeBrix.WebPlatform.FrontendBuilder.{platform}.ApacheLicenseForever"
-            : null;
+    {
+        var platform = GetPlatformName(runtimeIdentifier);
+        return platform == null ? null : $"CodeBrix.WebPlatform.FrontendBuilder.{platform}.ApacheLicenseForever";
+    }
+
+    /// <summary>
+    /// The platform part of the per-platform package ids for a machine, for example
+    /// <c>LinuxX64</c> for "linux-x64".
+    /// </summary>
+    /// <param name="runtimeIdentifier">A runtime identifier.</param>
+    /// <returns>The platform name, or <c>null</c> for a machine the platform does not build on.</returns>
+    internal static string GetPlatformName(string runtimeIdentifier)
+        => runtimeIdentifier != null && PackagePlatforms.TryGetValue(runtimeIdentifier, out var platform) ? platform : null;
 }

@@ -33,6 +33,7 @@ public class PlatformFrontendTests
     {
         folder.Write("build-program/frontend-tools/linux-x64/dx", "dx");
         folder.Write("build-program/frontend-tools/linux-x64/wasm-bindgen", "wasm-bindgen");
+        folder.Write("build-program/tailwind/linux-x64/tailwindcss", "tailwindcss");
         HostToolsLocator.TryLocate(folder.Combine("build-program"), "linux-x64", null, null, out var tools);
         return tools;
     }
@@ -64,7 +65,6 @@ public class PlatformFrontendTests
         options.CrateMode.Should().Be(CrateMode.PlatformCratesOnly);
         new PlatformFrontendOptions().GeneratedClientDirectory.Should().BeNull();
         new PlatformFrontendOptions().ResolvedVendorDirectory.Should().BeNull();
-        options.MinimumTailwindVersion.Should().Be(FrontendRequirements.MinimumTailwindVersion);
         options.Shrink.Should().BeNull();
     }
 
@@ -100,19 +100,37 @@ public class PlatformFrontendTests
     }
 
     [Fact]
-    public void CreateDxEnvironment_puts_the_packaged_wasm_opt_first_on_PATH()
+    public void CreateDxEnvironment_puts_the_packaged_tailwind_first_on_PATH_and_then_the_packaged_wasm_opt()
     {
         //Arrange
         using var folder = new TempFolder();
         var frontend = Create(Frontends.CreateOptions(folder), folder);
         var tools = FakeTools(folder);
+        var tailwind = folder.Combine("build-program/tailwind/linux-x64");
         var packaged = WasmShrinkTool.IsAvailable ? WasmShrinkTool.GetToolDirectory() : null;
 
         //Act
         var path = frontend.CreateDxEnvironment(tools)["PATH"];
 
         //Assert
-        path.Should().StartWith((packaged ?? tools.WasmBindgenDirectory) + Path.PathSeparator);
+        path.Should().StartWith(tailwind + Path.PathSeparator + (packaged ?? tools.WasmBindgenDirectory) + Path.PathSeparator);
+    }
+
+    [Fact]
+    public void CreateDxEnvironment_refuses_without_the_packaged_tailwind()
+    {
+        //Arrange
+        using var folder = new TempFolder();
+        var frontend = Create(Frontends.CreateOptions(folder), folder);
+        var tools = FakeTools(folder);
+        File.Delete(folder.Combine("build-program/tailwind/linux-x64/tailwindcss"));
+
+        //Act
+        Action act = () => frontend.CreateDxEnvironment(tools);
+
+        //Assert
+        act.Should().Throw<FrontendBuildException>()
+            .WithMessage("*packaged Tailwind program was not found*CodeBrix.WebPlatform.Styling.Tailwind4.LinuxX64.MitLicenseForever*CodeBrix.WebPlatform.FrontendBuilder.LinuxX64.ApacheLicenseForever*");
     }
 
     [Fact]
@@ -247,13 +265,13 @@ public class PlatformFrontendTests
     }
 
     [Fact]
-    public async Task BuildAsync_refuses_before_starting_anything_when_tailwind_is_missing()
+    public async Task BuildAsync_refuses_before_starting_anything_when_the_packaged_tailwind_is_missing()
     {
         //Arrange
         using var folder = new TempFolder();
         var options = Frontends.CreateOptions(folder);
         var frontend = Create(options, folder);
-        frontend.TailwindProgram = "no-such-tailwind-program-codebrix-tests";
+        var package = PackagedTailwind.GetPackageId(HostTools.CurrentRuntimeIdentifier);
 
         //Act
         Func<Task> act = () => frontend.BuildAsync(cancellationToken: TestContext.Current.CancellationToken);
@@ -261,17 +279,21 @@ public class PlatformFrontendTests
         //Assert
         var message = (await act.Should().ThrowAsync<FrontendBuildException>()).Which.Message;
         message.Should().StartWith("The build cannot start: this machine is missing what it needs.");
-        message.Should().Contain("The standalone Tailwind program was not found on PATH").And.Contain(FrontendRequirements.MinimumTailwindVersion);
+        message.Should().Contain(package == null ? "The Tailwind program is not available for this machine" : "The packaged Tailwind program was not found at");
+        if (package != null)
+        {
+            message.Should().Contain(package);
+        }
+
         Directory.Exists(Path.Combine(options.FrontendDirectory, "target", "dx")).Should().BeFalse();
     }
 
     [Fact]
-    public async Task ServeAsync_refuses_before_starting_dx_when_tailwind_is_too_old()
+    public async Task ServeAsync_refuses_before_starting_dx_when_the_packaged_tailwind_is_missing()
     {
         //Arrange
         using var folder = new TempFolder();
         var options = Frontends.CreateOptions(folder);
-        options.MinimumTailwindVersion = "999.0.0";
         var frontend = Create(options, folder);
 
         //Act
@@ -280,7 +302,7 @@ public class PlatformFrontendTests
         //Assert
         var message = (await act.Should().ThrowAsync<FrontendBuildException>()).Which.Message;
         message.Should().StartWith("dx serve cannot start: this machine is missing what it needs.");
-        message.Should().Contain("999.0.0");
+        message.Should().Contain("Tailwind program");
     }
 
     [Fact]
@@ -314,6 +336,9 @@ public class PlatformFrontendTests
         //Assert
         report.Items.Select(i => i.Kind).Should().Equal(PrerequisiteKind.Rust, PrerequisiteKind.Tailwind, PrerequisiteKind.WasmOpt, PrerequisiteKind.HostTools, PrerequisiteKind.Libgit2);
         report[PrerequisiteKind.HostTools].Status.Should().Be(PrerequisiteStatus.Missing);
+        report[PrerequisiteKind.Tailwind].Status.Should().Be(PrerequisiteStatus.Missing);
+        report.Tailwind.Should().BeNull();
+        report.TailwindVersion.Should().BeNull();
         report[PrerequisiteKind.Libgit2].Status.Should().Be(PrerequisiteStatus.Note);
         report[PrerequisiteKind.Libgit2].Message.Should().Contain("not checked");
         report.HostTools.Should().BeNull();
@@ -669,7 +694,6 @@ public class PlatformFrontendTests
         File.WriteAllText(options.ResolvedTailwindInputFile, TailwindInput);
         folder.Write("frontend/assets/tailwind.css", "/* built by dx */");
         var frontend = Create(options, folder);
-        frontend.TailwindProgram = "no-such-tailwind-program-codebrix-tests";
 
         //Act
         var (outcome, _) = await frontend.EnsureStylesheetAsync(TestContext.Current.CancellationToken);
@@ -708,7 +732,6 @@ public class PlatformFrontendTests
         var output = new StringWriter();
         options.Output = output;
         var frontend = Create(options, folder);
-        frontend.TailwindProgram = "no-such-tailwind-program-codebrix-tests";
 
         //Act
         var result = await frontend.MaterializeAsync(TestContext.Current.CancellationToken);
@@ -716,43 +739,47 @@ public class PlatformFrontendTests
         //Assert
         result.Stylesheet.Should().Be(StylesheetOutcome.SkippedTailwindNotAvailable);
         result.StylesheetMissing.Should().BeTrue();
-        result.StylesheetMessage.Should().Contain("was not generated because").And.Contain("not found on PATH").And.Contain("Plain cargo commands");
+        result.StylesheetMessage.Should().Contain("was not generated because").And.Contain("Tailwind program").And.Contain("Plain cargo commands");
         output.ToString().Should().Contain(result.StylesheetMessage);
         result.GeneratedFiles.Should().Contain("mod.rs");
         File.Exists(options.ResolvedTailwindOutputFile).Should().BeFalse();
     }
 
     [Fact]
-    public async Task EnsureStylesheetAsync_skips_a_tailwind_older_than_the_minimum()
+    public async Task EnsureStylesheetAsync_reports_a_packaged_tailwind_that_fails()
     {
         //Arrange
+        Assert.SkipWhen(PackagedTailwind.GetPackageId(HostTools.CurrentRuntimeIdentifier) == null, "This machine is not a build platform.");
         using var folder = new TempFolder();
         var options = Frontends.CreateOptions(folder);
-        options.MinimumTailwindVersion = "999.0.0";
         File.WriteAllText(options.ResolvedTailwindInputFile, TailwindInput);
+        var suffix = OperatingSystem.IsWindows() ? ".exe" : string.Empty;
+        folder.Write($"build-program/tailwind/{HostTools.CurrentRuntimeIdentifier}/tailwindcss{suffix}", "not a program");
         var frontend = Create(options, folder);
 
         //Act
         var (outcome, message) = await frontend.EnsureStylesheetAsync(TestContext.Current.CancellationToken);
 
         //Assert
-        outcome.Should().Be(StylesheetOutcome.SkippedTailwindNotAvailable);
-        message.Should().Contain("999.0.0");
+        outcome.Should().Be(StylesheetOutcome.SkippedTailwindFailed);
+        message.Should().Contain("the Tailwind program failed");
         File.Exists(options.ResolvedTailwindOutputFile).Should().BeFalse();
     }
 
     [Fact]
-    public async Task MaterializeAsync_generates_a_missing_stylesheet_with_the_installed_tailwind()
+    public async Task MaterializeAsync_generates_a_missing_stylesheet_with_the_packaged_tailwind()
     {
         //Arrange
         var probe = await new PlatformFrontend(new PlatformFrontendOptions { FrontendDirectory = Path.GetTempPath() })
             .CheckPrerequisitesAsync(TestContext.Current.CancellationToken);
         Assert.SkipWhen(probe[PrerequisiteKind.Tailwind].Status != PrerequisiteStatus.Ok,
-            "The standalone Tailwind program (at the platform's minimum version or later) is not installed: " + probe[PrerequisiteKind.Tailwind].Message);
+            "The packaged Tailwind program is not in this test project's output: " + probe[PrerequisiteKind.Tailwind].Message);
         using var folder = new TempFolder();
         var options = Frontends.CreateOptions(folder);
         File.WriteAllText(options.ResolvedTailwindInputFile, TailwindInput + "@source \"./src/**/*.rs\";\n");
         folder.Write("frontend/src/main.rs", "fn main() { let _ = \"flex text-indigo-600\"; }\n");
+        var copy = Directory.CreateDirectory(folder.Combine($"build-program/tailwind/{probe.Tailwind.RuntimeIdentifier}")).FullName;
+        File.Copy(probe.Tailwind.Path, Path.Combine(copy, Path.GetFileName(probe.Tailwind.Path)));
         var frontend = Create(options, folder);
 
         //Act
@@ -760,6 +787,7 @@ public class PlatformFrontendTests
         var second = await frontend.MaterializeAsync(TestContext.Current.CancellationToken);
 
         //Assert
+        probe.TailwindVersion.Should().Be(File.ReadAllText(Path.Combine(probe.Tailwind.Directory, "version.txt")).Trim());
         first.Stylesheet.Should().Be(StylesheetOutcome.Generated, first.StylesheetMessage);
         File.ReadAllText(options.ResolvedTailwindOutputFile).Should().Contain(".flex");
         second.Stylesheet.Should().Be(StylesheetOutcome.AlreadyPresent);

@@ -33,10 +33,9 @@ public static class WorkSiteFrontend
     /// The options WorkSite's frontend is built with.
     /// </summary>
     /// <param name="paths">The WorkSite paths.</param>
-    /// <param name="minimumTailwindVersion">The oldest Tailwind version to accept.</param>
     /// <param name="output">Where progress lines go.</param>
     /// <returns>The options.</returns>
-    public static PlatformFrontendOptions CreateOptions(BuilderPaths paths, string minimumTailwindVersion, TextWriter output)
+    public static PlatformFrontendOptions CreateOptions(BuilderPaths paths, TextWriter output)
         => new PlatformFrontendOptions
         {
             FrontendDirectory = paths.Layout.Frontend,
@@ -44,7 +43,6 @@ public static class WorkSiteFrontend
             BackendAssemblyPath = paths.ApiAssembly,
             Types = CreateTypeMap(),
             DxHomeDirectory = paths.DxHome,
-            MinimumTailwindVersion = minimumTailwindVersion,
             ServeFeatures = { DevToolsFeature },
             Output = output,
         };

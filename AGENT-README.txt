@@ -162,9 +162,10 @@ NuGet dependencies:
                     CodeBrix.RustTools.MitLicenseForever (Rust toolchain
                     detection, Cargo.toml reading).
 
-THE HOST-TOOLS PACKAGE. The dx and wasm-bindgen programs a build runs are NOT
-in FrontendBuilder: they are native programs, one package per build platform.
-The build program references the one for the machine it is built on:
+THE HOST-TOOLS PACKAGE. The dx, wasm-bindgen and Tailwind programs a build
+runs are NOT in FrontendBuilder: they are native programs, one package per
+build platform. The build program references the one for the machine it is
+built on:
 
     Linux x64             CodeBrix.WebPlatform.FrontendBuilder.LinuxX64
     Linux ARM64           CodeBrix.WebPlatform.FrontendBuilder.LinuxArm64
@@ -175,7 +176,11 @@ The build program references the one for the machine it is built on:
 
 Each copies its programs beside the build program, as
 frontend-tools/<rid>/dx[.exe] and frontend-tools/<rid>/wasm-bindgen[.exe]
-(rid = linux-x64, linux-arm64, win-x64, osx-arm64, osx-x64). Those five are
+(rid = linux-x64, linux-arm64, win-x64, osx-arm64, osx-x64). Each depends on
+CodeBrix.WebPlatform.Styling.Tailwind4.<Platform>.MitLicenseForever (same
+platform names), which copies the standalone Tailwind program beside them as
+tailwind/<rid>/tailwindcss[.exe] - so Tailwind is never installed (see
+FRONTENDBUILDER API REFERENCE: THE PACKAGED TAILWIND). Those five are
 the ONLY machines a platform application can be built on. A build program
 without the package can name its own dx and wasm-bindgen in the options
 instead (see FRONTENDBUILDER API REFERENCE: HOST TOOLS).
@@ -218,11 +223,13 @@ checks all of it and says what is missing; it installs nothing):
       for when it is installed (build scripts and macros are linked for the
       build machine): build-essential on Linux, the Xcode Command Line Tools
       on macOS, the Visual Studio Build Tools' "Desktop development with
-      C++" on Windows;
-    - the standalone Tailwind program `tailwindcss` on PATH,
-      FrontendRequirements.MinimumTailwindVersion or later (the standalone
-      program, not the npm package: nothing here uses Node.js).
-Everything else arrives with the packages.
+      C++" on Windows.
+Everything else arrives with the packages - the standalone Tailwind program
+too: the host-tools package of the build machine depends on the
+CodeBrix.WebPlatform.Styling.Tailwind4.<Platform>.MitLicenseForever package,
+which puts it beside the build program (see HOST TOOLS). Tailwind is NOT
+installed, and one installed on the machine is never used; nothing here uses
+Node.js.
 
 License: Apache-2.0 (every package). XML documentation ships with each. The
 third-party code the packages carry keeps its own licence; see NOTICES FOR A
@@ -1702,8 +1709,6 @@ everything else in the options is shared by all of them.
         public string DxHomeDirectory { get; set; }       // dx's DX_HOME;
             // default <frontend>/target/dx-home of each application; when
             // set and there are several applications, <it>/<name> each
-        public string MinimumTailwindVersion { get; set; }
-            // default FrontendRequirements.MinimumTailwindVersion
         public bool GenerateMissingStylesheet { get; set; }  // default true:
             // MaterializeAsync writes a missing Tailwind stylesheet (STEP 2)
         public string TailwindInputFile { get; set; }     // default
@@ -1815,8 +1820,6 @@ everything else in the options is shared by all of them.
     {
         public const string MinimumRustVersion;     // the oldest Rust accepted
         public const string WebAssemblyTarget;      // "wasm32-unknown-unknown"
-        public const string MinimumTailwindVersion; // the default minimum
-        public const string TailwindProgram;        // "tailwindcss"
         public static string ParseTailwindVersion(string helpOutput);
     }
 
@@ -1832,8 +1835,10 @@ STEP 1 - CheckPrerequisitesAsync
         Rust       rustc at MinimumRustVersion or later with the WebAssembly
                    target (detected with CodeBrix.RustTools; a missing piece
                    comes with the commands that install it). No C compiler.
-        Tailwind   `tailwindcss --help` on PATH reports MinimumTailwindVersion
-                   or later.
+        Tailwind   the packaged program (PackagedTailwind, see HOST TOOLS) is
+                   beside the build program and reports its version for
+                   `--help`; Missing names the package to add. A Tailwind on
+                   PATH is never looked at.
         WasmOpt    where wasm-opt comes from (WasmOptSource): Package (the
                    CodeBrix.WebPlatform.WasmShrink package - normal), Installed
                    (the package has no binary for this machine yet; one on
@@ -1853,6 +1858,7 @@ STEP 1 - CheckPrerequisitesAsync
         IReadOnlyList<PrerequisiteItem> Items;   bool IsReady (nothing Missing);
         IReadOnlyList<string> Problems (messages of the Missing items);
         string RustVersion, TailwindVersion (null when not found);
+        PackagedTailwind Tailwind (null when not found or not started);
         WasmOptSource WasmOpt; HostTools HostTools (null when not found);
         string DxVersion;   // dx --version, started with libgit2; null when
                             // dx was not found or did not start
@@ -1862,7 +1868,7 @@ STEP 1 - CheckPrerequisitesAsync
     {
         PrerequisiteKind Kind; PrerequisiteStatus Status (Ok, Note, Missing);
         string Message;   // fit to show; for Missing it says how to fix it
-        string ToString();   // "MISSING  The standalone Tailwind program ..."
+        string ToString();   // "MISSING  The packaged Tailwind program ..."
     }
 
 STEP 2 - MaterializeAsync
@@ -1905,11 +1911,11 @@ STEP 2 - MaterializeAsync
          stylesheet, ResolvedTailwindInputFile, exists) and the generated one
          (ResolvedTailwindOutputFile, the file the application's
          asset!("/assets/tailwind.css") names and dx normally writes during a
-         build) is MISSING, it starts the installed Tailwind program once -
-         `tailwindcss -i <input> -o <output>` in the frontend folder. An
-         existing stylesheet is never touched (dx rewrites it on every
-         build). Nothing is installed: when Tailwind is missing or older than
-         MinimumTailwindVersion, or fails, Materialize does NOT fail - the
+         build) is MISSING, it starts the packaged Tailwind program once, by
+         its full path - `tailwindcss -i <input> -o <output>` in the frontend
+         folder. An existing stylesheet is never touched (dx rewrites it on
+         every build). When the packaged program is not beside the build
+         program, or fails, Materialize does NOT fail - the
          result says so (Stylesheet, StylesheetMessage), and the message is
          also written to Output. Switch the step off with
          GenerateMissingStylesheet = false.
@@ -1918,7 +1924,7 @@ STEP 2 - MaterializeAsync
     every frontend folder - offline, in the default crate mode - and so does an
     editor's Rust support, on a fresh clone too: clone, Materialize, cargo
     check. (Unless the result reports StylesheetMissing: then they fail on
-    the asset!() until a build has run or Tailwind is installed.)
+    the asset!() until a build has run.)
 
     public sealed class MaterializeResult    // the FIRST application's
     {
@@ -1984,7 +1990,7 @@ STEP 2 - MaterializeAsync
         AlreadyPresent,              // left alone
         NotApplicable,               // no input stylesheet: no Tailwind here
         SwitchedOff,                 // GenerateMissingStylesheet = false
-        SkippedTailwindNotAvailable, // missing: Tailwind not installed or too old
+        SkippedTailwindNotAvailable, // missing: no packaged Tailwind beside the program
         SkippedTailwindFailed,       // missing: Tailwind ran and failed
     }
 
@@ -2010,10 +2016,12 @@ STEP 3 - BuildAsync / ServeAsync
         dx <GetDxBuildArguments(configuration, name, wasmSplit)>
     (--base-path <name> for a named application, --wasm-split for one built
     with splitting) with this environment:
-        PATH     the packaged wasm-opt's folder FIRST (when the WasmShrink
-                 package has one for this machine), then wasm-bindgen's
-                 folder, then the existing PATH (the Tailwind program is found
-                 there);
+        PATH     the packaged Tailwind's folder FIRST (tailwind/<rid>/ beside
+                 the build program; dx runs the tailwindcss it finds on
+                 PATH, so a Tailwind installed on the machine is never the
+                 one it runs), then the packaged wasm-opt's folder (when the
+                 WasmShrink package has one for this machine), then
+                 wasm-bindgen's folder, then the existing PATH;
         DX_HOME  the application's DX_HOME (DxHomeDirectory for one
                  application): a folder the build owns, because dx looks in
                  its own data folder BEFORE PATH, and a wasm-opt some other dx
@@ -2036,12 +2044,13 @@ STEP 3 - BuildAsync / ServeAsync
     version" from inside dx's output.
     THEN BOTH RUN STEP 1 THEMSELVES and refuse, before anything is started,
     when something they need is MISSING: Rust (too old, or without the
-    WebAssembly target), Tailwind (not on PATH, or older than
-    MinimumTailwindVersion), dx and wasm-bindgen, the libgit2 library, and -
+    WebAssembly target), the packaged Tailwind (not beside the build program,
+    or does not start), dx and wasm-bindgen, the libgit2 library, and -
     for BuildAsync, only when the build will shrink - wasm-opt. The
     FrontendBuildException's message starts "The build cannot start: ..."
     (or "dx serve cannot start: ...") and lists each missing item with the
-    check's own advice. So a machine without Tailwind gets that sentence, not
+    check's own advice. So a build program without the packaged Tailwind gets
+    that sentence, not
     dx's "Failed to hash asset .../assets/tailwind.css" - and never a build
     that quietly keeps an old generated stylesheet. Calling
     CheckPrerequisitesAsync first yourself is still useful to fail before
@@ -2312,6 +2321,36 @@ HOST TOOLS
     wasm-opt on request, and every dx command is there, `dx new`, `dx init`
     and `dx components` included) and wasm-bindgen, each matching the
     platform's crates.
+
+THE PACKAGED TAILWIND
+    Each host-tools package depends on the Styling package of its platform,
+    CodeBrix.WebPlatform.Styling.Tailwind4.<Platform>.MitLicenseForever,
+    which carries Tailwind Labs' standalone program unchanged (with its
+    licence, its third-party notices and version.txt) and copies it into the
+    build program's output as tailwind/<rid>/tailwindcss[.exe]. (That package
+    depends on CodeBrix.WebPlatform.Styling.Tailwind4.Sources, the source of
+    the program, which travels with it.) The library uses ONLY that program:
+      - the prerequisite check finds it there and starts it with `--help`;
+      - MaterializeAsync runs it by its full path for a missing stylesheet;
+      - dx is started with its folder FIRST on PATH (dx runs the tailwindcss
+        it finds on PATH).
+    There is no options path and no fallback to a Tailwind installed on the
+    machine; without the folder, the check, BuildAsync and ServeAsync name
+    the package to add. A build program that names its own dx and
+    wasm-bindgen (DxPath, WasmBindgenPath) and references no host-tools
+    package references the Styling package of the machine itself. On Linux
+    and macOS the program is given the execute permission if it lacks it.
+
+    public sealed class PackagedTailwind   // CodeBrix.WebPlatform.FrontendBuilder.Tools
+    {
+        public const string FolderName = "tailwind";
+        public const string ProgramName = "tailwindcss";   // .exe on Windows
+        public static string GetPackageId(string runtimeIdentifier);
+            // for "linux-x64":
+            // "CodeBrix.WebPlatform.Styling.Tailwind4.LinuxX64.MitLicenseForever";
+            // null for a machine the platform does not build on
+        public string Path, Directory, RuntimeIdentifier;
+    }
 
 DX NEEDS libgit2
     dx links the libgit2 library as a SHARED library (it compiles none of
@@ -3468,19 +3507,22 @@ COMMON PITFALLS TO AVOID
     libgit2-...". dx needs libgit2 on its loader path; see DX NEEDS libgit2,
     STARTING dx YOURSELF.
 
-  * Installing the Tailwind npm package. The platform needs the STANDALONE
-    `tailwindcss` program on PATH; nothing here uses Node.js.
+  * Installing Tailwind - the npm package or the standalone program. The
+    platform brings the standalone program in the host-tools package's
+    Styling dependency and never uses one installed on the machine; nothing
+    here uses Node.js.
 
   * Running cargo or an editor on a fresh clone before MaterializeAsync has
     run once: the frontend does not compile until src/generated,
     platform/codebrix-webplatform, platform/vendor and .cargo/config.toml
     exist (and the Tailwind stylesheet the asset!() names, which Materialize
-    also writes when Tailwind is installed).
+    also writes, with the packaged Tailwind).
 
   * "Asset at /assets/tailwind.css doesn't exist" from cargo after
     MaterializeAsync: the result's StylesheetMessage says why it was not
-    generated (Tailwind not installed, too old, or failed). Install Tailwind
-    and materialize again, or run a build once.
+    generated (the packaged Tailwind is not beside the build program, or it
+    failed). Reference the machine's host-tools package (it brings the
+    Styling package), build the build program, and materialize again.
 
   * Setting the page title with Dioxus's document::Title: under the
     platform's Content-Security-Policy the browser refuses the script it runs
@@ -3669,14 +3711,15 @@ WHAT THIS PACKAGE DOES NOT DO
   * A platform application has ONE backend: frontend applications that need
     different backends are separate platform applications.
   * Core and BackendMapper do not build the frontend; FrontendBuilder does,
-    by running dx. None of them installs anything: Rust, its WebAssembly
-    target and the Tailwind program are the developer's to install, and
+    by running dx. None of them installs anything: Rust and its WebAssembly
+    target are the developer's to install (Tailwind comes in a package), and
     CheckPrerequisitesAsync says what is missing.
   * FrontendBuilder does not deploy: no containers, no database, no hosting.
     Publishing the backend with the built site in its wwwroot is the
     application's own step.
-  * FrontendBuilder does not include dx or wasm-bindgen; they come from the
-    host-tools package for the build machine.
+  * FrontendBuilder does not include dx, wasm-bindgen or Tailwind; they come
+    from the host-tools package for the build machine (Tailwind through its
+    Styling package).
   * It does not check the licences of the crates an application adds
     (CrateMode.ApplicationAddsCrates), or of the crates a registered crate
     bundle brings, or record them in notices: an application's own code and

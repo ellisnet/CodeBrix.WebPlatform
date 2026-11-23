@@ -114,7 +114,7 @@ public class WorkSiteFrontendTests
         var defaults = new RustClientOptions();
 
         //Act
-        var options = WorkSiteFrontend.CreateOptions(ArrangePaths(folder), "4.3.5", null);
+        var options = WorkSiteFrontend.CreateOptions(ArrangePaths(folder), null);
 
         //Assert
         options.ClientOptions.SignalRModulePath.Should().Be("codebrix_webplatform::signalr");
@@ -141,7 +141,7 @@ public class WorkSiteFrontendTests
         var paths = ArrangePaths(folder);
 
         //Act
-        var options = WorkSiteFrontend.CreateOptions(paths, "4.3.5", null);
+        var options = WorkSiteFrontend.CreateOptions(paths, null);
 
         //Assert
         options.FrontendDirectory.Should().Be(paths.Layout.Frontend);
@@ -153,18 +153,17 @@ public class WorkSiteFrontendTests
         options.ResolvedVendorDirectory.Should().Be(Path.Combine(paths.Layout.Frontend, "platform", "vendor"));
         options.DxHomeDirectory.Should().Be(paths.DxHome);
         paths.DxHome.Should().StartWith(paths.Artifacts);
-        options.MinimumTailwindVersion.Should().Be("4.3.5");
         options.ServeFeatures.Should().Equal("devtools");
         options.SharedCrateDirectory.Should().Be(Path.Combine(paths.Layout.Frontend, "platform", "codebrix-webplatform"));
         options.GeneratedClientDirectory.Should().Be(Path.Combine(paths.Layout.Frontend, "src", "generated"));
     }
 
     [Fact]
-    public async Task the_build_program_finds_dx_and_wasm_bindgen_in_the_host_tools_package()
+    public async Task the_build_program_finds_dx_wasm_bindgen_and_tailwind_in_the_host_tools_package()
     {
         //Arrange
         using var folder = new TempFolder();
-        var frontend = new PlatformFrontend(WorkSiteFrontend.CreateOptions(ArrangePaths(folder), "4.3.5", null));
+        var frontend = new PlatformFrontend(WorkSiteFrontend.CreateOptions(ArrangePaths(folder), null));
 
         //Act
         var report = await frontend.CheckPrerequisitesAsync(TestContext.Current.CancellationToken);
@@ -173,6 +172,8 @@ public class WorkSiteFrontendTests
         report[PrerequisiteKind.HostTools].Status.Should().Be(PrerequisiteStatus.Ok, report[PrerequisiteKind.HostTools].Message);
         report.HostTools.Source.Should().Be(HostToolsSource.Package);
         report[PrerequisiteKind.HostTools].Message.Should().Contain("package");
+        report[PrerequisiteKind.Tailwind].Status.Should().Be(PrerequisiteStatus.Ok, report[PrerequisiteKind.Tailwind].Message);
+        report[PrerequisiteKind.Tailwind].Message.Should().Contain(PackagedTailwind.GetPackageId(HostTools.CurrentRuntimeIdentifier));
     }
 
     [Fact]
@@ -188,7 +189,7 @@ public class WorkSiteFrontendTests
         }
 
         folder.Write("samples/WorkSite/frontend/Cargo.toml", "[package]\nname = \"worksite-frontend\"\nversion = \"0.1.0\"\n");
-        var options = WorkSiteFrontend.CreateOptions(paths, "4.3.5", null);
+        var options = WorkSiteFrontend.CreateOptions(paths, null);
         options.BackendProjectPath = null;
         var frontend = new PlatformFrontend(options);
 

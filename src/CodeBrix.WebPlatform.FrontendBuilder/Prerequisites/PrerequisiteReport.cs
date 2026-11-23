@@ -10,7 +10,7 @@ namespace CodeBrix.WebPlatform.FrontendBuilder.Prerequisites;
 /// </summary>
 public sealed class PrerequisiteReport
 {
-    internal PrerequisiteReport(IReadOnlyList<PrerequisiteItem> items, string rustVersion, string tailwindVersion, WasmOptSource wasmOpt, HostTools hostTools, string dxVersion = null)
+    internal PrerequisiteReport(IReadOnlyList<PrerequisiteItem> items, string rustVersion, string tailwindVersion, WasmOptSource wasmOpt, HostTools hostTools, string dxVersion = null, PackagedTailwind tailwind = null)
     {
         Items = items;
         RustVersion = rustVersion;
@@ -18,6 +18,7 @@ public sealed class PrerequisiteReport
         WasmOpt = wasmOpt;
         HostTools = hostTools;
         DxVersion = dxVersion;
+        Tailwind = tailwind;
     }
 
     /// <summary>Every finding, in the order of <see cref="PrerequisiteKind"/>.</summary>
@@ -32,8 +33,12 @@ public sealed class PrerequisiteReport
     /// <summary>The version of rustc found (for example "1.100.0"), or <c>null</c>.</summary>
     public string RustVersion { get; }
 
-    /// <summary>The version of the Tailwind program found on PATH, or <c>null</c>.</summary>
+    /// <summary>The version the packaged Tailwind program reported (for example "4.3.5"), or <c>null</c>
+    /// when it was not found or did not start.</summary>
     public string TailwindVersion { get; }
+
+    /// <summary>The packaged Tailwind program that a build would run, or <c>null</c> when it was not found.</summary>
+    public PackagedTailwind Tailwind { get; }
 
     /// <summary>Where wasm-opt comes from.</summary>
     public WasmOptSource WasmOpt { get; }

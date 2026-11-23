@@ -20,6 +20,10 @@
 #                            local NuGet cache, FUNCTIONAL_WASMSHRINK_PACKAGE_VERSION in pins.env);
 #                            without one the functional gate is SKIPPED and the result must not be
 #                            adopted
+#   TAILWIND_DIR=<folder>    the tailwindcss the functional gate puts first on dx's PATH (default:
+#                            the CodeBrix.WebPlatform.Styling.Tailwind4 package's osx-<arch> copy
+#                            in the local NuGet cache, FUNCTIONAL_STYLING_PACKAGE_VERSION in
+#                            pins.env)
 #   SKIP_FUNCTIONAL_GATE=1   do not build the frontend with the new tools
 #
 # WHAT IT DOES

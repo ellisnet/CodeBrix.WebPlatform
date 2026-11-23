@@ -10,6 +10,20 @@
     <ProjectReference Include="..\CodeBrix.WebPlatform.BackendMapper.Tests.SampleBackend\CodeBrix.WebPlatform.BackendMapper.Tests.SampleBackend.csproj" />
   </ItemGroup>
 
+  <!--
+    The packaged Tailwind program of the machine the tests are built on, copied into this
+    project's output as tailwind/<rid>/ - as a host-tools package brings it to a build program -
+    so that the tests that run Tailwind run the real one. (The host-tools packages themselves are
+    not referenced: most tests here check what happens when dx and wasm-bindgen are missing.)
+  -->
+  <ItemGroup>
+    <PackageReference Condition="'$(NETCoreSdkRuntimeIdentifier)' == 'linux-x64'" Include="CodeBrix.WebPlatform.Styling.Tailwind4.LinuxX64.MitLicenseForever" Version="1.0.327.82" />
+    <PackageReference Condition="'$(NETCoreSdkRuntimeIdentifier)' == 'linux-arm64'" Include="CodeBrix.WebPlatform.Styling.Tailwind4.LinuxArm64.MitLicenseForever" Version="1.0.327.82" />
+    <PackageReference Condition="'$(NETCoreSdkRuntimeIdentifier)' == 'osx-x64'" Include="CodeBrix.WebPlatform.Styling.Tailwind4.MacOSX64.MitLicenseForever" Version="1.0.327.82" />
+    <PackageReference Condition="'$(NETCoreSdkRuntimeIdentifier)' == 'osx-arm64'" Include="CodeBrix.WebPlatform.Styling.Tailwind4.MacOSArm64.MitLicenseForever" Version="1.0.327.82" />
+    <PackageReference Condition="'$(NETCoreSdkRuntimeIdentifier)' == 'win-x64'" Include="CodeBrix.WebPlatform.Styling.Tailwind4.WindowsX64.MitLicenseForever" Version="1.0.327.82" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1">

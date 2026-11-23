@@ -6,7 +6,8 @@
 
   <!--
     All five host-tools packages, so every platform's folder is copied into this project's output
-    (frontend-tools/<rid>/) and the tests can check the one for the machine they run on.
+    (frontend-tools/<rid>/) and the tests can check the one for the machine they run on. Each
+    brings its platform's Styling package too (the standalone Tailwind program, tailwind/<rid>/).
   -->
   <!--
     The FrontendBuilder library, so the programs are started the way a build starts them: dx does

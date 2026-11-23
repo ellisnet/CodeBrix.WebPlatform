@@ -15,6 +15,9 @@
 #   WASM_OPT_DIR=<folder>            the wasm-opt the functional gate puts on dx's PATH
 #                                    (default: the WasmShrink package in the local NuGet
 #                                    cache, FUNCTIONAL_WASMSHRINK_PACKAGE_VERSION in pins.env)
+#   TAILWIND_DIR=<folder>            the tailwindcss the functional gate puts first on dx's
+#                                    PATH (default: the Styling package in the local NuGet
+#                                    cache, FUNCTIONAL_STYLING_PACKAGE_VERSION in pins.env)
 #
 # WHAT THIS DOES, IN ONE PARAGRAPH
 #   It makes sure the derived build image exists (the x86_64 manylinux base + clang/lld/llvm +

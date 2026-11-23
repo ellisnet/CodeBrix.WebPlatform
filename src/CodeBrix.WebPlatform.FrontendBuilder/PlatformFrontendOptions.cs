@@ -121,19 +121,14 @@ public sealed class PlatformFrontendOptions
     public string DxHomeDirectory { get; set; }
 
     /// <summary>
-    /// The oldest release of the standalone Tailwind program to accept, as "major.minor.patch".
-    /// Starts as <see cref="FrontendRequirements.MinimumTailwindVersion"/>.
-    /// </summary>
-    public string MinimumTailwindVersion { get; set; } = FrontendRequirements.MinimumTailwindVersion;
-
-    /// <summary>
     /// Whether <see cref="PlatformFrontend.MaterializeAsync"/> writes the generated Tailwind
     /// stylesheet when it is missing, so that plain <c>cargo check/test</c> work on a fresh
     /// clone (the application's Rust names that file as an asset, and dx normally writes it during
-    /// a build). <c>true</c> by default. It starts the installed Tailwind program once
-    /// (<c>tailwindcss -i &lt;input&gt; -o &lt;output&gt;</c> in the frontend folder), only when the
-    /// input stylesheet exists and the output does not; an existing output is never touched. A
-    /// missing or too old Tailwind does not fail materializing: the result says so.
+    /// a build). <c>true</c> by default. It starts the packaged Tailwind program
+    /// (<see cref="Tools.PackagedTailwind"/>) once (<c>tailwindcss -i &lt;input&gt; -o &lt;output&gt;</c>
+    /// in the frontend folder), only when the input stylesheet exists and the output does not; an
+    /// existing output is never touched. A missing packaged program does not fail materializing:
+    /// the result says so.
     /// </summary>
     public bool GenerateMissingStylesheet { get; set; } = true;
 

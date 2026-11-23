@@ -88,7 +88,7 @@ from it and the plumbing the Backend package gives it.
                   embedded, the platform's crates it carries as one archive
                   together with the registered crate bundles', the cargo
                   configuration and, when it is missing, the Tailwind
-                  stylesheet by running the installed Tailwind once), and
+                  stylesheet by running the packaged Tailwind once), and
                   builds every application into the web root (with the
                   manifest, and bundle splitting on request) or serves one
                   with dx. It
@@ -226,8 +226,9 @@ REPOSITORY LAYOUT
                                              results, FrontendBuildException
       Prerequisites/                         the report and its items;
                                              internal PrerequisiteRules
-      Tools/                                 HostTools, HostToolsSource;
-                                             internal HostToolsLocator
+      Tools/                                 HostTools, HostToolsSource,
+                                             PackagedTailwind; internal
+                                             HostToolsLocator
       SharedCrate/                           SharedRustCrate, SharedRustFile
       Stylesheet/                            StylesheetOutcome; internal
                                              StylesheetRules (Materialize's
@@ -390,11 +391,12 @@ THE VERSIONS. The code is the authority; the numbers are today's.
                with the target wasm32-unknown-unknown
                (FrontendRequirements.MinimumRustVersion). Every build machine
                has the same Rust as the main development machine, or newer.
-    Tailwind   the STANDALONE program (never the npm package), 4.3.5 OR NEWER
-               (FrontendRequirements.MinimumTailwindVersion), named
-               `tailwindcss` (tailwindcss.exe on Windows) on PATH. The
-               release the samples are built and checked with is in
-               samples/WorkSite/tailwindcss/version.txt: install that one.
+    Tailwind   NOT INSTALLED. The standalone program comes from the
+               CodeBrix.WebPlatform.Styling.Tailwind4.<Platform>.MitLicenseForever
+               package (built from the CodeBrix.WebPlatform.Styling
+               repository), which each host-tools package depends on; it
+               lands beside the build program as tailwind/<rid>/ (see
+               TAILWIND). A Tailwind installed on the machine is never used.
     git        to clone, and for the host-tools gate's `dx new` check.
     The system LINKER Rust needs on the machine (rustc links build scripts
     and procedural macros for the build machine itself, even when the
@@ -422,13 +424,6 @@ LINUX (Debian-based; x64 or arm64)
     Rust      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
               rustup default stable          (1.100.0 or newer)
               rustup target add wasm32-unknown-unknown
-    Tailwind  (linux-arm64: use tailwindcss-linux-arm64 below)
-              mkdir -p ~/.local/bin && cd "$(mktemp -d)"
-              curl -sSLO https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.5/tailwindcss-linux-x64
-              curl -sSLO https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.5/sha256sums.txt
-              grep ' ./tailwindcss-linux-x64$' sha256sums.txt | sha256sum -c
-              install -m 755 tailwindcss-linux-x64 ~/.local/bin/tailwindcss
-              (~/.local/bin on PATH.)
     Host tools: tools/dx-native-tools/linux/README.txt (a container engine,
               qemu for the arm64 gate; both Linux platforms are built on an
               x86_64 machine).
@@ -448,16 +443,6 @@ MACOS (an Apple Silicon Mac builds BOTH osx-arm64 and osx-x64)
               and, for the host-tools build, the pinned Rust beside it:
               rustup toolchain install 1.100.0 --profile minimal \
                   --target aarch64-apple-darwin --target x86_64-apple-darwin
-    Tailwind  (an Intel Mac: tailwindcss-macos-x64 instead)
-              mkdir -p ~/.local/bin && cd "$(mktemp -d)"
-              curl -sSLO https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.5/tailwindcss-macos-arm64
-              curl -sSLO https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.5/sha256sums.txt
-              grep ' ./tailwindcss-macos-arm64$' sha256sums.txt | shasum -a 256 -c
-              install -m 755 tailwindcss-macos-arm64 ~/.local/bin/tailwindcss
-              xattr -d com.apple.quarantine ~/.local/bin/tailwindcss 2>/dev/null
-              and put ~/.local/bin on PATH (~/.zprofile:
-              export PATH="$HOME/.local/bin:$PATH"). Without the xattr step
-              macOS may refuse to start the downloaded program.
     Host tools: tools/dx-native-tools/macos/README.txt (build.sh, both
               slices).
 
@@ -473,17 +458,6 @@ WINDOWS (x64 only)
               rustup target add wasm32-unknown-unknown
               and, for the host-tools build, the pinned Rust beside it:
               rustup toolchain install 1.100.0 --profile minimal --target x86_64-pc-windows-msvc
-    Tailwind  in PowerShell:
-              $bin = "$env:USERPROFILE\.local\bin"; New-Item -ItemType Directory -Force $bin | Out-Null
-              $url = 'https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.5'
-              Invoke-WebRequest "$url/tailwindcss-windows-x64.exe" -OutFile tailwindcss-windows-x64.exe
-              Invoke-WebRequest "$url/sha256sums.txt" -OutFile sha256sums.txt
-              $want = ((Select-String ' ./tailwindcss-windows-x64.exe$' sha256sums.txt).Line -split ' ')[0]
-              (Get-FileHash tailwindcss-windows-x64.exe -Algorithm SHA256).Hash.ToLower() -eq $want
-                  # must print True
-              Move-Item tailwindcss-windows-x64.exe "$bin\tailwindcss.exe"
-              [Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path','User') + ";$bin", 'User')
-              then open a NEW terminal (PATH is read when it starts).
     Host tools: tools/dx-native-tools/windows/README.txt (build.dx.ps1).
 
 CHECKING A MACHINE, on every platform:
@@ -491,11 +465,11 @@ CHECKING A MACHINE, on every platform:
     rustc --version                     1.100.0 or newer (the default)
     rustup target list --installed      lists wasm32-unknown-unknown
     rustup toolchain list               lists 1.100.0-<host> (host tools only)
-    tailwindcss --help                  its first line names v4.3.5 or newer
 Then the platform's own check, from samples/WorkSite (after a restore):
     dotnet run --project build/WorkSite.BuildFrontend -- check
-It reports Rust, Tailwind, wasm-opt, the host tools and libgit2, each Ok or
-MISSING with how to fix it. On a platform whose dx and wasm-bindgen have not
+It reports Rust, Tailwind (the packaged one, with the package it comes
+from), wasm-opt, the host tools and libgit2, each Ok or MISSING with how to
+fix it. On a platform whose dx and wasm-bindgen have not
 been built and adopted yet, HostTools is MISSING - expected until THE
 HOST-TOOLS PROGRAMS are done there.
 
@@ -584,11 +558,14 @@ reports zero tests, run a test assembly directly and read its counts:
 The test projects are xUnit v3 with SilverAssertions. No coverage collector is
 referenced. No network, database or container is needed. A few FrontendBuilder
 tests run programs of the machine (`dotnet msbuild`, and the prerequisite
-probes: rustc, tailwindcss, wasm-opt); they assert what is true on any
-machine. One runs the installed Tailwind program to write a missing
-stylesheet, and is SKIPPED, with the reason, on a machine without Tailwind at
-the platform's minimum; the stylesheet step's decisions are tested without it
-(a Tailwind program name that does not exist stands in for "not installed").
+probes: rustc, wasm-opt); they assert what is true on any machine. The
+FrontendBuilder tests reference the Styling package of the machine they are
+BUILT on (NETCoreSdkRuntimeIdentifier), so its packaged Tailwind is in their
+output folder: one test runs it to write a missing stylesheet (and checks it
+reports the version its package's version.txt names); the others build in a
+folder with no tailwind/<rid>/ and check what happens without it. The
+HostTools tests check that all five platforms' tailwind/<rid>/ folders come
+with the five host-tools projects.
 Some tests START THE ADOPTED dx (native_libraries/<rid>/, or the host-tools
 package's copy in HostTools.Tests) through the library, with the
 CodeBrix.LibGit2 package's libgit2 - `dx --version`, dx without the library
@@ -1152,6 +1129,40 @@ OpenSSL is linked into dx; the build gate proves it. libgit2's source never
 enters this repository; `LibraryChecker vendor` checks that.
 
 
+TAILWIND
+========
+The standalone Tailwind CSS program is NOT built, vendored or installed here.
+Tailwind Labs' own release programs are packed, unchanged and sha256-checked,
+by the CodeBrix.WebPlatform.Styling repository into six nuget.org packages:
+    CodeBrix.WebPlatform.Styling.Tailwind4.<Platform>.MitLicenseForever
+        (LinuxX64, LinuxArm64, MacOSX64, MacOSArm64, WindowsX64) - the
+        program as tools/tailwind/<rid>/tailwindcss[.exe], with its licence,
+        its third-party notices and version.txt; buildTransitive targets copy
+        them into the consuming project's output as tailwind/<rid>/
+    CodeBrix.WebPlatform.Styling.Tailwind4.Sources - the source of the
+        program (the LGPL libraries in it require it to travel with it);
+        every platform package depends on it at one exact version
+Each host-tools project here references the Styling package of its platform
+(src/CodeBrix.WebPlatform.FrontendBuilder.<Platform>/*.csproj), so a build
+program that references its host-tools package gets the program beside it.
+The library finds it as <build program folder>/tailwind/<rid>/tailwindcss[.exe]
+(PackagedTailwind; the folder name is the contract), checks it with
+`--help`, runs it by its full path for the missing-stylesheet step, and puts
+its folder FIRST on the PATH dx runs with (dx, built with `no-downloads`,
+runs the tailwindcss it finds on PATH). There is no fallback to a Tailwind
+installed on the machine.
+The notices of the program travel in its own package; they are not repeated
+in this repository's notices.
+TO TAKE A NEW TAILWIND RELEASE: publish new Styling packages (that
+repository's MAINTAINER-README), then set their version in the five
+host-tools projects, in the FrontendBuilder tests' project, and as
+FUNCTIONAL_STYLING_PACKAGE_VERSION in tools/dx-native-tools/linux/pins.env
+(the host-tools gate takes the program from the local NuGet cache); build,
+run the tests and refresh the samples' packages (TEMPORARY PACKAGES). A new
+Tailwind MAJOR version comes in new Tailwind<N> packages and is a larger
+change: dx picks Tailwind's behaviour by the files it finds.
+
+
 REPRODUCIBLE APPLICATION BUILDS
 ===============================
 (consumer view: AGENT-README.txt, CODE SPLITTING, FILE NAMES AND THE
@@ -1207,12 +1218,13 @@ part of the platform (materialize it with the sample's `generate` first) -
 in a throw-away container that has Rust but no Node.js, npm or other
 JavaScript runtime (probed: the proof fails if one is found), with the
 container's network switched off. It copies in the frontend with its crates,
-the standalone Tailwind program from PATH, the WasmShrink package's Linux
-wasm-opt, the Linux dx and wasm-bindgen of the host-tools packages (the
-maintainer tool references the LinuxX64 and LinuxArm64 package projects) and
-the CodeBrix.LibGit2 package's Linux libgit2 under the name dx asks for (on
-dx's LD_LIBRARY_PATH in the container), and refuses an image that has a
-wasm-opt, dx or wasm-bindgen of its own. Nothing
+the Linux Tailwind program of the Styling package and the Linux dx and
+wasm-bindgen of the host-tools packages (the maintainer tool references the
+LinuxX64 and LinuxArm64 package projects, which bring the Styling packages),
+the WasmShrink package's Linux wasm-opt and the CodeBrix.LibGit2 package's
+Linux libgit2 under the name dx asks for (on dx's LD_LIBRARY_PATH in the
+container), and refuses an image that has a tailwindcss, wasm-opt, dx or
+wasm-bindgen of its own. Nothing
 is compiled but the frontend. It needs Docker (CodeBrix.RustTools.Docker).
 
 

@@ -53,7 +53,7 @@
     <Product>CodeBrix.WebPlatform.FrontendBuilder.MacOSArm64</Product>
     <Title>CodeBrix.WebPlatform.FrontendBuilder.MacOSArm64</Title>
     <Authors>Jeremy Ellis</Authors>
-    <Description>The prebuilt build tools of the CodeBrix.WebPlatform web application platform for macOS on Apple Silicon (ARM64) build machines: the Dioxus CLI (dx, built from a patched dioxus-cli) and the wasm-bindgen CLI, with their licence and third-party notices files. Referencing the package copies them into the build program's output folder as frontend-tools/osx-arm64/, where CodeBrix.WebPlatform.FrontendBuilder finds them - nothing has to be compiled or installed. Choose the package of the machine the frontend is BUILT on.</Description>
+    <Description>The prebuilt build tools of the CodeBrix.WebPlatform web application platform for macOS on Apple Silicon (ARM64) build machines: the Dioxus CLI (dx, built from a patched dioxus-cli) and the wasm-bindgen CLI, with their licence and third-party notices files - and, through the CodeBrix.WebPlatform.Styling.Tailwind4.MacOSArm64.MitLicenseForever package it depends on, the standalone Tailwind CSS program. Referencing the package copies them into the build program's output folder as frontend-tools/osx-arm64/ and tailwind/osx-arm64/, where CodeBrix.WebPlatform.FrontendBuilder finds them - nothing has to be compiled or installed. Choose the package of the machine the frontend is BUILT on.</Description>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/ellisnet/CodeBrix.WebPlatform</PackageProjectUrl>
     <RepositoryUrl>https://github.com/ellisnet/CodeBrix.WebPlatform</RepositoryUrl>
@@ -64,7 +64,7 @@
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
     <IsPackable>true</IsPackable>
-    <PackageTags>webassembly;wasm;dioxus;dx;wasm-bindgen;rust;build;tools;macos;CodeBrix</PackageTags>
+    <PackageTags>webassembly;wasm;dioxus;dx;wasm-bindgen;tailwind;rust;build;tools;macos;CodeBrix</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
@@ -103,6 +103,25 @@
           CopyToOutputDirectory="PreserveNewest" Visible="false" />
     <None Include="buildTransitive\CodeBrix.WebPlatform.FrontendBuilder.MacOSArm64.ApacheLicenseForever.targets"
           Pack="true" PackagePath="buildTransitive" />
+  </ItemGroup>
+
+  <!--
+    The standalone Tailwind CSS program for osx-arm64 build machines comes from the
+    CodeBrix.WebPlatform.Styling.Tailwind4.MacOSArm64.MitLicenseForever package (built from the
+    CodeBrix.WebPlatform.Styling repository, from Tailwind Labs' own release). Its
+    buildTransitive targets copy it into the consuming project's output folder as
+    tailwind/osx-arm64/tailwindcss, with its licence and
+    third-party notices files; that package depends, at one exact version, on
+    CodeBrix.WebPlatform.Styling.Tailwind4.Sources, which carries the program's source. This
+    package does not pack the program itself: the dependency brings it (a project reference -
+    the tests - gets it the same way).
+
+    THE FOLDER NAME tailwind/<rid>/ IS A CONTRACT: CodeBrix.WebPlatform.FrontendBuilder looks for
+    <application base folder>/tailwind/<rid>/tailwindcss[.exe], puts that folder first on the
+    PATH dx runs with, and never uses a Tailwind installed on the machine.
+  -->
+  <ItemGroup>
+    <PackageReference Include="CodeBrix.WebPlatform.Styling.Tailwind4.MacOSArm64.MitLicenseForever" Version="1.0.327.82" />
   </ItemGroup>
 
 </Project>

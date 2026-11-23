@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -7,8 +6,8 @@ namespace WorkSite.BuildFrontend.Steps;
 
 /// <summary>
 /// WorkSite's own prerequisites, beside the ones CodeBrix.WebPlatform.FrontendBuilder checks
-/// for every platform frontend: the Tailwind version WorkSite records, and Docker for the
-/// containers. Nothing is ever installed by the build program.
+/// for every platform frontend: Docker for the containers. Nothing is ever installed by the
+/// build program (Tailwind comes in the host-tools package, through its Styling package).
 /// </summary>
 public sealed class Prerequisites
 {
@@ -24,23 +23,6 @@ public sealed class Prerequisites
     {
         _runner = runner;
         _paths = paths;
-    }
-
-    /// <summary>
-    /// Reads the Tailwind version WorkSite records in <c>vendoring/tailwindcss/version.txt</c>. It
-    /// is the oldest version the frontend build accepts (the platform's own minimum is the same
-    /// or lower).
-    /// </summary>
-    /// <exception cref="BuilderException">The file is missing or empty.</exception>
-    public string ExpectedTailwindVersion()
-    {
-        var text = File.Exists(_paths.TailwindVersionFile) ? File.ReadAllText(_paths.TailwindVersionFile).Trim() : string.Empty;
-        if (text.Length == 0)
-        {
-            throw new BuilderException($"'{_paths.TailwindVersionFile}' must hold the Tailwind version WorkSite expects.");
-        }
-
-        return text;
     }
 
     /// <summary>

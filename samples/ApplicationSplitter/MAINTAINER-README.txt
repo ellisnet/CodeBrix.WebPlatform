@@ -150,8 +150,9 @@ BUILDING AND RUNNING THE SAMPLE
 What must be installed (the build program checks and tells you; it installs
 nothing): the .NET 10 SDK; Rust (rustup) at the platform's minimum version
 or later with the WebAssembly target (`rustup target add
-wasm32-unknown-unknown`); the standalone Tailwind program on PATH. No C
-compiler: dx and wasm-bindgen come prebuilt in the host-tools package.
+wasm32-unknown-unknown`). No C compiler, and no Tailwind: dx and
+wasm-bindgen come prebuilt in the host-tools package, and the standalone
+Tailwind program in its Styling package dependency.
 
 From samples/ApplicationSplitter:
 
@@ -188,7 +189,7 @@ frontends: it reads the manifest once, when it starts.
 
 A FRESH CLONE: the frontends do not compile, with cargo or dx, until
 `generate` has written src/generated, platform/ and .cargo/ (and the
-Tailwind stylesheet, which it writes with the installed Tailwind when it is
+Tailwind stylesheet, which it writes with the packaged Tailwind when it is
 missing). So: clone, `generate`, `cargo check`.
 
 

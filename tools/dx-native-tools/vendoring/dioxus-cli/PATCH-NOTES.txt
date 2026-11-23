@@ -246,7 +246,7 @@ builds the tool with the cargo features `no-downloads` and
 `disable-telemetry`, both of which upstream provides:
   - no-downloads: `dx` never downloads a tool. It uses the `wasm-bindgen`,
     `tailwindcss` and `wasm-opt` it finds on PATH (the FrontendBuilder library
-    puts the packaged wasm-bindgen and wasm-opt first there).
+    puts the packaged Tailwind, wasm-opt and wasm-bindgen first there).
   - disable-telemetry: upstream `dx` uploads usage data. With this feature
     its "is telemetry disabled" check always answers yes, so no reporter is
     enrolled, and every upload path needs a reporter and stops without one.

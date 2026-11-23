@@ -6,6 +6,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using CodeBrix.WebPlatform.FrontendBuilder.Prerequisites;
+using CodeBrix.WebPlatform.FrontendBuilder.Tools;
 using SilverAssertions;
 using Xunit;
 using LinuxArm64Tools = CodeBrix.WebPlatform.FrontendBuilder.LinuxArm64.HostTools;
@@ -19,7 +20,9 @@ namespace CodeBrix.WebPlatform.FrontendBuilder.HostTools.Tests;
 /// <summary>
 /// The five HostTools classes, and - for the machine the tests run on - the packaged programs in
 /// this project's output folder (frontend-tools/&lt;rid&gt;/), copied there by the project
-/// references exactly as the packages' buildTransitive targets copy them for a consumer.
+/// references exactly as the packages' buildTransitive targets copy them for a consumer; and the
+/// standalone Tailwind program each host-tools project brings through its Styling package
+/// dependency (tailwind/&lt;rid&gt;/).
 /// </summary>
 public class HostToolsTests
 {
@@ -215,5 +218,45 @@ public class HostToolsTests
         report[PrerequisiteKind.Libgit2].Status.Should().Be(PrerequisiteStatus.Ok, report[PrerequisiteKind.Libgit2].Message);
         report.DxVersion.Should().Be($"dioxus {platform.DxVersion} (57d6794)");
         wasmBindgenVersion.Should().Be($"wasm-bindgen {platform.WasmBindgenVersion}");
+    }
+
+    [Fact]
+    public void every_platforms_tailwind_comes_with_its_host_tools_project()
+    {
+        //Assert
+        foreach (var platform in Platforms)
+        {
+            var folder = Path.Combine(AppContext.BaseDirectory, PackagedTailwind.FolderName, platform.RuntimeIdentifier);
+            var suffix = platform.RuntimeIdentifier.StartsWith("win-", StringComparison.Ordinal) ? ".exe" : string.Empty;
+            File.Exists(Path.Combine(folder, PackagedTailwind.ProgramName + suffix)).Should().BeTrue($"the {platform.RuntimeIdentifier} host-tools project depends on {PackagedTailwind.GetPackageId(platform.RuntimeIdentifier)}");
+            File.Exists(Path.Combine(folder, "LICENSE-Tailwind.txt")).Should().BeTrue();
+            File.Exists(Path.Combine(folder, "THIRD-PARTY-NOTICES-Tailwind.txt")).Should().BeTrue();
+            File.ReadAllText(Path.Combine(folder, "version.txt")).Trim().Should().Be("4.3.5");
+        }
+    }
+
+    [Fact]
+    public async Task the_current_platforms_tailwind_is_the_one_a_build_runs()
+    {
+        //Arrange
+        var platform = CurrentPlatform();
+        var frontend = Path.Combine(Path.GetTempPath(), "hosttools-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(frontend);
+        PrerequisiteReport report;
+        try
+        {
+            //Act
+            report = await new PlatformFrontend(new PlatformFrontendOptions { FrontendDirectory = frontend }).CheckPrerequisitesAsync(TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            Directory.Delete(frontend, recursive: true);
+        }
+
+        //Assert
+        report[PrerequisiteKind.Tailwind].Status.Should().Be(PrerequisiteStatus.Ok, report[PrerequisiteKind.Tailwind].Message);
+        report[PrerequisiteKind.Tailwind].Message.Should().Contain(PackagedTailwind.GetPackageId(platform.RuntimeIdentifier));
+        report.Tailwind.Directory.Should().Be(Path.Combine(AppContext.BaseDirectory, PackagedTailwind.FolderName, platform.RuntimeIdentifier));
+        report.TailwindVersion.Should().Be("4.3.5");
     }
 }

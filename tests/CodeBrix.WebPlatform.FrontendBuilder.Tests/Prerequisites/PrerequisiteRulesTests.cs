@@ -22,47 +22,45 @@ public class PrerequisiteRulesTests
         requirements.RequireCCompiler.Should().BeFalse();
     }
 
-    [Theory]
-    [InlineData("4.3.5", "4.3.5")]
-    [InlineData("4.3.6", "4.3.5")]
-    [InlineData("4.10.0", "4.3.5")]
-    [InlineData("5.0.0", "4.3.5")]
-    public void EvaluateTailwind_accepts_the_minimum_or_later(string found, string minimum)
+    [Fact]
+    public void EvaluateTailwind_names_the_package_the_program_comes_from()
     {
+        //Arrange
+        var tailwind = new PackagedTailwind("/build/tailwind/linux-x64/tailwindcss", "linux-x64");
+
         //Act
-        var item = PrerequisiteRules.EvaluateTailwind(found, minimum);
+        var item = PrerequisiteRules.EvaluateTailwind(tailwind, null, "4.3.5", null);
 
         //Assert
         item.Kind.Should().Be(PrerequisiteKind.Tailwind);
         item.Status.Should().Be(PrerequisiteStatus.Ok);
-        item.Message.Should().Contain(found);
+        item.Message.Should().Be("Tailwind 4.3.5 comes from the CodeBrix.WebPlatform.Styling.Tailwind4.LinuxX64.MitLicenseForever package.");
     }
 
     [Fact]
-    public void EvaluateTailwind_refuses_an_older_release()
+    public void EvaluateTailwind_passes_on_why_the_program_was_not_found()
     {
         //Act
-        var item = PrerequisiteRules.EvaluateTailwind("4.3.4", "4.3.5");
+        var item = PrerequisiteRules.EvaluateTailwind(null, "not beside the build program", null, null);
 
         //Assert
         item.Status.Should().Be(PrerequisiteStatus.Missing);
-        item.Message.Should().Contain("version 4.3.4").And.Contain("4.3.5 or later");
+        item.Message.Should().Be("not beside the build program");
     }
 
     [Fact]
-    public void EvaluateTailwind_says_how_to_fix_a_missing_program()
+    public void EvaluateTailwind_reports_a_program_that_does_not_start()
     {
+        //Arrange
+        var tailwind = new PackagedTailwind("/build/tailwind/linux-x64/tailwindcss", "linux-x64");
+
         //Act
-        var item = PrerequisiteRules.EvaluateTailwind(null, "4.3.5");
+        var item = PrerequisiteRules.EvaluateTailwind(tailwind, null, null, "exec format error");
 
         //Assert
         item.Status.Should().Be(PrerequisiteStatus.Missing);
-        item.Message.Should().Contain("not found on PATH").And.Contain("`tailwindcss`").And.Contain("4.3.5 or later");
+        item.Message.Should().Contain("'/build/tailwind/linux-x64/tailwindcss' did not start").And.Contain("exec format error").And.Contain("Build the build program again");
     }
-
-    [Fact]
-    public void EvaluateTailwind_reports_a_minimum_that_is_not_a_version()
-        => PrerequisiteRules.EvaluateTailwind("4.3.5", "latest").Message.Should().Contain("'latest' is not a version");
 
     [Fact]
     public void DescribeWasmOpt_says_where_wasm_opt_comes_from()

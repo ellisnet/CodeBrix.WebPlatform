@@ -12,7 +12,7 @@ USAGE (from a PowerShell prompt, in a clone of the repository):
 
     cd tools\dx-native-tools\windows
     .\build.dx.ps1
-    .\build.dx.ps1 -BuildRoot D:\cbx-dx -WasmOptDir <folder holding wasm-opt.exe>
+    .\build.dx.ps1 -BuildRoot D:\cbx-dx -WasmOptDir <folder holding wasm-opt.exe> -TailwindDir <folder holding tailwindcss.exe>
 
 WHAT IT DOES
   * reads ..\linux\pins.env (the one source of truth: TOOL_SOURCES_DIR, RUST_TOOLCHAIN, the
@@ -51,7 +51,12 @@ param(
     # The folder holding the wasm-opt.exe the functional gate puts first on dx's PATH (the
     # CodeBrix.WebPlatform.WasmShrink package's win-x64 copy). Without one the functional gate is
     # reported as SKIPPED, and the result must not be adopted until it has been run.
-    [string] $WasmOptDir = ''
+    [string] $WasmOptDir = '',
+    # The folder holding the tailwindcss.exe the functional gate puts first on dx's PATH (the
+    # CodeBrix.WebPlatform.Styling.Tailwind4.WindowsX64 package's copy, from the local NuGet cache
+    # at FUNCTIONAL_STYLING_PACKAGE_VERSION in pins.env by default). A Tailwind installed on the
+    # machine is never used.
+    [string] $TailwindDir = ''
 )
 
 Set-StrictMode -Version Latest
@@ -111,7 +116,7 @@ function Read-Pins {
     foreach ($required in @('TOOL_SOURCES_DIR', 'RUST_TOOLCHAIN', 'DX_DIR', 'DX_CRATE_VERSION', 'DX_FEATURES', 'DX_GIT_SHA',
                             'DX_EXPECTED_VERSION', 'DX_EXE', 'WASM_BINDGEN_DIR', 'WASM_BINDGEN_VERSION',
                             'WASM_BINDGEN_EXPECTED_VERSION', 'WASM_BINDGEN_EXE', 'LICENCE_FILES', 'WINDOWS_RUSTFLAGS',
-                            'FUNCTIONAL_FRONTEND', 'FUNCTIONAL_DX_ARGS', 'FUNCTIONAL_WASMSHRINK_PACKAGE_VERSION',
+                            'FUNCTIONAL_FRONTEND', 'FUNCTIONAL_DX_ARGS', 'FUNCTIONAL_WASMSHRINK_PACKAGE_VERSION', 'FUNCTIONAL_STYLING_PACKAGE_VERSION',
                             'LIBGIT2_PACKAGE_ID', 'LIBGIT2_PACKAGE_VERSION', 'LIBGIT2_NUPKG_SHA256', 'LIBGIT2_NUPKG_URL',
                             'LIBGIT2_VERSION', 'LIBGIT2_LINK_NAME', 'LIBGIT2_SHA256_WIN_X64')) {
         if (-not $pins.ContainsKey($required)) { throw "pins.env has no $required." }
@@ -370,9 +375,12 @@ foreach ($exe in $Exes) {
 
 # Functional: build a scratch copy of the frontend, as ..\linux\functional-gate.sh does.
 $Gate.Add('  === functional gate ==='); Write-Host '  === functional gate ==='
+$cacheRoot = if ($env:NUGET_PACKAGES) { $env:NUGET_PACKAGES } else { Join-Path $env:USERPROFILE '.nuget\packages' }
 if (-not $WasmOptDir) {
-    $cacheRoot = if ($env:NUGET_PACKAGES) { $env:NUGET_PACKAGES } else { Join-Path $env:USERPROFILE '.nuget\packages' }
     $WasmOptDir = Join-Path $cacheRoot "codebrix.webplatform.wasmshrink.apachelicenseforever\$($Pins.FUNCTIONAL_WASMSHRINK_PACKAGE_VERSION)\tools\wasm-opt\$Rid"
+}
+if (-not $TailwindDir) {
+    $TailwindDir = Join-Path $cacheRoot "codebrix.webplatform.styling.tailwind4.windowsx64.mitlicenseforever\$($Pins.FUNCTIONAL_STYLING_PACKAGE_VERSION)\tools\tailwind\$Rid"
 }
 $WasmSize = 'n/a'
 $SkipSize = 'n/a'
@@ -380,8 +388,8 @@ $FunctionalSkipped = $false
 if (-not (Test-Path -LiteralPath (Join-Path $WasmOptDir 'wasm-opt.exe'))) {
     Info "SKIPPED - no wasm-opt.exe in $WasmOptDir (pass -WasmOptDir). DO NOT ADOPT until the functional gate has passed."
     $FunctionalSkipped = $true
-} elseif (-not (Get-Command tailwindcss -ErrorAction SilentlyContinue)) {
-    Fail 'tailwindcss is not on PATH (see samples\WorkSite\tailwindcss)'
+} elseif (-not (Test-Path -LiteralPath (Join-Path $TailwindDir 'tailwindcss.exe'))) {
+    Fail "no tailwindcss.exe in $TailwindDir (restore the repository's solution, or pass -TailwindDir)"
 } else {
     $FunctionalSkipped = $false
     $fg = Join-Path $BuildRoot 'functional-gate'
@@ -393,7 +401,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $WasmOptDir 'wasm-opt.exe'))) {
     & robocopy $frontend $copy /E /XD (Join-Path $frontend 'target') /NFL /NDL /NJH /NJS /NP | Out-Null
     Copy-Item (Join-Path $Out $Exes[0]), (Join-Path $Out $Exes[1]) (Join-Path $fg 'bin')
     $savedPath = $env:PATH
-    $env:PATH = "$WasmOptDir;$(Join-Path $fg 'bin');$($Libgit2.Dir);$savedPath"
+    $env:PATH = "$TailwindDir;$WasmOptDir;$(Join-Path $fg 'bin');$($Libgit2.Dir);$savedPath"
     $env:DX_HOME = Join-Path $fg 'dx-home'
     Remove-Item Env:RUSTFLAGS, Env:CARGO_TARGET_DIR, Env:DIOXUS_CLI_GIT_SHA, Env:CODEBRIX_LIBGIT2_LIB_DIR, Env:CODEBRIX_LIBGIT2_LINK_NAME -ErrorAction SilentlyContinue
     Push-Location $copy
@@ -420,7 +428,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $WasmOptDir 'wasm-opt.exe'))) {
     # DX_SKIP_WASM_OPT: a release build with no wasm-opt anywhere on PATH (nor in dx's data
     # folder) must succeed, say so, and give a larger .wasm (..\linux\functional-gate.sh, check 6).
     $noOptPath = (($savedPath -split ';') | Where-Object { $_ -and -not (Test-Path -LiteralPath (Join-Path $_ 'wasm-opt.exe')) }) -join ';'
-    $env:PATH = "$(Join-Path $fg 'bin');$($Libgit2.Dir);$noOptPath"
+    $env:PATH = "$TailwindDir;$(Join-Path $fg 'bin');$($Libgit2.Dir);$noOptPath"
     $env:DX_HOME = Join-Path $fg 'dx-home-noopt'
     $env:DX_SKIP_WASM_OPT = '1'
     New-Item -ItemType Directory -Force -Path $env:DX_HOME | Out-Null

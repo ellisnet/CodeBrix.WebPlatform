@@ -82,9 +82,6 @@ public sealed class PlatformFrontend
         _runner = new ProcessRunner(options.Output);
     }
 
-    /// <summary>The Tailwind program that is run (a name on PATH); tests name one that does not exist.</summary>
-    internal string TailwindProgram { get; set; } = FrontendRequirements.TailwindProgram;
-
     /// <summary>The crate bundles to use instead of the registered ones; tests set it.</summary>
     internal IReadOnlyList<CrateBundle> CrateBundlesOverride { get; set; }
 
@@ -163,8 +160,9 @@ public sealed class PlatformFrontend
 
     /// <summary>
     /// Checks everything a build needs on this machine - Rust and its WebAssembly target, the
-    /// standalone Tailwind program, wasm-opt, the dx and wasm-bindgen programs, and the libgit2
-    /// library dx needs to start (from the CodeBrix.LibGit2 package; dx is started once, with
+    /// standalone Tailwind program from the Styling package beside the build program
+    /// (<see cref="PackagedTailwind"/>; started once with <c>--help</c>), wasm-opt, the dx and
+    /// wasm-bindgen programs, and the libgit2 library dx needs to start (from the CodeBrix.LibGit2 package; dx is started once, with
     /// <c>--version</c>, to prove it) - and says, for each, whether it is in place and what to
     /// do when it is not. Installs nothing and never throws for something missing.
     /// </summary>
@@ -186,9 +184,17 @@ public sealed class PlatformFrontend
             items.Add(new PrerequisiteItem(PrerequisiteKind.Rust, PrerequisiteStatus.Missing, "The Rust toolchain could not be examined: " + exception.Message));
         }
 
-        var tailwind = await _runner.RunAsync(TailwindProgram, new[] { "--help" }, echo: false, cancellationToken: cancellationToken).ConfigureAwait(false);
-        var tailwindVersion = tailwind.NotFound ? null : FrontendRequirements.ParseTailwindVersion(tailwind.Output);
-        items.Add(PrerequisiteRules.EvaluateTailwind(tailwindVersion, Options.MinimumTailwindVersion));
+        var tailwindProblem = PackagedTailwind.TryLocate(_toolsBaseDirectory, HostTools.CurrentRuntimeIdentifier, out var tailwind);
+        string tailwindVersion = null;
+        string tailwindFailure = null;
+        if (tailwind != null)
+        {
+            var probe = await _runner.RunAsync(tailwind.Path, new[] { "--help" }, echo: false, cancellationToken: cancellationToken).ConfigureAwait(false);
+            tailwindVersion = probe.NotFound ? null : FrontendRequirements.ParseTailwindVersion(probe.Output);
+            tailwindFailure = tailwindVersion == null ? OutputText.Tail(probe.Output, 5) : null;
+        }
+
+        items.Add(PrerequisiteRules.EvaluateTailwind(tailwind, tailwindProblem, tailwindVersion, tailwindFailure));
 
         var wasmOpt = await FindWasmOptAsync(cancellationToken).ConfigureAwait(false);
         items.Add(PrerequisiteRules.DescribeWasmOpt(wasmOpt, HostTools.CurrentRuntimeIdentifier));
@@ -229,14 +235,14 @@ public sealed class PlatformFrontend
             }
         }
 
-        return new PrerequisiteReport(PrerequisiteRules.Ordered(items), rustVersion, tailwindVersion, wasmOpt, tools, dxVersion);
+        return new PrerequisiteReport(PrerequisiteRules.Ordered(items), rustVersion, tailwindVersion, wasmOpt, tools, dxVersion, tailwindVersion == null ? null : tailwind);
     }
 
     /// <summary>
     /// Runs <see cref="CheckPrerequisitesAsync"/> and refuses, before anything is started, when
     /// something the step needs is missing - Rust (or its WebAssembly target, or a version older
-    /// than the minimum), Tailwind, dx and wasm-bindgen, the libgit2 library, and wasm-opt when it
-    /// will be run - with the check's own message for each.
+    /// than the minimum), the packaged Tailwind, dx and wasm-bindgen, the libgit2 library, and
+    /// wasm-opt when it will be run - with the check's own message for each.
     /// </summary>
     /// <param name="what">What is refused, as the message's subject.</param>
     /// <param name="needsWasmOpt">Whether the step runs wasm-opt.</param>
@@ -285,9 +291,9 @@ public sealed class PlatformFrontend
     /// and every application's frontend folder gets the same generated code and shared crate;
     /// they share the one vendor folder. Files that already have the right content are not
     /// touched, so cargo does not rebuild for nothing. Last, when a frontend uses Tailwind and
-    /// its generated stylesheet is missing, the installed Tailwind program writes it once (see
-    /// <see cref="PlatformFrontendOptions.GenerateMissingStylesheet"/>); a missing or too old
-    /// Tailwind is reported in the result, never thrown.
+    /// its generated stylesheet is missing, the packaged Tailwind program (<see cref="PackagedTailwind"/>)
+    /// writes it once (see <see cref="PlatformFrontendOptions.GenerateMissingStylesheet"/>); a
+    /// missing packaged program is reported in the result, never thrown.
     /// <para>
     /// The crates are the platform's own plus those of every registered crate bundle
     /// (<see cref="CrateBundles"/>). One copy of a crate is written however many bundles carry
@@ -402,8 +408,8 @@ public sealed class PlatformFrontend
 
     /// <summary>
     /// Writes the generated Tailwind stylesheet when the frontend uses Tailwind and the file is
-    /// missing, by starting the installed Tailwind program once in the frontend folder. Never
-    /// throws for a missing, too old or failing Tailwind: the outcome says what happened.
+    /// missing, by starting the packaged Tailwind program once in the frontend folder. Never
+    /// throws for a missing or failing Tailwind: the outcome says what happened.
     /// </summary>
     internal async Task<(StylesheetOutcome Outcome, string Message)> EnsureStylesheetAsync(ApplicationPlan plan, CancellationToken cancellationToken)
     {
@@ -415,8 +421,7 @@ public sealed class PlatformFrontend
             return (decided.Value, StylesheetRules.Describe(decided.Value, input, output));
         }
 
-        var probe = await _runner.RunAsync(TailwindProgram, new[] { "--help" }, echo: false, cancellationToken: cancellationToken).ConfigureAwait(false);
-        var problem = StylesheetRules.TailwindProblem(probe.NotFound ? null : FrontendRequirements.ParseTailwindVersion(probe.Output), Options.MinimumTailwindVersion);
+        var problem = PackagedTailwind.TryLocate(_toolsBaseDirectory, HostTools.CurrentRuntimeIdentifier, out var tailwind);
         if (problem != null)
         {
             return (StylesheetOutcome.SkippedTailwindNotAvailable, StylesheetRules.NotGenerated(output, problem));
@@ -424,7 +429,7 @@ public sealed class PlatformFrontend
 
         _runner.Say($"  generating the missing Tailwind stylesheet{(plan.Label.Length == 0 ? string.Empty : " of" + plan.Label)} ...");
         Directory.CreateDirectory(Path.GetDirectoryName(output));
-        var run = await _runner.RunAsync(TailwindProgram, new[] { "-i", input, "-o", output }, plan.FrontendDirectory, echo: false, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var run = await _runner.RunAsync(tailwind.Path, new[] { "-i", input, "-o", output }, plan.FrontendDirectory, echo: false, cancellationToken: cancellationToken).ConfigureAwait(false);
         if (!run.Succeeded || !File.Exists(output))
         {
             var reason = "the Tailwind program failed:" + Environment.NewLine + OutputText.Tail(run.Output, 20);
@@ -648,7 +653,7 @@ public sealed class PlatformFrontend
     /// <see cref="FrontendBuildResult.Applications"/> has one result per application.</returns>
     /// <exception cref="FrontendBuildException">Something the build needs is missing on this machine
     /// - checked FIRST, before anything starts, with <see cref="CheckPrerequisitesAsync"/>: Rust
-    /// at the minimum version with its WebAssembly target, Tailwind at the minimum version, dx and
+    /// at the minimum version with its WebAssembly target, the packaged Tailwind, dx and
     /// wasm-bindgen, the libgit2 library, and wasm-opt when the build shrinks (the message lists
     /// each with how to fix it); a frontend's Cargo.lock names a version of a crate the vendor
     /// folder no longer holds (the message gives the command that brings it in step; dx is not
@@ -812,9 +817,9 @@ public sealed class PlatformFrontend
     /// <exception cref="FrontendBuildException">There is no application of that name, or no name
     /// was given and it cannot be told which is meant (the message lists the names); the
     /// frontend folder is missing; something dx serve needs is missing on this machine - checked
-    /// before dx is started, with <see cref="CheckPrerequisitesAsync"/>: Rust, Tailwind, dx and
-    /// wasm-bindgen, the libgit2 library (the message lists each with how to fix it); or the frontend's Cargo.lock
-    /// names a version of a crate the vendor folder no longer holds (the message gives the
+    /// before dx is started, with <see cref="CheckPrerequisitesAsync"/>: Rust, the packaged
+    /// Tailwind, dx and wasm-bindgen, the libgit2 library (the message lists each with how to fix
+    /// it); or the frontend's Cargo.lock names a version of a crate the vendor folder no longer holds (the message gives the
     /// command that brings it in step).</exception>
     public async Task<int> ServeAsync(string applicationName, CancellationToken cancellationToken = default)
     {
@@ -914,22 +919,32 @@ public sealed class PlatformFrontend
     }
 
     /// <summary>
-    /// The environment dx runs with. PATH starts with the folder of the packaged wasm-opt (when
-    /// the package has one for this machine) and then the folder of wasm-bindgen, so those are
-    /// the ones dx finds; DX_HOME is <see cref="DxHomeDirectory"/>; and the folder holding the
-    /// libgit2 library dx needs to start (<see cref="Libgit2Directory"/>) goes first on the
+    /// The environment dx runs with. PATH starts with the folder of the packaged Tailwind program
+    /// (<see cref="PackagedTailwind"/>), then the folder of the packaged wasm-opt (when the package
+    /// has one for this machine) and then the folder of wasm-bindgen, so those are the ones dx
+    /// finds - a Tailwind installed on the machine is never the one dx runs; DX_HOME is
+    /// <see cref="DxHomeDirectory"/>; and the folder holding the libgit2 library dx needs to start (<see cref="Libgit2Directory"/>) goes first on the
     /// loader's search variable - LD_LIBRARY_PATH on Linux, DYLD_LIBRARY_PATH on macOS, PATH on
     /// Windows. Only dx's process gets these.
     /// </summary>
-    /// <exception cref="FrontendBuildException">libgit2 could not be supplied.</exception>
+    /// <exception cref="FrontendBuildException">The packaged Tailwind program was not found, or
+    /// libgit2 could not be supplied.</exception>
     internal Dictionary<string, string> CreateDxEnvironment(HostTools tools, ApplicationPlan plan = null)
     {
         plan ??= _plans[0];
+        var tailwindProblem = PackagedTailwind.TryLocate(_toolsBaseDirectory, tools.RuntimeIdentifier ?? HostTools.CurrentRuntimeIdentifier, out var tailwind);
+        if (tailwindProblem != null)
+        {
+            throw new FrontendBuildException(tailwindProblem);
+        }
+
         var path = tools.WasmBindgenDirectory + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH");
         if (WasmShrinkTool.IsAvailable)
         {
             path = WasmShrinkTool.GetToolDirectory() + Path.PathSeparator + path;
         }
+
+        path = tailwind.Directory + Path.PathSeparator + path;
 
         var environment = new Dictionary<string, string>(StringComparer.Ordinal)
         {

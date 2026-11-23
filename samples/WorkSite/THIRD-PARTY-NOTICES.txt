@@ -38,8 +38,10 @@ Components WorkSite uses beyond the platform
 --------------------------------------------------------------------------------
 
 Tailwind CSS
-  Where:    not in this repository. The standalone `tailwindcss` program is
-            installed on the developer's machine and run by `dx`.
+  Where:    not in this repository. The standalone `tailwindcss` program
+            comes in the CodeBrix.WebPlatform.Styling.Tailwind4.<Platform>
+            package (a dependency of the host-tools package; its notices
+            travel with it) and is run by `dx` at build time.
   Origin:   https://tailwindcss.com, https://github.com/tailwindlabs/tailwindcss
   License:  MIT
   Use:      generates the WorkSite stylesheet. The generated stylesheet that

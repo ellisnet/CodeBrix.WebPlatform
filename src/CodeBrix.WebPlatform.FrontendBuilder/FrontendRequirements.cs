@@ -5,6 +5,8 @@ namespace CodeBrix.WebPlatform.FrontendBuilder;
 /// <summary>
 /// What a machine needs before it can build a platform frontend. Nothing is ever installed by
 /// this library; <see cref="PlatformFrontend.CheckPrerequisitesAsync"/> says what is missing.
+/// The Tailwind program is not installed at all: it comes in a package
+/// (<see cref="Tools.PackagedTailwind"/>).
 /// </summary>
 public static class FrontendRequirements
 {
@@ -15,16 +17,8 @@ public static class FrontendRequirements
     public const string WebAssemblyTarget = "wasm32-unknown-unknown";
 
     /// <summary>
-    /// The oldest release of the standalone Tailwind program that is accepted, unless
-    /// <see cref="PlatformFrontendOptions.MinimumTailwindVersion"/> says otherwise.
-    /// </summary>
-    public const string MinimumTailwindVersion = "4.3.5";
-
-    /// <summary>The name of the standalone Tailwind program, which must be on PATH.</summary>
-    public const string TailwindProgram = "tailwindcss";
-
-    /// <summary>
-    /// Reads the version from the first line the Tailwind program prints for <c>--help</c>
+    /// Reads the version from the first line the Tailwind program (<see cref="Tools.PackagedTailwind"/>)
+    /// prints for <c>--help</c>
     /// (<c>tailwindcss v4.3.5</c>).
     /// </summary>
     /// <param name="output">What the program printed; <c>null</c> is treated as empty.</param>

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -23,10 +22,11 @@ namespace CodeBrix.WebPlatform.LibraryChecker.Maintenance;
 /// without Node.js and without the network, with ONLY the packaged tools. It builds the frontend
 /// inside a throw-away container that has Rust but no Node, npm or any other JavaScript runtime,
 /// with the container's network switched off; dx and wasm-bindgen are the Linux programs of the
-/// host-tools packages, wasm-opt is the WasmShrink package's and the libgit2 library dx needs to
-/// start is the CodeBrix.LibGit2 package's (under the name dx asks for, on LD_LIBRARY_PATH), all
-/// copied in, and the crates are the platform's, materialized into the frontend. A build on a developer's machine cannot
-/// prove this, because that machine may have Node installed. It is no part of any package (the
+/// host-tools packages, the standalone Tailwind program is the Styling package's that they depend
+/// on, wasm-opt is the WasmShrink package's and the libgit2 library dx needs to start is the
+/// CodeBrix.LibGit2 package's (under the name dx asks for, on LD_LIBRARY_PATH), all copied in,
+/// and the crates are the platform's, materialized into the frontend. A build on a developer's
+/// machine cannot prove this, because that machine may have Node installed. It is no part of any package (the
 /// packages have no container dependency).
 /// </summary>
 public sealed class NodeFreeProof
@@ -49,11 +49,11 @@ public sealed class NodeFreeProof
     public const string NoNodeProbe = "for tool in node nodejs npm npx yarn pnpm bun deno; do if command -v \"$tool\" >/dev/null 2>&1; then echo \"FOUND $tool\"; exit 1; fi; done; echo none";
 
     /// <summary>
-    /// The shell command that fails when the image itself has a <c>wasm-opt</c>, <c>dx</c> or
-    /// <c>wasm-bindgen</c>: the proof must use the packaged ones, which are copied in and put
-    /// first on PATH afterwards.
+    /// The shell command that fails when the image itself has a <c>tailwindcss</c>,
+    /// <c>wasm-opt</c>, <c>dx</c> or <c>wasm-bindgen</c>: the proof must use the packaged ones,
+    /// which are copied in and put first on PATH afterwards.
     /// </summary>
-    public const string NoInstalledToolsProbe = "for tool in wasm-opt dx wasm-bindgen; do if command -v \"$tool\" >/dev/null 2>&1; then echo \"FOUND $(command -v $tool)\"; exit 1; fi; done; echo none";
+    public const string NoInstalledToolsProbe = "for tool in tailwindcss wasm-opt dx wasm-bindgen; do if command -v \"$tool\" >/dev/null 2>&1; then echo \"FOUND $(command -v $tool)\"; exit 1; fi; done; echo none";
 
     private readonly TextWriter _output;
 
@@ -142,7 +142,11 @@ public sealed class NodeFreeProof
             }
         }
 
-        var tailwind = LocateTailwind();
+        var tailwind = Path.Combine(AppContext.BaseDirectory, PackagedTailwind.FolderName, runtime);
+        if (!File.Exists(Path.Combine(tailwind, PackagedTailwind.ProgramName)))
+        {
+            throw new MaintenanceException($"The packaged Tailwind program for {runtime} is not beside the maintainer tool ({tailwind}); it comes from the {PackagedTailwind.GetPackageId(runtime)} package, which the {HostTools.GetPackageId(runtime)} project depends on. Build the solution first.");
+        }
         var options = new DockerRustWorkbenchOptions();
         // The vendored crate folders must arrive complete: a crate may have a folder named
         // "target" of its own, and cargo checks every vendored file. Nothing is excluded by
@@ -162,25 +166,14 @@ public sealed class NodeFreeProof
             var probe = await workbench.ExecAsync(container, Shell(NoNodeProbe), cancellationToken).ConfigureAwait(false);
             _output.WriteLine($"  JavaScript runtimes and package managers in the container: {probe.Trim()}");
             var installed = await workbench.ExecAsync(container, Shell(NoInstalledToolsProbe), cancellationToken).ConfigureAwait(false);
-            _output.WriteLine($"  wasm-opt, dx or wasm-bindgen installed in the image itself: {installed.Trim()}");
+            _output.WriteLine($"  tailwindcss, wasm-opt, dx or wasm-bindgen installed in the image itself: {installed.Trim()}");
 
             _output.WriteLine("Copying the materialized frontend (its crates included) into the container ...");
             var copy = await workbench.CopySourceIntoAsync(container, FrontendDirectory, ContainerFrontend, ExcludedFromContainer, cancellationToken: cancellationToken).ConfigureAwait(false);
             _output.WriteLine($"  {copy.FileCount} files copied.");
 
-            var staging = Path.Combine(Path.GetTempPath(), "webplatform-proof-" + Guid.NewGuid().ToString("N"));
-            try
-            {
-                Directory.CreateDirectory(staging);
-                File.Copy(tailwind, Path.Combine(staging, "tailwindcss"));
-                await workbench.CopySourceIntoAsync(container, staging, "tailwind-bin", cancellationToken: cancellationToken).ConfigureAwait(false);
-            }
-            finally
-            {
-                Directory.Delete(staging, recursive: true);
-            }
-
-            _output.WriteLine($"Copying the packaged wasm-opt, dx, wasm-bindgen and libgit2 ({runtime}) into the container ...");
+            _output.WriteLine($"Copying the packaged Tailwind, wasm-opt, dx, wasm-bindgen and libgit2 ({runtime}) into the container ...");
+            await workbench.CopySourceIntoAsync(container, tailwind, "tailwind-bin", cancellationToken: cancellationToken).ConfigureAwait(false);
             await workbench.CopySourceIntoAsync(container, WasmShrinkTool.GetToolDirectory(runtime), "wasm-opt-bin", cancellationToken: cancellationToken).ConfigureAwait(false);
             await workbench.CopySourceIntoAsync(container, hostTools, "frontend-tools", cancellationToken: cancellationToken).ConfigureAwait(false);
             var libgit2 = Path.Combine(Path.GetTempPath(), "webplatform-proof-libgit2-" + Guid.NewGuid().ToString("N"));
@@ -199,7 +192,7 @@ public sealed class NodeFreeProof
             }
 
             await workbench.ExecAsync(container, new[] { "chmod", "+x", "/work/tailwind-bin/tailwindcss", "/work/wasm-opt-bin/wasm-opt", "/work/frontend-tools/dx", "/work/frontend-tools/wasm-bindgen" }, cancellationToken).ConfigureAwait(false);
-            var versions = await workbench.ExecAsync(container, Shell($"LD_LIBRARY_PATH={ContainerLibgit2} /work/frontend-tools/dx --version && /work/frontend-tools/wasm-bindgen --version && /work/wasm-opt-bin/wasm-opt --version"), cancellationToken).ConfigureAwait(false);
+            var versions = await workbench.ExecAsync(container, Shell($"LD_LIBRARY_PATH={ContainerLibgit2} /work/frontend-tools/dx --version && /work/frontend-tools/wasm-bindgen --version && /work/wasm-opt-bin/wasm-opt --version && /work/tailwind-bin/tailwindcss --help | head -n 1"), cancellationToken).ConfigureAwait(false);
             foreach (var line in versions.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             {
                 _output.WriteLine("  " + line);
@@ -208,7 +201,7 @@ public sealed class NodeFreeProof
             _output.WriteLine("Building the frontend in the container (offline, from its materialized crates) ...");
             await workbench.ExecAsync(
                 container,
-                Shell($"cd {ContainerFrontend} && PATH=/work/wasm-opt-bin:/work/frontend-tools:/work/tailwind-bin:$PATH DX_HOME=/work/dx-home LD_LIBRARY_PATH={ContainerLibgit2} dx {string.Join(" ", PlatformFrontend.GetDxBuildArguments(FrontendConfiguration.Release))}"),
+                Shell($"cd {ContainerFrontend} && PATH=/work/tailwind-bin:/work/wasm-opt-bin:/work/frontend-tools:$PATH DX_HOME=/work/dx-home LD_LIBRARY_PATH={ContainerLibgit2} dx {string.Join(" ", PlatformFrontend.GetDxBuildArguments(FrontendConfiguration.Release))}"),
                 cancellationToken).ConfigureAwait(false);
 
             var listing = await workbench.ExecAsync(
@@ -265,37 +258,5 @@ public sealed class NodeFreeProof
     {
         var all = (text ?? string.Empty).Split('\n').Where(l => l.Trim().Length > 0).ToList();
         return string.Join(Environment.NewLine, all.Skip(Math.Max(0, all.Count - lines)).Select(l => "    " + l));
-    }
-
-    private static string LocateTailwind()
-    {
-        var name = FrontendRequirements.TailwindProgram + (OperatingSystem.IsWindows() ? ".exe" : string.Empty);
-        foreach (var directory in (Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
-        {
-            var candidate = Path.Combine(directory, name);
-            if (File.Exists(candidate) && FrontendRequirements.ParseTailwindVersion(Run(candidate, "--help")) != null)
-            {
-                return candidate;
-            }
-        }
-
-        throw new MaintenanceException("The standalone Tailwind program was not found on PATH; the proof build copies it into the container.");
-    }
-
-    private static string Run(string program, string argument)
-    {
-        try
-        {
-            var start = new ProcessStartInfo(program) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
-            start.ArgumentList.Add(argument);
-            using var process = Process.Start(start);
-            var text = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
-            process.WaitForExit();
-            return text;
-        }
-        catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException)
-        {
-            return string.Empty;
-        }
     }
 }

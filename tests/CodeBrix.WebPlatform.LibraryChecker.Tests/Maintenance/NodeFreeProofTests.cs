@@ -65,10 +65,10 @@ public class NodeFreeProofTests
     }
 
     [Fact]
-    public void the_proof_refuses_an_image_that_has_its_own_wasm_opt_dx_or_wasm_bindgen()
+    public void the_proof_refuses_an_image_that_has_its_own_tailwind_wasm_opt_dx_or_wasm_bindgen()
     {
         //Assert
-        NodeFreeProof.NoInstalledToolsProbe.Should().Contain("wasm-opt dx wasm-bindgen");
+        NodeFreeProof.NoInstalledToolsProbe.Should().Contain("tailwindcss wasm-opt dx wasm-bindgen");
         NodeFreeProof.NoInstalledToolsProbe.Should().Contain("exit 1");
     }
 

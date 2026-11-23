@@ -9,9 +9,12 @@
 # build.sh runs it on the build HOST for linux-x64, after the container build. (The macOS
 # script runs it on the Mac; the Windows script performs the same steps in PowerShell.) It
 # needs what building the frontend always needs on the machine: rustup's cargo with the
-# wasm32-unknown-unknown target, and the standalone tailwindcss program on PATH; the wasm-opt of
-# the CodeBrix.WebPlatform.WasmShrink package (from the local NuGet cache, at
-# FUNCTIONAL_WASMSHRINK_PACKAGE_VERSION in pins.env, or WASM_OPT_DIR=<folder>); the `git`
+# wasm32-unknown-unknown target; the standalone Tailwind program of the
+# CodeBrix.WebPlatform.Styling.Tailwind4.<Platform> package (from the local NuGet cache, at
+# FUNCTIONAL_STYLING_PACKAGE_VERSION in pins.env, or TAILWIND_DIR=<folder>; a Tailwind installed
+# on the machine is never used); the wasm-opt of the CodeBrix.WebPlatform.WasmShrink package (from
+# the local NuGet cache, at FUNCTIONAL_WASMSHRINK_PACKAGE_VERSION in pins.env, or
+# WASM_OPT_DIR=<folder>); the `git`
 # program (only to make the local template repository of check 6); and
 #     LIBGIT2_DIR=<folder>   the folder holding libgit2 under the name the built dx asks for
 #                            (output/libgit2/<rid>/, written by fetch-libgit2.sh). dx does not
@@ -90,6 +93,14 @@ esac
 GATE_RID="${GATE_RID:-$HOST_RID}"
 NUGET_CACHE="${NUGET_PACKAGES:-$HOME/.nuget/packages}"
 WASM_OPT_DIR="${WASM_OPT_DIR:-$NUGET_CACHE/codebrix.webplatform.wasmshrink.apachelicenseforever/$FUNCTIONAL_WASMSHRINK_PACKAGE_VERSION/tools/wasm-opt/$GATE_RID}"
+case "$GATE_RID" in
+    linux-arm64) STYLING_PLATFORM=linuxarm64 ;;
+    osx-arm64)   STYLING_PLATFORM=macosarm64 ;;
+    osx-x64)     STYLING_PLATFORM=macosx64 ;;
+    win-x64)     STYLING_PLATFORM=windowsx64 ;;
+    *)           STYLING_PLATFORM=linuxx64 ;;
+esac
+TAILWIND_DIR="${TAILWIND_DIR:-$NUGET_CACHE/codebrix.webplatform.styling.tailwind4.$STYLING_PLATFORM.mitlicenseforever/$FUNCTIONAL_STYLING_PACKAGE_VERSION/tools/tailwind/$GATE_RID}"
 REFERENCE_TOOLS_DIR="${REFERENCE_TOOLS_DIR:-$REPO_ROOT/${FUNCTIONAL_REFERENCE_TOOLS_DIR%/*}/$GATE_RID}"
 LIBGIT2_DIR="${LIBGIT2_DIR:-}"
 EXE=""; case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) EXE=".exe" ;; esac
@@ -98,6 +109,7 @@ echo "functional gate - dx builds the WorkSite frontend (a scratch copy)"
 echo "  dx           : $DX"
 echo "  wasm-bindgen : $WASM_BINDGEN"
 echo "  wasm-opt     : $WASM_OPT_DIR/wasm-opt$EXE"
+echo "  tailwind     : $TAILWIND_DIR/tailwindcss$EXE"
 echo "  frontend     : $FRONTEND (copied, never written)"
 echo "  scratch      : $SCRATCH"
 echo "  libgit2      : ${LIBGIT2_DIR:-NOT SET} (on $LOADER_VAR for every dx run)"
@@ -111,11 +123,10 @@ LOADER_ENV="$LOADER_VAR=$LIBGIT2_DIR"
 # passing it directly.
 LOADER_EXPORT='export "$CBX_LOADER_VAR=$CBX_LIBGIT2_DIR"; '
 
-for f in "$DX" "$WASM_BINDGEN" "$WASM_OPT_DIR/wasm-opt$EXE"; do
-    [ -x "$f" ] || { fail "missing or not executable: $f"; exit 1; }
+for f in "$DX" "$WASM_BINDGEN" "$WASM_OPT_DIR/wasm-opt$EXE" "$TAILWIND_DIR/tailwindcss$EXE"; do
+    [ -x "$f" ] || { fail "missing or not executable: $f (the NuGet packages come with a restore of the repository's solution)"; exit 1; }
 done
 command -v cargo > /dev/null 2>&1 || { fail "cargo is not on PATH (install Rust with rustup)"; exit 1; }
-command -v tailwindcss > /dev/null 2>&1 || { fail "tailwindcss is not on PATH (see samples/WorkSite/tailwindcss)"; exit 1; }
 if command -v rustup > /dev/null 2>&1; then
     rustup target list --installed 2>/dev/null | grep -x wasm32-unknown-unknown > /dev/null \
         || { fail "the Rust target wasm32-unknown-unknown is not installed (rustup target add wasm32-unknown-unknown)"; exit 1; }
@@ -125,7 +136,7 @@ for f in platform/codebrix-webplatform/Cargo.toml platform/vendor/.codebrix-plat
 done
 
 echo "  tools        : $(env "$LOADER_ENV" "$DX" --version 2>&1 | sed -n 1p) / $("$WASM_BINDGEN" --version 2>&1 | sed -n 1p) / $("$WASM_OPT_DIR/wasm-opt$EXE" --version 2>&1 | sed -n 1p)"
-echo "  cargo        : $(cargo --version) / tailwindcss: $(tailwindcss --help 2>&1 | grep -o 'v[0-9][0-9.]*' | sed -n 1p)"
+echo "  cargo        : $(cargo --version) / tailwindcss: $("$TAILWIND_DIR/tailwindcss$EXE" --help 2>&1 | grep -o 'v[0-9][0-9.]*' | sed -n 1p)"
 
 # --- the scratch copy ------------------------------------------------------------------------
 rm -rf "$SCRATCH"
@@ -171,7 +182,7 @@ fi
 echo "  network      : $([ -n "$RUNNER" ] && echo "DISABLED (unshare --net: a new network namespace, loopback only)" || echo "not isolated (unshare unavailable) - recorded, not a failure")"
 STARTED="$(date +%s)"
 # shellcheck disable=SC2086
-( cd "$COPY" && env PATH="$WASM_OPT_DIR:$SCRATCH/bin:$PATH" DX_HOME="$SCRATCH/dx-home" CBX_LOADER_VAR="$LOADER_VAR" CBX_LIBGIT2_DIR="$LIBGIT2_DIR" \
+( cd "$COPY" && env PATH="$TAILWIND_DIR:$WASM_OPT_DIR:$SCRATCH/bin:$PATH" DX_HOME="$SCRATCH/dx-home" CBX_LOADER_VAR="$LOADER_VAR" CBX_LIBGIT2_DIR="$LIBGIT2_DIR" \
     $RUNNER sh -c 'echo "network interfaces in the build: $(tail -n +3 /proc/net/dev 2>/dev/null | cut -d: -f1 | tr -d " " | tr "\n" " ")"; '"$LOADER_EXPORT"'exec dx '"$FUNCTIONAL_DX_ARGS" ) > "$LOG" 2>&1
 RC=$?
 ELAPSED=$(( $(date +%s) - STARTED ))
@@ -251,7 +262,7 @@ if [ -x "$REF_DX" ] && [ -x "$REF_WB" ]; then
     LOG5="$SCRATCH/dx-build-today.log"
     # shellcheck disable=SC2086
     # Today's dx is linked to libgit2 like the new one, so it gets the library the same way.
-    ( cd "$COPY" && env PATH="$WASM_OPT_DIR:$SCRATCH/bin:$PATH" DX_HOME="$SCRATCH/dx-home-today" CBX_LOADER_VAR="$LOADER_VAR" CBX_LIBGIT2_DIR="$LIBGIT2_DIR" \
+    ( cd "$COPY" && env PATH="$TAILWIND_DIR:$WASM_OPT_DIR:$SCRATCH/bin:$PATH" DX_HOME="$SCRATCH/dx-home-today" CBX_LOADER_VAR="$LOADER_VAR" CBX_LIBGIT2_DIR="$LIBGIT2_DIR" \
         $RUNNER sh -c "$LOADER_EXPORT"'exec dx '"$FUNCTIONAL_DX_ARGS" ) > "$LOG5" 2>&1
     RC5=$?
     cp "$SCRATCH/bin-new/dx$EXE" "$SCRATCH/bin-new/wasm-bindgen$EXE" "$SCRATCH/bin/"
@@ -282,7 +293,7 @@ for d in $PATH; do
     NOOPT_PATH="${NOOPT_PATH:+$NOOPT_PATH:}$d"
 done
 IFS="$OLD_IFS"
-NOOPT_PATH="$SCRATCH/bin:$NOOPT_PATH"
+NOOPT_PATH="$TAILWIND_DIR:$SCRATCH/bin:$NOOPT_PATH"
 mkdir -p "$SCRATCH/dx-home-noopt"
 SKIP_SIZE=0
 if [ -d "$TEMP_PARENT/used-by-the-new-tools" ]; then fresh_copy used-by-todays-tools; else fresh_copy used-by-the-new-tools; fi

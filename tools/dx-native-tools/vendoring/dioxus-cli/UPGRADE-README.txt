@@ -95,8 +95,9 @@ THINGS TO WATCH
     OPENSSL_DEVEL_VERSION in pins.env.
   - `dx` picks the Tailwind version by the files it finds (a `tailwind.css`
     at the crate root means v4) and, with downloads off, runs whatever
-    `tailwindcss` is on PATH. The FrontendBuilder library checks that
-    program's version.
+    `tailwindcss` is on PATH. The FrontendBuilder library puts the packaged
+    one (the CodeBrix.WebPlatform.Styling.Tailwind4 package of the machine)
+    first on that PATH.
 
 ================================================================================
 END OF UPGRADE NOTES

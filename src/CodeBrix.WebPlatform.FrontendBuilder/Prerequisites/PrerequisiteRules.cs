@@ -55,30 +55,32 @@ internal static class PrerequisiteRules
         return new PrerequisiteItem(PrerequisiteKind.Rust, PrerequisiteStatus.Missing, text.ToString());
     }
 
-    /// <summary>Judges the Tailwind program's version against the minimum.</summary>
-    /// <param name="found">The version the program reported, or <c>null</c> when it was not found.</param>
-    /// <param name="minimum">The oldest accepted version, as "major.minor.patch".</param>
-    public static PrerequisiteItem EvaluateTailwind(string found, string minimum)
+    /// <summary>Judges the packaged Tailwind program: found, and started with <c>--help</c>.</summary>
+    /// <param name="tailwind">The program, or <c>null</c> when it was not found.</param>
+    /// <param name="problem">Why it was not found, when <paramref name="tailwind"/> is <c>null</c>.</param>
+    /// <param name="version">The version it reported, or <c>null</c> when it did not start or reported none.</param>
+    /// <param name="startFailure">What it wrote when it reported no version, or <c>null</c>.</param>
+    public static PrerequisiteItem EvaluateTailwind(PackagedTailwind tailwind, string problem, string version, string startFailure)
     {
-        if (!Version.TryParse(minimum ?? string.Empty, out var least))
+        if (tailwind == null)
         {
-            return new PrerequisiteItem(PrerequisiteKind.Tailwind, PrerequisiteStatus.Missing,
-                $"MinimumTailwindVersion '{minimum}' is not a version; give it as major.minor.patch, for example {FrontendRequirements.MinimumTailwindVersion}.");
+            return new PrerequisiteItem(PrerequisiteKind.Tailwind, PrerequisiteStatus.Missing, problem);
         }
 
-        if (found == null)
+        if (version == null)
         {
+            var text = $"The packaged Tailwind program '{tailwind.Path}' did not start or did not report its version.";
+            if (!string.IsNullOrWhiteSpace(startFailure))
+            {
+                text += Environment.NewLine + startFailure;
+            }
+
             return new PrerequisiteItem(PrerequisiteKind.Tailwind, PrerequisiteStatus.Missing,
-                $"The standalone Tailwind program was not found on PATH. Install `{FrontendRequirements.TailwindProgram}`, version {minimum} or later, and put it on PATH.");
+                text + Environment.NewLine + "Build the build program again so that its package copies the program again.");
         }
 
-        if (!Version.TryParse(found, out var actual) || actual < least)
-        {
-            return new PrerequisiteItem(PrerequisiteKind.Tailwind, PrerequisiteStatus.Missing,
-                $"The Tailwind program on PATH is version {found}; version {minimum} or later is needed.");
-        }
-
-        return new PrerequisiteItem(PrerequisiteKind.Tailwind, PrerequisiteStatus.Ok, $"Tailwind {found} ({minimum} or later is needed).");
+        return new PrerequisiteItem(PrerequisiteKind.Tailwind, PrerequisiteStatus.Ok,
+            $"Tailwind {version} comes from the {PackagedTailwind.GetPackageId(tailwind.RuntimeIdentifier)} package.");
     }
 
     /// <summary>Describes where wasm-opt comes from.</summary>

@@ -20,9 +20,7 @@ public class FrontendRequirementsTests
     {
         //Assert
         Version.TryParse(FrontendRequirements.MinimumRustVersion, out var rust).Should().BeTrue();
-        Version.TryParse(FrontendRequirements.MinimumTailwindVersion, out var tailwind).Should().BeTrue();
         rust.Should().BeGreaterThanOrEqualTo(new Version(1, 100, 0));
-        tailwind.Major.Should().Be(4);
         FrontendRequirements.WebAssemblyTarget.Should().Be("wasm32-unknown-unknown");
     }
 }

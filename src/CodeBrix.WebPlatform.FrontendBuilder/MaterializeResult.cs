@@ -123,7 +123,7 @@ public sealed class MaterializeResult
     public string StylesheetMessage { get; }
 
     /// <summary>True when the stylesheet is missing and was not generated, so plain cargo
-    /// commands in the frontend fail until a build has run or Tailwind is installed.</summary>
+    /// commands in the frontend fail until a build has run.</summary>
     public bool StylesheetMissing => Stylesheet is StylesheetOutcome.SkippedTailwindNotAvailable or StylesheetOutcome.SkippedTailwindFailed;
 
     /// <summary>True when nothing had to be written.</summary>

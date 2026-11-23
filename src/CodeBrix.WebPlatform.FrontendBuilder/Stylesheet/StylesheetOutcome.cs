@@ -20,9 +20,9 @@ public enum StylesheetOutcome
     /// <summary>The step is switched off (<see cref="PlatformFrontendOptions.GenerateMissingStylesheet"/>).</summary>
     SwitchedOff,
 
-    /// <summary>It is missing and was not written, because the Tailwind program is not installed
-    /// or is older than the minimum; plain cargo commands fail until a build has run or Tailwind
-    /// is installed.</summary>
+    /// <summary>It is missing and was not written, because the packaged Tailwind program
+    /// (<see cref="Tools.PackagedTailwind"/>) is not beside the build program; plain cargo commands
+    /// fail until a build has run.</summary>
     SkippedTailwindNotAvailable,
 
     /// <summary>It is missing, and the Tailwind program ran but did not write it.</summary>

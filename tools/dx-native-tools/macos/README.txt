@@ -82,18 +82,16 @@ STEP BY STEP, ON THE APPLE SILICON MAC
                      --target aarch64-apple-darwin --target x86_64-apple-darwin
        * Rosetta 2, to RUN the osx-x64 slice (its --version and functional
          gate):                     softwareupdate --install-rosetta
-       * the standalone tailwindcss program on PATH, at the version in
-         samples/WorkSite/tailwindcss/version.txt (tailwindcss-macos-arm64
-         from that GitHub release, checked against its sha256sums.txt,
-         installed as tailwindcss, and its quarantine attribute removed:
-         xattr -d com.apple.quarantine <path> - see BUILD MACHINES);
        * git (Xcode's), for the local template repository the functional gate
          tests `dx new` with;
        * the osx-<arch> wasm-opt for the functional gate comes from the
          CodeBrix.WebPlatform.WasmShrink package in the local NuGet cache
          (FUNCTIONAL_WASMSHRINK_PACKAGE_VERSION in ../linux/pins.env); a
          restore of the repository's solution puts it there. WASM_OPT_DIR
-         names another folder.
+         names another folder. The standalone Tailwind program comes the same
+         way, from the CodeBrix.WebPlatform.Styling.Tailwind4.MacOS<Arch>
+         package (FUNCTIONAL_STYLING_PACKAGE_VERSION; TAILWIND_DIR names
+         another folder) - nothing is installed for it.
   2. Clone (or pull) this repository and materialize the sample's frontend
      once (in samples/WorkSite:  dotnet run --project
      build/WorkSite.BuildFrontend -- generate), so its platform/ (shared

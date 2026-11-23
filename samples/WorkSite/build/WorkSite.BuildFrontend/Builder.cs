@@ -45,15 +45,15 @@ public sealed class Builder
     public BuilderPaths Paths => _paths;
 
     /// <summary>
-    /// The platform's frontend builder with WorkSite's settings. Created on first use, because
-    /// it needs the Tailwind version file.
+    /// The platform's frontend builder with WorkSite's settings. Created on first use.
     /// </summary>
     public PlatformFrontend Frontend
-        => _frontend ??= new PlatformFrontend(WorkSiteFrontend.CreateOptions(_paths, _prerequisites.ExpectedTailwindVersion(), _runner.Output));
+        => _frontend ??= new PlatformFrontend(WorkSiteFrontend.CreateOptions(_paths, _runner.Output));
 
     /// <summary>
     /// <c>check</c>: reports whether everything needed to build and run is installed, and where
-    /// dx, wasm-bindgen, wasm-opt and the libgit2 library dx needs come from (the packages).
+    /// dx, wasm-bindgen, Tailwind, wasm-opt and the libgit2 library dx needs come from (the
+    /// packages).
     /// </summary>
     /// <param name="cancellationToken">Stops the probes.</param>
     /// <returns>True when nothing required is missing.</returns>

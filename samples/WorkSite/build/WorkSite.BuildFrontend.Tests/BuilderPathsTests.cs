@@ -18,7 +18,6 @@ public class BuilderPathsTests
         paths.PublishDirectory.Should().Be(Path.Combine(root, "artifacts", "publish"));
         paths.ComposeFile.Should().Be(Path.Combine(root, "docker", "compose.yaml"));
         paths.EnvFile.Should().Be(Path.Combine(root, ".env"));
-        paths.TailwindVersionFile.Should().Be(Path.Combine(root, "tailwindcss", "version.txt"));
         paths.WebRootNoticesFile.Should().Be(Path.Combine(root, "backend", "WorkSite.Api", "wwwroot", "THIRD-PARTY-NOTICES.txt"));
     }
 
