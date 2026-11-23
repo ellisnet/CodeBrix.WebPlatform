@@ -1426,8 +1426,6 @@ NOTES
     set (THE SAMPLES' PACKAGES).
   - The family's document collector reads README-INDEX.txt; keep every path
     it lists real.
-  - When this repository is first published, add it to the family's list of
-    repositories and to the document collector's list.
 
 ================================================================================
 END OF MAINTAINER-README
