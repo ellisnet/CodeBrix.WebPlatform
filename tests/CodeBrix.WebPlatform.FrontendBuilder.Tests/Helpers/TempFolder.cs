@@ -26,9 +26,21 @@ public sealed class TempFolder : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(Path))
+        if (!Directory.Exists(Path))
         {
-            Directory.Delete(Path, recursive: true);
+            return;
         }
+
+        // git and libgit2 write their object files read-only; on Windows Directory.Delete refuses them.
+        foreach (var file in Directory.EnumerateFiles(Path, "*", SearchOption.AllDirectories))
+        {
+            var attributes = File.GetAttributes(file);
+            if ((attributes & FileAttributes.ReadOnly) != 0)
+            {
+                File.SetAttributes(file, attributes & ~FileAttributes.ReadOnly);
+            }
+        }
+
+        Directory.Delete(Path, recursive: true);
     }
 }
