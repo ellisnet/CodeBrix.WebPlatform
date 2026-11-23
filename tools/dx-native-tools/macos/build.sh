@@ -3,10 +3,10 @@
 # build.sh - build dx and wasm-bindgen for osx-arm64 and osx-x64, from this repository only
 # ==============================================================================================
 #
-#   NEVER YET RUN. Written on Linux on 2026-11-18 (updated 2026-11-19 for libgit2, still unrun),
-#   which has no Apple SDK. Expect to fix
-#   something on the first real run; fix it IN THE SCRIPT, record it in ../BUILD-PROVENANCE.txt,
-#   and rewrite README.txt's status block with what the run established.
+#   FIRST RUN 2026-11-22 on the owner's Apple Silicon Mac: both slices built, gated and adopted
+#   (see ../BUILD-PROVENANCE.txt, ADOPTED 2026-11-22 - the FIRST macOS builds). Written on Linux
+#   on 2026-11-18; the first real run needed two fixes (the executable bit, and a `local` line
+#   that bash 3.2 expands before assigning). osx-x64 has not yet been run on an Intel Mac.
 #
 #   ./build.sh               both slices (osx-arm64, then osx-x64)
 #   ./build.sh arm64         osx-arm64 only

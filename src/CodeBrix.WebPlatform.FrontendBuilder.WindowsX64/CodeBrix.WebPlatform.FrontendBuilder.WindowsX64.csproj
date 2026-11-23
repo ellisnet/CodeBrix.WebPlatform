@@ -92,8 +92,9 @@
     THE FOLDER NAME frontend-tools/<rid>/ IS A CONTRACT: CodeBrix.WebPlatform.FrontendBuilder looks
     for <application base folder>/frontend-tools/<rid>/dx[.exe] and wasm-bindgen[.exe].
 
-    While the win-x64 programs have not been built, native_libraries/win-x64/ does not exist: the package
-    still packs, with the assembly and no programs.
+    The win-x64 programs were first built and adopted on 2026-11-22 (tools/dx-native-tools/
+    BUILD-PROVENANCE.txt). Should native_libraries/win-x64/ ever be missing, the package still packs,
+    with the assembly and no programs - and must not be published.
   -->
   <ItemGroup>
     <None Include="..\..\native_libraries\win-x64\**\*" Exclude="..\..\native_libraries\win-x64\**\*.provenance.txt"
