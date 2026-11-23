@@ -2372,7 +2372,7 @@ DX NEEDS libgit2
          package's file changed;
       4. puts that folder first on the loader's search variable of dx's
          process: LD_LIBRARY_PATH (Linux), DYLD_LIBRARY_PATH (macOS - not yet
-         verified on a Mac), PATH (Windows - not yet verified on Windows).
+         verified on a Mac), PATH (Windows - verified on Windows 2026-11-22).
     public string Libgit2Directory { get; }   // DxHomeDirectory/libgit2
 
     STARTING dx YOURSELF (outside the library) needs the same: on Linux a

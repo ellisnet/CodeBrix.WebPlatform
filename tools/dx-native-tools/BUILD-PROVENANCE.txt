@@ -12,6 +12,78 @@ its section here is updated from that build's output/<rid>/BUILD-INFO.txt and
 the <program>.provenance.txt beside it is written from the same values.
 
 ================================================================================
+ADOPTED 2026-11-22 - the FIRST Windows build: win-x64
+================================================================================
+(The adopted run's time below is UTC, which was already 2026-11-23; the build
+ran on the evening of 2026-11-22, Pacific time.)
+What: windows/build.dx.ps1 run for the first time, on the owner's Windows x64
+machine (Dell Precision 7770, 12th Gen Intel Core i7-12850HX, Windows 11 Pro
+10.0.26300; Visual Studio Professional 2026 18.12.1, MSVC 14.52.37025;
+rustc/cargo 1.100.0 through rustup, `cargo +1.100.0`). Built from the same
+tool sources as the macOS programs and the 2026-11-19 (fourth rebuild) Linux
+programs: dioxus-cli 0.7.10 with its seven patches, the splitter with its
+three, wasm-bindgen-cli 0.2.130; --locked --offline, nothing downloaded (the
+libgit2 package came from the local NuGet cache).
+One script fix and one owner decision on the first real runs
+(windows/README.txt, STATUS):
+  * the line that reports dx.exe starting without the DLL (then line 367)
+    wrote "$Libgit2Dll:" inside a string. PowerShell reads "$name:" as a
+    scope-qualified variable (like $env:), so the WHOLE script failed to
+    parse ("Variable reference is not valid") and nothing ran. Now
+    "${Libgit2Dll}:".
+  * the gate found dx.exe importing combase.dll, which was not on the
+    operating-system allow-list. combase.dll is the COM base library of
+    Windows 8 and later (ole32.dll builds on it); dx imports one function from
+    it, CoTaskMemFree. The owner allowed it; it is in $AllowedImports with
+    that reason.
+  Worked as written: the import library made from git2-49e408b.dll (954
+  exports: dumpbin /exports -> .def -> lib /def /machine:x64) links, and
+  dx.exe without the DLL ends at once with 0xC0000135 - no system error
+  dialog appeared in these runs (PowerShell 7.6).
+Runs (logs: output/win-x64/GATE.txt, BUILD-INFO.txt):
+  2026-11-22, first run   the parse error above; nothing ran
+  2026-11-22, second run  dx 865s, wasm-bindgen 162s (both compiled from
+                          scratch); gate FAILED: the combase.dll import, and
+                          no tailwindcss on PATH for the functional gate (the
+                          gate then took Tailwind from PATH)
+  2026-11-23 02:46:42 UTC - ADOPTED. After 60df817f, in which the functional
+                          gate takes tailwindcss.exe from the
+                          CodeBrix.WebPlatform.Styling.Tailwind4.WindowsX64
+                          package (1.0.327.82, from the NuGet cache) and never
+                          from PATH. dx 117s (cargo rebuilt part of dx),
+                          wasm-bindgen 7s (up to date from the second run:
+                          same sources, toolchain and flags); about 6 minutes
+                          with the gate. Every gate check passed, the
+                          functional gate included (WasmShrink 1.0.323.365's
+                          wasm-opt; .wasm 1,827,634 bytes shrunk, 2,071,013
+                          with DX_SKIP_WASM_OPT, 17 site files, `dx new`
+                          passed)
+             dx.exe           sha256 664e819f6672b380060ca687b7c9b4766c22d661224e4ef626a84a4db77e1f57
+             wasm-bindgen.exe sha256 a92e229416245f934cedc7de130d0207421c70efe9cfc44f08897acabb333eb5
+Verified as well:
+  * dx's libgit2 handling on Windows (marked UNVERIFIED until now): dx.exe
+    imports git2-49e408b.dll, starts with the DLL's folder first on PATH and
+    does not start without it (exit 0xC0000135, STATUS_DLL_NOT_FOUND);
+  * the package: FrontendBuilder.WindowsX64 (Release) holds the programs and
+    the four files under tools/frontend-tools/win-x64/;
+    tests/CodeBrix.WebPlatform.FrontendBuilder.HostTools.Tests ran on the
+    Windows machine (x64 .NET 10.0.404): 9 passed, 0 skipped - among them the
+    library started dx.exe with the package's libgit2 first on PATH
+    (CheckPrerequisitesAsync: HostTools and Libgit2 Ok, "dioxus 0.7.10
+    (57d6794)").
+Not done:
+  * reproducibility: built once (the Linux programs were built twice for
+    byte-identity);
+  * the WorkSite build program's `check` and `build` through the library
+    with the new WindowsX64 package (the nine packages were not refreshed in
+    temp-packages for it). The functional gate's WorkSite frontend was
+    materialized on this machine before 60df817f, with local builds of the
+    libraries of ac0ff785; the shared crate and the platform's crates are
+    unchanged by 60df817f, so the Rust it built is the current one;
+  * the gzip -9 -n sizes in the provenance files were measured on this
+    machine with Git for Windows' gzip 1.14, not on Linux.
+
+================================================================================
 ADOPTED 2026-11-22 - the FIRST macOS builds: osx-arm64 and osx-x64
 ================================================================================
 What: macos/build.sh run for the first time, on the owner's Apple Silicon Mac
@@ -746,17 +818,29 @@ Adopted          : YES, 2026-11-18, into native_libraries/linux-arm64/; dx REPLA
 
 
 ================================================================================
-win-x64                                       PENDING - script written, NOT RUN
+win-x64                                       BUILT 2026-11-22, ADOPTED
 ================================================================================
-Route            : windows/build.dx.ps1 - written 2026-11-18 on Linux, NEVER
-                   RUN. MSVC + rustup 1.100.0, x86_64-pc-windows-msvc, static
-                   CRT (+crt-static), /PDBALTPATH:%_PDB%; gate: PE machine,
-                   OS-only imports, no build paths, --version, the functional
-                   gate in PowerShell (needs WasmShrink's win-x64 wasm-opt.exe)
-Binary           : NONE. native_libraries/win-x64/ does not exist yet
-To do            : the owner runs it on his Windows x64 machine
-                   (windows/README.txt, STEP BY STEP), adopts the result and
-                   replaces this section
+Route            : windows/build.dx.ps1, natively with MSVC: rustup 1.100.0,
+                   x86_64-pc-windows-msvc, static CRT (+crt-static),
+                   /PDBALTPATH:%_PDB%; libgit2 linked through an import
+                   library made from the package's DLL; gate: PE machine,
+                   OS-only imports (plus git2-49e408b.dll for dx), no build
+                   paths, --version (with and without the DLL), the
+                   functional gate in PowerShell (WasmShrink's win-x64
+                   wasm-opt.exe, the Styling package's tailwindcss.exe)
+Build host       : Dell Precision 7770, 12th Gen Intel Core i7-12850HX,
+                   Windows 11 Pro 10.0.26300, Visual Studio Professional 2026
+                   18.12.1 (MSVC 14.52.37025)
+Built            : 2026-11-23 02:46:42 UTC (once; not yet rebuilt for
+                   byte-identity)
+dx.exe           : 68396032 bytes (gzip -9 -n 22445060), sha256
+                   664e819f6672b380060ca687b7c9b4766c22d661224e4ef626a84a4db77e1f57
+wasm-bindgen.exe : 6388224 bytes (gzip -9 -n 2451970), sha256
+                   a92e229416245f934cedc7de130d0207421c70efe9cfc44f08897acabb333eb5
+Gate             : every check passed, the functional gate included
+Adopted          : YES, 2026-11-22, into native_libraries/win-x64/ (the
+                   ADOPTED section at the top); HostTools tests passed on the
+                   Windows machine (9 of 9)
 
 ================================================================================
 osx-arm64                                     BUILT 2026-11-22, ADOPTED

@@ -117,7 +117,8 @@ FOLDER MAP
                           Containerfile.x86_64, export-sysroot.sh,
                           fetch-libgit2.sh and functional-gate.sh (both
                           shared with macOS), README.txt
-  windows/                win-x64: build.dx.ps1, README.txt. WRITTEN, UNRUN
+  windows/                win-x64: build.dx.ps1, README.txt. RUN
+                          2026-11-22 (built and adopted)
   macos/                  osx-arm64 and osx-x64: build.sh, README.txt. RUN
                           2026-11-22 (both slices built and adopted)
   output/                 build results (git-ignored). Disposable. Includes
@@ -153,8 +154,8 @@ the library findable:
             variables when it starts a protected program such as /bin/sh or
             /usr/bin/env, so set it for dx itself. VERIFIED 2026-11-22 on
             both slices (without it: exit 134, dyld "Library not loaded").
-  Windows   git2-49e408b.dll beside dx.exe or in a folder on PATH. UNVERIFIED
-            until the first Windows build.
+  Windows   git2-49e408b.dll beside dx.exe or in a folder on PATH. VERIFIED
+            2026-11-22 (without it: exit 0xC0000135, STATUS_DLL_NOT_FOUND).
 
 The library itself is libgit2 1.9.7 from CodeBrix.LibGit2.MitLicenseForever
 (LIBGIT2_PACKAGE_VERSION in linux/pins.env); it is not part of the dx files
@@ -174,7 +175,7 @@ THE FIVE RUNTIME IDENTIFIERS
   -----------  ---------------------------  -----------------------  -------
   linux-x64    linux/build.sh x64           dx, wasm-bindgen         BUILT
   linux-arm64  linux/build.sh arm64 (cross) dx, wasm-bindgen         BUILT
-  win-x64      windows/build.dx.ps1         dx.exe, wasm-bindgen.exe PENDING
+  win-x64      windows/build.dx.ps1         dx.exe, wasm-bindgen.exe BUILT
   osx-arm64    macos/build.sh arm64         dx, wasm-bindgen         BUILT
   osx-x64      macos/build.sh x64           dx, wasm-bindgen         BUILT
 
@@ -183,10 +184,9 @@ The adopted programs are built from the current sources: seven dioxus-cli
 patches and three splitter patches, dx linked against libgit2 - the Linux
 programs on 2026-11-19, the macOS programs on 2026-11-22 on the owner's Apple
 Silicon Mac (osx-x64's functional gate run from an x86_64 shell under Rosetta
-2; not yet run on an Intel Mac) (BUILD-PROVENANCE.txt).
-PENDING = the script is written but has never been run; the owner runs it on
-his Windows x64 machine. Until then that platform's package packs with its
-small assembly only.
+2; not yet run on an Intel Mac), the Windows programs on 2026-11-22 on the
+owner's Windows x64 machine (BUILD-PROVENANCE.txt). All five platforms'
+packages now carry their programs.
 
 NOT SUPPORTED, and neither built nor scripted: linux-riscv64, win-arm64,
 android-*.

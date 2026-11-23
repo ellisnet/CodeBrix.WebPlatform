@@ -2,20 +2,21 @@
 tools/dx-native-tools/windows - building dx.exe and wasm-bindgen.exe for win-x64
 ================================================================================
 
->>> STATUS 2026-11-18: build.dx.ps1 is WRITTEN BUT NEVER RUN - it was written
-    on Linux, where it cannot run. There is NO win-x64 folder in
-    ../../../native_libraries/ yet; ../BUILD-PROVENANCE.txt lists win-x64 as
-    PENDING. Expect to fix something on the first real run; fix it in the
-    script, record it in ../BUILD-PROVENANCE.txt, and rewrite this block.
-    UPDATED 2026-11-19, STILL NEVER RUN: the six-patch dx (its git features
-    back, linked against libgit2), the libgit2 package step and the import
-    library it makes, the DX_SKIP_WASM_OPT and `dx new` checks.
-    UPDATED 2026-11-19 again, STILL NEVER RUN: the script builds whatever the
-    tool sources hold, so it picks up dx's current patch set by itself - the
-    seven dioxus-cli patches, the seventh of which swaps in the patched bundle
-    splitter (sources/wasm-split-cli, its three patches: the call-graph fixes
-    0001 and 0002, and 0003, which makes a split build give the same files
-    from the same source). Nothing in the script names the patches. <<<
+>>> STATUS 2026-11-22: RUN FOR THE FIRST TIME, on the owner's Windows x64
+    machine (Dell Precision 7770, Windows 11 Pro, Visual Studio Professional
+    2026 / MSVC 14.52): dx.exe and wasm-bindgen.exe built, gated (the
+    functional gate included) and adopted into
+    ../../../native_libraries/win-x64/ (../BUILD-PROVENANCE.txt, ADOPTED
+    2026-11-22 - the FIRST Windows build). The first real run needed one
+    fix: a "$Libgit2Dll:" inside a string, which PowerShell reads as a
+    scope-qualified variable, so the script did not parse (now
+    "${Libgit2Dll}:"). The gate then found dx.exe importing combase.dll (the
+    COM base library; one function, CoTaskMemFree), which the owner allowed.
+    The libgit2 import library step, and dx.exe refusing to start without the
+    DLL (0xC0000135), worked as written. It has been run with PowerShell 7.6
+    only, not with Windows PowerShell 5.1. The script
+    builds whatever the tool sources hold (today seven dioxus-cli patches,
+    three splitter patches); nothing in it names the patches. <<<
 
 WHAT THIS IS
 --------------------------------------------------------------------------------
@@ -142,8 +143,8 @@ stylesheet and wasm-bindgen's snippets. Then a release build with
 DX_SKIP_WASM_OPT=1 and no wasm-opt.exe on PATH must exit 0, say it skipped
 wasm-opt, and give a larger .wasm; and `dx new` from a local git template,
 with no git program on PATH, must clone (by libgit2) and fill in the
-project. (No byte-for-byte comparison with today's tools: there are no
-adopted win-x64 programs to compare with.)
+project. (No byte-for-byte comparison with the adopted win-x64 programs: the
+script does not make one.)
 
 OUTPUT (..\output\win-x64\)
 --------------------------------------------------------------------------------

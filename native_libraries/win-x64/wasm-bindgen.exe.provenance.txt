@@ -1,0 +1,59 @@
+wasm-bindgen.exe -- Windows x64 (win-x64)
+================================================================================
+This program was BUILT HERE, from the source in this repository, by:
+
+    tools/dx-native-tools/windows/build.dx.ps1
+
+on a Windows x64 machine, natively with MSVC (no container). Nothing was
+downloaded during the build: cargo ran --locked --offline against the vendored
+tool crates. This is the FIRST Windows build of these programs.
+
+Source            : wasm-bindgen-cli 0.2.130, unpatched
+Folder            : tools/dx-native-tools/sources (TOOL_SOURCES_DIR in
+                    tools/dx-native-tools/linux/pins.env), read-only
+--version         : "wasm-bindgen 0.2.130"
+
+Built             : 2026-11-23 02:46:42 UTC (2026-11-22, Pacific time) - the adopted run;
+                    cargo found wasm-bindgen.exe up to date (7s): it was compiled (162s) by
+                    the first run of the same script, with the same sources, toolchain and
+                    flags, on 2026-11-22 at about 21:35 UTC
+Build host        : Windows 11 Pro 10.0.26300, x64, Dell Precision 7770
+                    (12th Gen Intel Core i7-12850HX)
+MSVC              : Visual Studio Professional 2026 18.12.1, MSVC 14.52.37025
+Toolchain         : rustc 1.100.0 (0ef1bc386 2026-11-09)
+                    cargo 1.100.0 (3acc79c0c 2026-11-05)
+Command           : cargo +1.100.0 build --release --locked --offline --target
+                    x86_64-pc-windows-msvc
+                    RUSTFLAGS: --remap-path-prefix for the sources, the build root and the user
+                    profile, -C target-feature=+crt-static -C link-arg=/PDBALTPATH:%_PDB%
+
+File             : wasm-bindgen.exe
+Size             : 6388224 bytes  <- the shipped file (no debug information in it: the
+                   .pdb stays in the build folder)
+Size (gzip -9 -n): 2451970 bytes
+SHA256           : a92e229416245f934cedc7de130d0207421c70efe9cfc44f08897acabb333eb5
+PE               : PE32+, machine 8664 (x64), the C runtime linked statically (no Visual C++
+                   Redistributable needed)
+Imports          : api-ms-win-core-synch-l1-2-0.dll bcryptprimitives.dll kernel32.dll ntdll.dll
+
+Gate              : PE machine x64; imports only operating-system DLLs (and not libgit2), no
+                    VCRUNTIME/MSVCP/ucrtbase/api-ms-win-crt/libssl/libcrypto/zlib/libssh2; no
+                    user-profile, repository, source or build path in the file; `--version`;
+                    licence and notices files present;
+                    the functional gate, run by build.dx.ps1: the new dx.exe + wasm-bindgen.exe
+                    built a scratch copy of the WorkSite frontend with WasmShrink 1.0.323.365's
+                    wasm-opt and the Tailwind of CodeBrix.WebPlatform.Styling.Tailwind4.WindowsX64
+                    1.0.327.82 (.wasm 1,827,634 bytes, 17 site files), a DX_SKIP_WASM_OPT release
+                    build with no wasm-opt succeeded (.wasm 2,071,013 bytes), and `dx new` from a
+                    local git template with no git program on PATH succeeded - ALL PASSED. No
+                    earlier win-x64 programs existed to compare with
+                    (tools/dx-native-tools/output/win-x64/GATE.txt at the time of the build)
+
+LICENCE AND NOTICES FILES BESIDE THIS ONE:
+  LICENSE-Dioxus.txt              dx's licence (Apache-2.0 text; dioxus-cli is
+                                  MIT OR Apache-2.0)
+  LICENSE-WasmBindgen.txt         wasm-bindgen-cli's LICENSE-APACHE, verbatim
+  THIRD-PARTY-NOTICES-Dioxus.txt  every crate compiled into dx, with licence
+                                  texts (generated: LibraryChecker notices --write)
+  THIRD-PARTY-NOTICES-WasmBindgen.txt  the same for wasm-bindgen
+See tools/dx-native-tools/BUILD-PROVENANCE.txt.

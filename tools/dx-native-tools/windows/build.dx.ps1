@@ -3,10 +3,11 @@
 build.dx.ps1 - build dx.exe and wasm-bindgen.exe for win-x64, from this repository only
 =============================================================================================
 
-  NEVER YET RUN. Written on Linux on 2026-11-18 (updated 2026-11-19 for libgit2, still unrun),
-  where it cannot run. Expect to fix something
-  on the first real run; fix it IN THE SCRIPT and record it in ..\BUILD-PROVENANCE.txt, then
-  rewrite this header and README.txt's status block with what the run established.
+  FIRST RUN 2026-11-22 on the owner's Windows x64 machine: built, gated and adopted (see
+  ..\BUILD-PROVENANCE.txt, ADOPTED 2026-11-22 - the FIRST Windows build). Written on Linux on
+  2026-11-18; the first real run needed one fix (a "$name:" inside a string, which PowerShell
+  reads as a scope-qualified variable) and one allow-list decision (combase.dll). It has been
+  run with PowerShell 7.6 only, not with Windows PowerShell 5.1.
 
 USAGE (from a PowerShell prompt, in a clone of the repository):
 
@@ -136,7 +137,12 @@ $Target  = Join-Path $BuildRoot 'target'
 $AllowedImports = @('KERNEL32.dll', 'ADVAPI32.dll', 'USER32.dll', 'SHELL32.dll', 'ole32.dll', 'OLEAUT32.dll',
                     'bcrypt.dll', 'bcryptprimitives.dll', 'ntdll.dll', 'SHLWAPI.dll', 'WS2_32.dll', 'USERENV.dll',
                     'CRYPT32.dll', 'Secur32.dll', 'ncrypt.dll', 'IPHLPAPI.DLL', 'dbghelp.dll', 'PSAPI.DLL',
-                    'RPCRT4.dll', 'WINMM.dll', 'GDI32.dll', 'COMCTL32.dll', 'NETAPI32.dll', 'mswsock.dll')
+                    'RPCRT4.dll', 'WINMM.dll', 'GDI32.dll', 'COMCTL32.dll', 'NETAPI32.dll', 'mswsock.dll',
+                    # combase.dll: the COM base library, part of Windows since Windows 8 (ole32.dll
+                    # builds on it). dx.exe imports one function from it, CoTaskMemFree (it frees
+                    # memory a Windows API returned). Found by the first win-x64 build, 2026-11-22;
+                    # allowed by the owner.
+                    'combase.dll')
 $ForbiddenImportPattern = '^(VCRUNTIME|MSVCP|ucrtbase|api-ms-win-crt-|libssl|libcrypto|zlib|libgit2|libssh2)'
 # dx.exe imports libgit2's DLL too (and must); wasm-bindgen.exe must not.
 $Libgit2Dll = "$($Pins.LIBGIT2_LINK_NAME).dll"
@@ -369,7 +375,7 @@ foreach ($exe in $Exes) {
         $p = Start-Process -FilePath $path -ArgumentList '--version' -PassThru -NoNewWindow
         if (-not $p.WaitForExit(30000)) { $p.Kill(); Fail "dx.exe without $Libgit2Dll did not end within 30 seconds (a system error dialog?) - ended it" }
         elseif ($p.ExitCode -eq -1073741515) { Pass "dx.exe WITHOUT $Libgit2Dll does not start: exit 0xC0000135 (STATUS_DLL_NOT_FOUND)" }
-        else { Fail "dx.exe without $Libgit2Dll: expected exit 0xC0000135, got $($p.ExitCode) (is a copy of the DLL on PATH or beside dx.exe?)" }
+        else { Fail "dx.exe without ${Libgit2Dll}: expected exit 0xC0000135, got $($p.ExitCode) (is a copy of the DLL on PATH or beside dx.exe?)" }
     }
 }
 
