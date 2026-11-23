@@ -141,8 +141,9 @@ All paths are inside samples/ApplicationSplitter.
       target/                   BUILD OUTPUT: cargo's and dx's
 
 At the repository root, and shared with the libraries: LICENSE, global.json,
-.gitattributes and .gitignore, and the TEMPORARY package feed, nuget.config
-and temp-packages/ (see TEMPORARY PACKAGES below).
+.gitattributes and .gitignore. There is no nuget.config: the sample takes
+its CodeBrix packages, published, from nuget.org (THE PLATFORM'S PACKAGES
+below).
 
 
 BUILDING AND RUNNING THE SAMPLE
@@ -270,28 +271,20 @@ keep the repository's .gitignore, whose line for the frontends' target/
 keeps Tailwind from reading the build output.
 
 
-TEMPORARY PACKAGES
-==================
-The sample uses CodeBrix packages that are not on nuget.org yet: the
-Backend package (backend/ApplicationSplitter.Api) and FrontendBuilder with
-the host-tools package of the machine (build/ApplicationSplitter
-.BuildFrontend). They come from the ONE temporary feed at the repository
-root - nuget.config and temp-packages/ - which also serves the libraries'
-solution and WorkSite. NuGet finds that nuget.config by walking up from each
-project; there is no nuget.config in samples/ApplicationSplitter.
+THE PLATFORM'S PACKAGES
+=======================
+The sample builds ONLY on the PUBLISHED CodeBrix.WebPlatform packages, from
+nuget.org: the Backend package (backend/ApplicationSplitter.Api) and
+FrontendBuilder with the host-tools package of the machine
+(build/ApplicationSplitter.BuildFrontend). There is no local package feed
+and no nuget.config.
 
-  - A fresh clone cannot restore the backend or the build program until the
-    packages are published or the same .nupkg files are put in
-    temp-packages/.
-  - The sample does not see a change to a library until the feed is
-    refreshed. The version is set in TWO files, each with one property,
-    WebPlatformPackageVersion: backend/ApplicationSplitter.Api/
-    ApplicationSplitter.Api.csproj and build/ApplicationSplitter
-    .BuildFrontend/ApplicationSplitter.BuildFrontend.csproj. The procedure
-    is TEMPORARY PACKAGES in the root MAINTAINER-README.txt.
-
-When the packages are on nuget.org the feed is deleted (see the root file),
-and this section with it.
+The version is set in TWO files, each with one property,
+WebPlatformPackageVersion: backend/ApplicationSplitter.Api/
+ApplicationSplitter.Api.csproj and build/ApplicationSplitter.BuildFrontend/
+ApplicationSplitter.BuildFrontend.csproj. The sample does not see a change
+to a library until the library is published and that version is moved to
+it: THE SAMPLES' PACKAGES in the root MAINTAINER-README.txt.
 
 
 GIT

@@ -36,7 +36,7 @@ public static class NoNodeCheck
     public static CheckResult Run(RepositoryLayout layout)
     {
         ArgumentNullException.ThrowIfNull(layout);
-        var skipped = new[] { layout.Samples, layout.PlatformVendor, layout.ToolSources, layout.NativeLibraries, layout.TempPackages, layout.HostToolsOutput };
+        var skipped = new[] { layout.Samples, layout.PlatformVendor, layout.ToolSources, layout.NativeLibraries, layout.HostToolsOutput };
         return Scan(layout.Root, skipped);
     }
 

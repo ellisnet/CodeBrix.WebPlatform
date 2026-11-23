@@ -125,10 +125,9 @@ sample, in:
     samples/WorkSite/MAINTAINER-README.txt
 
 WorkSite has its own solution (samples/WorkSite/WorkSite.slnx) and is NOT
-referenced by CodeBrix.WebPlatform.slnx. It consumes the libraries as NuGet
-packages, like any other application; before they are published they come
-from the temporary package feed at the repository root (nuget.config and
-temp-packages/; see TEMPORARY PACKAGES in MAINTAINER-README.txt).
+referenced by CodeBrix.WebPlatform.slnx. It consumes the libraries as
+published NuGet packages, from nuget.org, like any other application (THE
+SAMPLES' PACKAGES in MAINTAINER-README.txt).
 
 What the sample uses beyond the platform is recorded in
 samples/WorkSite/THIRD-PARTY-NOTICES.txt; its site serves that file followed
@@ -151,19 +150,9 @@ the build wrote, through the Backend package.
 
 Like WorkSite it is a CONSUMING APPLICATION: it has its own solution
 (samples/ApplicationSplitter/ApplicationSplitter.slnx), is NOT referenced by
-CodeBrix.WebPlatform.slnx, consumes the libraries as NuGet packages from the
-temporary feed, and is not checked by the licence gate. It uses no
+CodeBrix.WebPlatform.slnx, consumes the libraries as published NuGet
+packages, and is not checked by the licence gate. It uses no
 third-party material beyond the platform's, so it has no notices file of its
 own. How it is built, run and checked:
 
     samples/ApplicationSplitter/MAINTAINER-README.txt
-
-
-THE TEMPORARY PACKAGE FEED
-==========================
-    nuget.config
-    temp-packages/          (git-ignored)
-
-Local builds of the CodeBrix packages that are not on nuget.org yet, for the
-root solution and for the samples (WorkSite and ApplicationSplitter).
-Temporary: see TEMPORARY PACKAGES in MAINTAINER-README.txt.

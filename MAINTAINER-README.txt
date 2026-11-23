@@ -349,16 +349,10 @@ REPOSITORY LAYOUT
                                              EXTRAS-README.txt, global.json,
                                              icon-codebrix-128.png, LICENSE,
                                              MAINTAINER-README.txt,
-                                             nuget.config, README-INDEX.txt,
-                                             README.md and
+                                             README-INDEX.txt, README.md and
                                              THIRD-PARTY-NOTICES.txt. The
                                              samples are NOT in it and must
                                              stay out.
-
-    nuget.config, temp-packages/             TEMPORARY: the one local package
-                                             feed, for this solution and for
-                                             the samples. See TEMPORARY
-                                             PACKAGES below.
 
     global.json                              selects the
                                              Microsoft.Testing.Platform test
@@ -595,9 +589,10 @@ against the ASP.NET Core runtime installed beside the .NET runtime the tests
 run on.
 
 The generated Rust is checked as text in RustClientGeneratorTests. That it
-COMPILES is proved by the samples, whose frontends are built from it: after
-a change to the templates or to ViewBuilder, refresh the temporary packages
-and build WorkSite (see the WorkSite maintainer file).
+COMPILES is proved by the samples, whose frontends are built from it: once
+a change to the templates or to ViewBuilder is published, build WorkSite on
+the published packages (THE SAMPLES' PACKAGES; see the WorkSite maintainer
+file).
 
 HOW THE BACKEND LIBRARY IS TESTED. Backend.Tests starts real ASP.NET Core
 hosts in a test server (Microsoft.AspNetCore.TestHost) over
@@ -1007,11 +1002,11 @@ including which other libraries have to move with it. Read it first.
     difference.
  6. BUILD AND TEST. The solution (the package re-packs the crates), the
     shared crate's Rust tests, the tools' native builds when a tool changed
-    (tools/dx-native-tools), the temporary feed refreshed and the WorkSite
-    sample built, tested and looked at in a browser, the ApplicationSplitter
-    sample built and looked at in a browser (its split application is the
-    check of bundle splitting), and `LibraryChecker proof`. Check the
-    package sizes (PACKAGING AND PUBLISHING).
+    (tools/dx-native-tools), and `LibraryChecker proof`. Check the package
+    sizes (PACKAGING AND PUBLISHING). Once the packages are published, the
+    samples on them (THE SAMPLES' PACKAGES): WorkSite built, tested and
+    looked at in a browser, and ApplicationSplitter built and looked at in a
+    browser (its split application is the check of bundle splitting).
  7. UPDATE THE RECORDS. The library's UPGRADE-README.txt and PATCH-NOTES.txt
     must describe what is now true.
 
@@ -1073,9 +1068,9 @@ both:
     be listed. The upstream .gitignore inside the dioxus-cli source ignored
     its own Cargo.lock; a patch removes that line.
 
-Never commit: any `target` folder, temp-packages/, tools/dx-native-tools/
-output/, and what the samples' builds write (see their maintainer files). The
-.gitignore at the repository root covers all of them.
+Never commit: any `target` folder, tools/dx-native-tools/output/, and what
+the samples' builds write (see their maintainer files). The .gitignore at the
+repository root covers all of them.
 
 
 THE HOST-TOOLS PROGRAMS
@@ -1158,7 +1153,8 @@ repository's MAINTAINER-README), then set their version in the five
 host-tools projects, in the FrontendBuilder tests' project, and as
 FUNCTIONAL_STYLING_PACKAGE_VERSION in tools/dx-native-tools/linux/pins.env
 (the host-tools gate takes the program from the local NuGet cache); build,
-run the tests and refresh the samples' packages (TEMPORARY PACKAGES). A new
+run the tests and publish; then set the published version in the samples
+(THE SAMPLES' PACKAGES). A new
 Tailwind MAJOR version comes in new Tailwind<N> packages and is a larger
 change: dx picks Tailwind's behaviour by the files it finds.
 
@@ -1253,101 +1249,64 @@ hub Origin checks and the security headers, now the Backend package): what
 is general is the platform's, and the sample holds only what is its own.
 
 
-TEMPORARY PACKAGES
-==================
-Some CodeBrix packages are not on nuget.org yet. Until they are, nuget.config
-at the repository root adds the folder temp-packages/ beside it (git ignores
-it) as a package source for EXACTLY these package ids; everything else comes
-from nuget.org:
+THE SAMPLES' PACKAGES
+=====================
+The samples consume the packages of this repository as PUBLISHED packages,
+from nuget.org only, like any other application. There is no local package
+feed (no nuget.config, no folder of local .nupkg files): a sample never
+builds against unpublished library code. The versions are set in:
 
-    CodeBrix.WebPlatform.Core.ApacheLicenseForever           built here
-    CodeBrix.WebPlatform.Backend.ApacheLicenseForever        built here
-    CodeBrix.WebPlatform.BackendMapper.ApacheLicenseForever  built here
-    CodeBrix.WebPlatform.FrontendBuilder.ApacheLicenseForever
-                                                             built here
-    CodeBrix.WebPlatform.FrontendBuilder.LinuxX64.ApacheLicenseForever,
-      .LinuxArm64, .WindowsX64, .MacOSArm64, .MacOSX64 (same suffix)
-                                                             built here
-(those nine of this repository, nothing else; CodeBrix.TomlParse,
-CodeBrix.RustTools, CodeBrix.RustTools.Docker, CodeBrix.LibGit2 and
-CodeBrix.WebPlatform.WasmShrink come from nuget.org)
-
-CodeBrix.TomlParse IS PUBLISHED and comes from nuget.org (a local build of it
-was served from this feed until 2026-11-19). The Backend package needs a
-release in which reading into the untyped model refuses a duplicate key by
-default: the manifest reader relies on that. To take a newer published
-version, set it in src/CodeBrix.WebPlatform.Backend/
-CodeBrix.WebPlatform.Backend.csproj, then refresh the packages of this
-repository as below.
-
-The one feed serves the root solution and the samples. NuGet finds
-nuget.config by walking up from each project, so every project under the
-repository uses it:
-    samples/WorkSite/backend/libs/WorkSite.Core   Core
-    samples/WorkSite/backend/WorkSite.Api         Backend (it brings Core and
+    samples/WorkSite/backend/libs/WorkSite.Core/WorkSite.Core.csproj
+                                                  Core
+    samples/WorkSite/backend/WorkSite.Api/WorkSite.Api.csproj
+                                                  Backend (it brings Core and
                                                   TomlParse)
-    samples/WorkSite/build/WorkSite.BuildFrontend FrontendBuilder (it brings
-                                                  Core and BackendMapper; and
-                                                  from nuget.org RustTools,
-                                                  WasmShrink and LibGit2)
-                                                  and the host-tools package
-                                                  of the machine
-    samples/ApplicationSplitter/backend/ApplicationSplitter.Api
-                                                  Backend
-    samples/ApplicationSplitter/build/ApplicationSplitter.BuildFrontend
-                                                  FrontendBuilder and the
-                                                  host-tools package of the
-                                                  machine
-A fresh clone cannot restore those projects until the packages are published
-or the same .nupkg files are put in temp-packages/.
+    samples/WorkSite/build/WorkSite.BuildFrontend/
+      WorkSite.BuildFrontend.csproj               one property,
+                                                  WebPlatformPackageVersion,
+                                                  for FrontendBuilder (it
+                                                  brings Core, BackendMapper,
+                                                  RustTools, WasmShrink and
+                                                  LibGit2) and the host-tools
+                                                  package of the machine
+    samples/ApplicationSplitter/backend/ApplicationSplitter.Api/
+      ApplicationSplitter.Api.csproj              WebPlatformPackageVersion
+                                                  (Backend)
+    samples/ApplicationSplitter/build/ApplicationSplitter.BuildFrontend/
+      ApplicationSplitter.BuildFrontend.csproj    WebPlatformPackageVersion
+                                                  (FrontendBuilder and the
+                                                  host-tools package)
 
-AFTER CHANGING A LIBRARY OF THIS REPOSITORY (the samples do not see the
-change until this is done; do it once, after the last library change):
-  1. dotnet build CodeBrix.WebPlatform.slnx --configuration Release
-  2. The nine new .nupkg files are in src/<project>/bin/Release/. Check that
-     they carry the SAME version (the date stamp); if not, build again. A
-     build that crosses a UTC minute can also give packages whose
-     DEPENDENCY versions differ: check the <dependency> versions in each
-     package's nuspec too, and build again when they do not all name that
-     one version.
-  3. In temp-packages/, delete the older CodeBrix.WebPlatform.Core, .Backend,
-     .BackendMapper, .FrontendBuilder and .FrontendBuilder.<Platform> files,
-     and copy the nine new ones in.
-  4. Set that version in the samples' project files:
-       samples/WorkSite/backend/libs/WorkSite.Core/WorkSite.Core.csproj
-       samples/WorkSite/backend/WorkSite.Api/WorkSite.Api.csproj
-         (the Backend package)
-       samples/WorkSite/build/WorkSite.BuildFrontend/
-         WorkSite.BuildFrontend.csproj
-         (one property, WebPlatformPackageVersion, for the FrontendBuilder
-         package and the host-tools references)
-       samples/ApplicationSplitter/backend/ApplicationSplitter.Api/
-         ApplicationSplitter.Api.csproj
-       samples/ApplicationSplitter/build/ApplicationSplitter.BuildFrontend/
-         ApplicationSplitter.BuildFrontend.csproj
-         (each with one property, WebPlatformPackageVersion)
-  5. Build WorkSite.slnx and ApplicationSplitter.slnx. Every refresh has a
-     new version, so NuGet's cache never serves an old copy.
+All of them name the ONE version the nine packages were published at
+(SHIP THE FAMILY TOGETHER, under PACKAGING AND PUBLISHING).
 
-CodeBrix.WebPlatform.WasmShrink IS PUBLISHED and comes from nuget.org (it was
-served from this feed until 2026-11-18). To take a newer published version,
-set it in src/CodeBrix.WebPlatform.FrontendBuilder/
-CodeBrix.WebPlatform.FrontendBuilder.csproj, then refresh the packages of
-this repository as above (the FrontendBuilder package names the WasmShrink
-version it was built with; WorkSite gets WasmShrink through it).
+AFTER CHANGING A LIBRARY OF THIS REPOSITORY, the samples see the change only
+once it is published:
+  1. Publish the nine packages from one Release build (PACKAGING AND
+     PUBLISHING), and wait until nuget.org lists all nine (a large package
+     can take a while to pass nuget.org's validation).
+  2. Set that version in the five project files above.
+  3. Build WorkSite.slnx and ApplicationSplitter.slnx, and run WorkSite's
+     tests.
 
-CodeBrix.RustTools IS PUBLISHED (it was served from this feed until
-2026-11-19) and CodeBrix.LibGit2 is published too; both come from nuget.org.
-To take a newer published version, set it in the FrontendBuilder library's
-project file (RustTools also in the maintainer tool's, with RustTools.Docker),
-then refresh the packages of this repository as above. A newer CodeBrix.LibGit2
-must carry the libgit2 release dx was linked against: the library refuses to
-start dx with a library of another release, naming both.
+CodeBrix.TomlParse: the Backend package needs a release in which reading
+into the untyped model refuses a duplicate key by default (the manifest
+reader relies on that). To take a newer version, set it in
+src/CodeBrix.WebPlatform.Backend/CodeBrix.WebPlatform.Backend.csproj.
 
-THE GOAL IS TO DELETE THE FEED. When the packages are on nuget.org: delete
-nuget.config and temp-packages/, set the published versions in the project
-files, and remove this section, the temp-packages lines of .gitignore and the
-"Local builds" comments in the project files.
+CodeBrix.WebPlatform.WasmShrink: to take a newer version, set it in
+src/CodeBrix.WebPlatform.FrontendBuilder/
+CodeBrix.WebPlatform.FrontendBuilder.csproj (the FrontendBuilder package
+names the WasmShrink version it was built with; the samples get WasmShrink
+through it).
+
+CodeBrix.RustTools and CodeBrix.LibGit2: to take a newer version, set it in
+the FrontendBuilder library's project file (RustTools also in the maintainer
+tool's, with RustTools.Docker). A newer CodeBrix.LibGit2 must carry the
+libgit2 release dx was linked against: the library refuses to start dx with a
+library of another release, naming both.
+
+Each of those is a library change: publish, then move the samples as above.
 
 
 PROVENANCE AND VENDORED SOURCES
@@ -1461,9 +1420,10 @@ Documentation
 
 NOTES
 =====
-  - The samples consume the libraries as NuGet packages from the temporary
-    feed until they are published. After changing a library, a sample does
-    not see the change until the feed is refreshed (TEMPORARY PACKAGES).
+  - The samples consume the libraries as PUBLISHED NuGet packages, from
+    nuget.org only. After changing a library, a sample does not see the
+    change until the packages are published and the sample's versions are
+    set (THE SAMPLES' PACKAGES).
   - The family's document collector reads README-INDEX.txt; keep every path
     it lists real.
   - When this repository is first published, add it to the family's list of

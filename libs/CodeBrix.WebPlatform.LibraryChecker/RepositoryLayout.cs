@@ -120,9 +120,6 @@ public sealed class RepositoryLayout
     /// <summary>The committed native programs (one folder per runtime identifier).</summary>
     public string NativeLibraries => Combine("native_libraries");
 
-    /// <summary>The local package feed (git-ignored).</summary>
-    public string TempPackages => Combine("temp-packages");
-
     /// <summary>The native build's disposable output (git-ignored).</summary>
     public string HostToolsOutput => Path.Combine(HostToolsFolder, "output");
 

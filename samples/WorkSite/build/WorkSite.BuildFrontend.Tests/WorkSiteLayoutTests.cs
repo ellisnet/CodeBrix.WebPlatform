@@ -41,15 +41,17 @@ public class WorkSiteLayoutTests
     }
 
     [Fact]
-    public void the_temporary_package_feed_is_not_inside_the_sample()
+    public void the_sample_takes_its_packages_from_nuget_org_only()
     {
         //Arrange
         var layout = WorkSiteLayout.Find(AppContext.BaseDirectory);
 
         //Assert
-        File.Exists(Path.Combine(layout.Root, "nuget.config")).Should().BeFalse("the one temporary feed is at the repository root");
-        Directory.Exists(Path.Combine(layout.Root, "temp-packages")).Should().BeFalse("the one temporary feed is at the repository root");
-        File.Exists(Path.Combine(layout.RepositoryRoot, "nuget.config")).Should().BeTrue();
+        foreach (var folder in new[] { layout.Root, layout.RepositoryRoot })
+        {
+            File.Exists(Path.Combine(folder, "nuget.config")).Should().BeFalse("WorkSite builds on the published packages only, with no local package feed");
+            Directory.Exists(Path.Combine(folder, "temp-packages")).Should().BeFalse("WorkSite builds on the published packages only, with no local package feed");
+        }
     }
 
     [Fact]

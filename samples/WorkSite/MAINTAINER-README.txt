@@ -125,8 +125,9 @@ All paths are inside samples/WorkSite.
   artifacts/                    build output of the build program (ignored)
 
 At the repository root, and shared with the libraries: LICENSE, global.json,
-.gitattributes and .gitignore, and the TEMPORARY package feed, nuget.config
-and temp-packages/ (see TEMPORARY PACKAGES below).
+.gitattributes and .gitignore. There is no nuget.config: the sample takes
+its CodeBrix packages, published, from nuget.org (THE PLATFORM'S PACKAGES
+below).
 
 
 THE CONTRACT
@@ -336,9 +337,8 @@ its own license.
 GIT
 ===
 Never commit: samples/WorkSite/.env, any `target` folder, the backend's
-wwwroot content (it is build output), samples/WorkSite/artifacts, the
-temp-packages folder at the repository root, and the build output written
-into the frontend: frontend/src/generated, frontend/platform and
+wwwroot content (it is build output), samples/WorkSite/artifacts, and the
+build output written into the frontend: frontend/src/generated, frontend/platform and
 frontend/.cargo. The .gitignore at the repository root covers all of them.
 frontend/Cargo.lock IS committed: it is the application's own. Its third
 line is the platform's marker line, so the build keeps it in step when a
@@ -346,35 +346,25 @@ platform crate moves (AGENT-README.txt, THE FRONTEND'S Cargo.lock): commit
 what the build changed there, and never move the line.
 
 
-TEMPORARY PACKAGES
-==================
-WorkSite uses CodeBrix packages that are not on nuget.org yet: the packages
-of this repository (WorkSite.Core references Core; WorkSite.Api references
-Backend; WorkSite.BuildFrontend references FrontendBuilder, which brings Core and BackendMapper, and the
-host-tools package of the machine). (CodeBrix.WebPlatform.WasmShrink,
-CodeBrix.LibGit2 and CodeBrix.RustTools, which FrontendBuilder also brings,
-are published and come from nuget.org.)
+THE PLATFORM'S PACKAGES
+=======================
+WorkSite builds ONLY on the PUBLISHED CodeBrix.WebPlatform packages, from
+nuget.org, like any other application (WorkSite.Core references Core;
+WorkSite.Api references Backend; WorkSite.BuildFrontend references
+FrontendBuilder, which brings Core, BackendMapper, WasmShrink, LibGit2 and
+RustTools, and the host-tools package of the machine). There is no local
+package feed and no nuget.config.
 
-They come from the ONE temporary feed at the repository root - nuget.config
-and temp-packages/ - which also serves the libraries' own solution. NuGet
-finds that nuget.config by walking up from each project; there is no
-nuget.config in samples/WorkSite.
+All three name ONE version: CodeBrix.WebPlatform.Core in
+backend/libs/WorkSite.Core/WorkSite.Core.csproj, CodeBrix.WebPlatform.Backend
+in backend/WorkSite.Api/WorkSite.Api.csproj, and the property
+WebPlatformPackageVersion in build/WorkSite.BuildFrontend/
+WorkSite.BuildFrontend.csproj (it covers FrontendBuilder and the host-tools
+references).
 
-Consequences:
-  - A fresh clone cannot restore the backend or the build program until
-    either the packages are published or the same .nupkg files are put in
-    temp-packages/.
-  - WorkSite does not see a change to a library until the feed is refreshed.
-    The exact procedure (build the libraries in Release, replace the
-    .nupkg files, set the version in backend/libs/WorkSite.Core/
-    WorkSite.Core.csproj, in backend/WorkSite.Api/WorkSite.Api.csproj and in
-    build/WorkSite.BuildFrontend/WorkSite.BuildFrontend.csproj, whose one
-    property WebPlatformPackageVersion covers FrontendBuilder and the
-    host-tools references) is TEMPORARY PACKAGES in the root
-    MAINTAINER-README.txt.
-
-When the packages are on nuget.org the feed is deleted (see the root file),
-and this section with it.
+WorkSite does not see a change to a library until the library is published
+and those versions are moved to it: THE SAMPLES' PACKAGES in the root
+MAINTAINER-README.txt.
 
 
 SHRINKING THE WEBASSEMBLY

@@ -426,12 +426,6 @@ FodyWeavers.xsd
 #*.lscache
 
 # ---------------------------------------------------------------------------
-# Temporary local NuGet packages (see nuget.config beside this file): builds of CodeBrix
-# libraries that are not on nuget.org yet, for the root solution and for samples/WorkSite.
-# ---------------------------------------------------------------------------
-/temp-packages/
-
-# ---------------------------------------------------------------------------
 # The FrontendBuilder library's Rust material
 # ---------------------------------------------------------------------------
 # cargo's build output from running `cargo test` on the shared crate in place, and from cargo
