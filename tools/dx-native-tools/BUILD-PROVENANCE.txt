@@ -12,6 +12,73 @@ its section here is updated from that build's output/<rid>/BUILD-INFO.txt and
 the <program>.provenance.txt beside it is written from the same values.
 
 ================================================================================
+ADOPTED 2026-11-23 - the main module of a split build keeps its data: linux-x64
+and linux-arm64 (win-x64, osx-arm64 and osx-x64 NOT YET REBUILT)
+================================================================================
+(The times below are UTC, which was already 2026-11-24; the builds ran on the
+afternoon of 2026-11-23, Pacific time.)
+Why: in a split build (`dx build --wasm-split`), text formatting in the MAIN
+module could give an empty text: `format!("{}{}", a, b)` gave "". The
+platform's REST client builds every address with that expression, so an
+application's calls failed before a request left the browser. Cause: the
+linker stores a constant that is the tail of a longer one inside the longer
+one (two overlapping data symbols), and the splitter (wasm-split-cli 0.7.10)
+zeroed, in the main module, the whole range of every data symbol only split
+modules reach - and with it a main-module constant stored in that range.
+Upstream: issue DioxusLabs/dioxus#5769 and pull request #5772 (the same
+change), both open. Made under the repository owner's GO of 2026-11-23.
+What changed in the source:
+  * wasm-split-cli gains patch 0004-keep-main-data-inside-split-symbols.patch
+    (vendoring/wasm-split-cli/PATCH-NOTES.txt): prune_main_symbols leaves
+    alone the bytes a data symbol the main module keeps covers. FOUR splitter
+    patches; sources/wasm-split-cli/src/lib.rs sha256
+    62d4bf13fa0db0da3c2d760bfcc7d8f62059bf9cf10283dc6df77f36c9be50a1;
+  * dioxus-cli unchanged: still SEVEN patches; its Cargo.lock unchanged;
+  * wasm-bindgen, both licence files and both notices files that travel with
+    the programs: byte-identical to the adopted ones. Only dx changed.
+Runs (the owner's Mac Pro running LMDE 7, x86_64, podman 5.4.2; the derived
+image built there for the first time, from the same Containerfile and pins;
+network off for the builds; logs output/linux-x64/, output/linux-arm64/):
+  linux-x64    2026-11-24 00:34:14 UTC - ADOPTED. 426s in the container (dx
+               359s, wasm-bindgen 61s, both from scratch), 1368s end to end
+               with the image build. Gate, host check and functional gate
+               passed every check (WorkSite .wasm 1,833,078 bytes shrunk,
+               2,075,249 with DX_SKIP_WASM_OPT, 17 site files; the dx it
+               replaces built the same copy BYTE-IDENTICALLY; `dx new` passed)
+               dx sha256 970e9742f7de0e101266c3d490ec0bbeab6758ab729e7eda80855e2704dfcac4
+  linux-arm64  2026-11-24 00:52:16 UTC - ADOPTED. 572s in the container (dx
+               492s, wasm-bindgen 74s), 587s end to end. Gate passed every
+               check; run under qemu in the pinned aarch64 image (--version,
+               ldd, and no start without libgit2: exit 127)
+               dx sha256 f3620273af23bf7effbe4e7ce6ada52513d77db5c157ed441ff459e17b1f54d1
+Proved on the ApplicationSplitter sample (linux-x64 dx, through a temporary
+local package of FrontendBuilder.LinuxX64), whose sales application has a
+formatting self-check in its main module and a diagnostics page whose
+templates end like the main module's:
+  * with the dx this build replaces: the main module's C0 C0 00 (the template
+    of "{}{}") lay in the last three bytes of the page's "order-{}{}"
+    template and was 00 00 00 in the split main file; in headless Chrome the
+    self-check failed at start (3 of 7 probes gave ""), the overview showed
+    "Could not reach the server" and the backend saw no REST request;
+  * with this dx: the bytes are whole (no overlapping pair changed in the
+    main file), the self-check passes at start and on the diagnostics page,
+    the REST calls of sales, admin and home arrive, and the console shows no
+    error;
+  * the sample built from clean and again without cleaning gave the same 143
+    site files, byte for byte (patch 0003's property holds);
+  * `LibraryChecker patches`: passed (the archive plus four patches is the
+    source); tests/CodeBrix.WebPlatform.FrontendBuilder.HostTools.Tests on
+    linux-x64: 9 passed, 0 skipped.
+Not done:
+  * win-x64, osx-arm64 and osx-x64 still carry the programs of 2026-11-22,
+    built with THREE splitter patches: a split build made on Windows or
+    macOS still has the defect until windows/build.dx.ps1 and macos/build.sh
+    are run again and their programs adopted;
+  * reproducibility of the two Linux programs: each was built once this time
+    (the 2026-11-19 builds were each built twice, byte-identical);
+  * linux-arm64 has no functional gate, as before.
+
+================================================================================
 ADOPTED 2026-11-22 - the FIRST Windows build: win-x64
 ================================================================================
 (The adopted run's time below is UTC, which was already 2026-11-23; the build

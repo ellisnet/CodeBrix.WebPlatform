@@ -13,8 +13,9 @@ tools/dx-native-tools/macos - building dx and wasm-bindgen for osx-arm64 and
     functional gate was run by hand from an x86_64 shell (THE GATE, below);
     neither slice has been run on an Intel Mac yet, and the HostTools tests
     have not been run under an x64 .NET SDK. The script builds whatever the
-    tool sources hold (today seven dioxus-cli patches, three splitter
-    patches); nothing in it names the patches. <<<
+    tool sources hold (today seven dioxus-cli patches, four splitter
+    patches; the adopted macOS programs of 2026-11-22 have three and are to
+    be rebuilt); nothing in it names the patches. <<<
 
 WHAT THIS IS
 --------------------------------------------------------------------------------

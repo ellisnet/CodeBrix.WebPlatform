@@ -11,6 +11,7 @@ use crate::components::icons::{Icon, IconName};
 use crate::components::ui::PageLoading;
 use crate::components::search::HeaderSearch;
 use crate::routes::Route;
+use crate::selfcheck;
 
 struct NavItem {
     route: Route,
@@ -18,7 +19,7 @@ struct NavItem {
     icon: IconName,
 }
 
-fn nav_items() -> [NavItem; 6] {
+fn nav_items() -> [NavItem; 7] {
     [
         NavItem { route: Route::Overview {}, label: "Overview", icon: IconName::Chart },
         NavItem { route: Route::Orders { query: String::new() }, label: "Orders", icon: IconName::Receipt },
@@ -26,6 +27,7 @@ fn nav_items() -> [NavItem; 6] {
         NavItem { route: Route::NewQuote {}, label: "New quote", icon: IconName::DocumentPlus },
         NavItem { route: Route::Reports {}, label: "Reports", icon: IconName::Pie },
         NavItem { route: Route::Live {}, label: "Live", icon: IconName::Pulse },
+        NavItem { route: Route::Diagnostics {}, label: "Diagnostics", icon: IconName::Check },
     ]
 }
 
@@ -56,6 +58,9 @@ fn prepare_document() {
 pub fn SalesShell() -> Element {
     use_hook(prepare_document);
     let route = use_route::<Route>();
+    // What the formatting self-check gave when the application started (see `selfcheck`). The
+    // words are chosen, not formatted: formatting is what is being checked.
+    let failed_at_start = selfcheck::failures(selfcheck::at_start());
     rsx! {
         div { class: "flex min-h-dvh flex-col",
             a {
@@ -120,6 +125,13 @@ pub fn SalesShell() -> Element {
             footer { class: "border-t border-gray-200 bg-white",
                 div { class: "mx-auto flex max-w-7xl flex-col gap-2 px-4 py-6 text-xs text-gray-600 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8",
                     p { "Sales \u{00b7} one of the three applications of the ApplicationSplitter sample. All figures are made up." }
+                    p {
+                        id: "format-check",
+                        "data-failed": failed_at_start as i64,
+                        class: if failed_at_start == 0 { "flex items-center gap-1.5" } else { "flex items-center gap-1.5 font-semibold text-red-700" },
+                        Icon { name: if failed_at_start == 0 { IconName::Check } else { IconName::Alert }, class: if failed_at_start == 0 { "size-4 text-emerald-700" } else { "size-4 text-red-700" } }
+                        if failed_at_start == 0 { "Formatting self-check passed at start." } else { "Formatting self-check FAILED at start: see Diagnostics." }
+                    }
                     p { class: "flex items-center gap-1.5",
                         Icon { name: IconName::Bolt, class: "size-4 text-emerald-700" }
                         "Built with bundle splitting: each page is downloaded when it is first opened."

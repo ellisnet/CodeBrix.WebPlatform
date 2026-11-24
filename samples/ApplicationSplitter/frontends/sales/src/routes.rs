@@ -18,6 +18,7 @@ use dioxus::prelude::*;
 
 use crate::layout::SalesShell;
 use crate::pages::customers::Customers;
+use crate::pages::diagnostics::Diagnostics;
 use crate::pages::live::Live;
 use crate::pages::new_quote::NewQuote;
 use crate::pages::not_found::{NotFound, UnknownPath};
@@ -42,6 +43,8 @@ pub enum Route {
         Reports {},
         #[route("/live")]
         Live {},
+        #[route("/diagnostics")]
+        Diagnostics {},
         #[route("/:..segments")]
         NotFound { segments: UnknownPath },
 }

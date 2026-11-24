@@ -228,6 +228,16 @@ What to check:
     the piece of the page it opens. The parts split by hand (with the
     lower-level forms of CODE SPLITTING) request their pieces when they are
     first used;
+  - in sales, the formatting self-check (src/selfcheck.rs): the footer's
+    element with id="format-check" has data-failed="0" on every page, and on
+    the Diagnostics page (/sales/diagnostics, also opened directly as a deep
+    link) the table with id="selfcheck-main" has data-failed-at-start="0"
+    and data-failed-now="0" and the table with id="selfcheck-page" has
+    data-failed="0". A number above 0 means the split took, out of the main
+    WebAssembly file, bytes the main file still uses (a `format!` template
+    the linker stored as the tail of a constant that belongs to a piece);
+    the REST calls then fail too, because the platform's client builds its
+    addresses with such a template;
   - in admin, there is one .wasm file and no pieces;
   - the build's compressed copies: `build` prints, per application, how many
     files it compressed, their size before and after and the time it took;

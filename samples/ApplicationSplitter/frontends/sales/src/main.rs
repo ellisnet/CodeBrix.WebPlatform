@@ -11,6 +11,7 @@ mod layout;
 mod lazy;
 mod pages;
 mod routes;
+mod selfcheck;
 
 use dioxus::prelude::*;
 
@@ -29,6 +30,8 @@ fn main() {
 fn App() -> Element {
     // The platform's REST and SignalR clients, set up for this backend, on the first render.
     use_hook(generated::configure_platform);
+    // The formatting self-check, run once before any piece of the application is downloaded.
+    use_hook(|| selfcheck::at_start().len());
     rsx! {
         document::Stylesheet { href: TAILWIND_CSS }
         document::Link { rel: "icon", r#type: "image/x-icon", href: FAVICON }

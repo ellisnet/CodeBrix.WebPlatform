@@ -6,14 +6,16 @@ This program was BUILT HERE, from the source in this repository, by:
 
 inside a digest-pinned manylinux container with the network DISABLED. Nothing
 was downloaded during the build: every crate came from the vendored tool
-crates. It was built twice with byte-identical results: runs 21 and 22, on
-the evening of 2026-11-19 Pacific time (2026-11-20 UTC).
+crates. It was built ONCE for this adoption, on the afternoon of 2026-11-23
+Pacific time (2026-11-24 UTC); the build was not repeated.
 
 Source            : dioxus-cli 0.7.10 (upstream commit 57d6794ad60b949e5bd8aa282f6f8c3dc97a365e) with the
                     repository's SEVEN patches (0007 swaps in the repository's patched copy of the
                     bundle splitter, tools/dx-native-tools/sources/wasm-split-cli, which carries
-                    THREE patches of its own: 0001 and 0002 fix its call graph, 0003 makes a split
-                    build give the same files from the same source) (tools/dx-native-tools/
+                    FOUR patches of its own: 0001 and 0002 fix its call graph, 0003 makes a split
+                    build give the same files from the same source, 0004 keeps the main
+                    module's data whole when a split module's constant lies over it)
+                    (tools/dx-native-tools/
                     vendoring/dioxus-cli/PATCH-NOTES.txt and vendoring/wasm-split-cli/
                     PATCH-NOTES.txt); every dx command is there.
                     Patch 0003 carries the bundle-splitting loader part
@@ -32,14 +34,14 @@ LINKS libgit2     : libgit2 1.9.7 as a SHARED LIBRARY, NEEDED as
                     reaches a build through that package
 --version         : "dioxus 0.7.10 (57d6794)" (with the library on LD_LIBRARY_PATH)
 
-Built             : 2026-11-20 04:40:40 UTC (run 21; run 22 at 04:43:59 UTC gave the same
-                    bytes) - the FOURTH rebuild of 2026-11-19 (Pacific time): the
-                    splitter's patch 0003 (see BUILD-PROVENANCE.txt)
-Build time        : 109s for this program (cargo, inside the container)
-Build host        : Dell Precision 7770 laptop, LMDE 7, x86_64, podman 5.4.2
-                    (the x86_64 laptop - CROSS-compiled for aarch64 and run under qemu)
+Built             : 2026-11-24 00:52:16 UTC - the rebuild of 2026-11-23 (Pacific time):
+                    the splitter's patch 0004 (see BUILD-PROVENANCE.txt)
+Build time        : 492s for this program (cargo, inside the container, from scratch)
+Build host        : the owner's Mac Pro running LMDE 7 (mac-pro-lmde), x86_64,
+                    podman 5.4.2 (CROSS-compiled for aarch64 and run under qemu)
 Network           : DISABLED during this build (interfaces: lo)
-Derived image     : codebrix-dx-build-x86_64 (rebuilt 2026-11-19 with the OpenSSL
+Derived image     : codebrix-dx-build-x86_64 (built on this machine on 2026-11-23
+                    from the same Containerfile and pins; it has the OpenSSL
                     headers openssl-devel-1.1.1k-17.el8_6, read by openssl-sys's
                     build script only - nothing of OpenSSL is linked)
 Base image        : quay.io/pypa/manylinux_2_28_x86_64@sha256:a61875a2f84cab7df8de222ff12cabc08ff86eb4ad402ac90ba7bdaed9600cca
@@ -57,11 +59,11 @@ Command           : cargo build --release --locked --offline --target
                     then llvm-strip --strip-all
 
 File             : dx
-Size (as linked) : 76217400 bytes (not kept)
-Size (stripped)  : 53275536 bytes  <- the shipped file
-Size (gzip -9 -n): 20251110 bytes
-SHA256           : 85481de06ce688a2ef5aebc95b23ca687221ed1d2dd1e38a6d55da039ae5418d
-Build-id (sha1)  : 95f3b7c269ea59efb36986e3d023439b651a2fbb
+Size (as linked) : 76218360 bytes (not kept)
+Size (stripped)  : 53276240 bytes  <- the shipped file
+Size (gzip -9 -n): 20251082 bytes
+SHA256           : f3620273af23bf7effbe4e7ce6ada52513d77db5c157ed441ff459e17b1f54d1
+Build-id (sha1)  : e6d05f9e8952d939f2dd27b14a0f8f2728db1a55
 ELF              : ELF64, AArch64, DYN (Position-Independent Executable file)
 NEEDED           : libdl.so.2 libgit2-49e408b.so.1.9 libgcc_s.so.1 libpthread.so.0 libm.so.6 libc.so.6
 glibc floor      : 2.28 (allowed <= 2.28)
@@ -77,7 +79,7 @@ Gate              : ELF class/machine, stripped, no RPATH/RUNPATH/TEXTREL,
                     notices files present;
                     RUN in the pinned manylinux_2_28_aarch64 image under qemu with libgit2 on
                     LD_LIBRARY_PATH (--version, ldd), and WITHOUT it (does not start: exit
-                    127); no functional gate for arm64 - ALL PASSED, in runs 21 and 22
+                    127); no functional gate for arm64 - ALL PASSED
 
 LICENCE AND NOTICES FILES BESIDE THIS ONE:
   LICENSE-Dioxus.txt              dx's licence (Apache-2.0 text; dioxus-cli is

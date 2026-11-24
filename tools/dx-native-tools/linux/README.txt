@@ -22,7 +22,7 @@ tools/dx-native-tools/linux - building dx and wasm-bindgen for linux-x64 and
     byte-identically to the dx it replaces; wasm-bindgen and the licence
     files unchanged. ADOPTED into ../../../native_libraries/ on 2026-11-19
     (../BUILD-PROVENANCE.txt).
-    STATUS 2026-11-19, fourth rebuild (the programs shipped now): both RIDs
+    STATUS 2026-11-19, fourth rebuild (replaced on 2026-11-23): both RIDs
     REBUILT after the bundle splitter's output was made reproducible (its
     patch 0003: a split build gives the same files, byte for byte, from the
     same source; still SEVEN dioxus-cli patches, now THREE splitter
@@ -40,6 +40,16 @@ tools/dx-native-tools/linux - building dx and wasm-bindgen for linux-x64 and
     adopted files byte for byte; linux-arm64 built once (its reproducibility
     not re-checked); wasm-bindgen unchanged; THIRD-PARTY-NOTICES-Dioxus.txt
     regenerated. ADOPTED into ../../../native_libraries/ on 2026-11-19
+    (../BUILD-PROVENANCE.txt).
+    STATUS 2026-11-23 (the programs shipped now): both RIDs REBUILT after
+    the bundle splitter's patch 0004 (the main module of a split build keeps
+    its data; SEVEN dioxus-cli patches, FOUR splitter patches), on the
+    owner's Mac Pro running LMDE 7, where the derived image was built for
+    the first time; every gate passed, the linux-x64 functional gate
+    included (the new dx builds the unsplit WorkSite frontend
+    byte-identically to the dx it replaces); each RID built ONCE;
+    wasm-bindgen and the four licence and notices files unchanged. ADOPTED
+    into ../../../native_libraries/ on 2026-11-23
     (../BUILD-PROVENANCE.txt). <<<
 
 NOTHING HERE INSTALLS ANYTHING ON YOUR MACHINE. Every script checks what it

@@ -180,9 +180,12 @@ THE FIVE RUNTIME IDENTIFIERS
   osx-x64      macos/build.sh x64           dx, wasm-bindgen         BUILT
 
 BUILT = built here, gated and adopted into ../../native_libraries/<rid>/.
-The adopted programs are built from the current sources: seven dioxus-cli
-patches and three splitter patches, dx linked against libgit2 - the Linux
-programs on 2026-11-19, the macOS programs on 2026-11-22 on the owner's Apple
+The current sources hold seven dioxus-cli patches and FOUR splitter patches,
+dx linked against libgit2. The Linux programs were built from them on
+2026-11-23. The macOS and Windows programs were built BEFORE the splitter's
+fourth patch (the main module of a split build keeps its data,
+vendoring/wasm-split-cli/PATCH-NOTES.txt) and must be rebuilt and adopted
+to have it: the macOS programs on 2026-11-22 on the owner's Apple
 Silicon Mac (osx-x64's functional gate run from an x86_64 shell under Rosetta
 2; not yet run on an Intel Mac), the Windows programs on 2026-11-22 on the
 owner's Windows x64 machine (BUILD-PROVENANCE.txt). All five platforms'

@@ -30,16 +30,22 @@ The patches, in the order they apply:
   0003-deterministic-split-module-sections.patch   the same input gives the
                                                    same split modules, byte
                                                    for byte
+  0004-keep-main-data-inside-split-symbols.patch   the main module keeps its
+                                                   constants that the linker
+                                                   stored inside a split
+                                                   module's constant
 
-All three patches change src/lib.rs only. 0001 and 0002 belong together: 0001
+All four patches change src/lib.rs only. 0001 and 0002 belong together: 0001
 is the fix of the panic, and 0002 keeps 0001 from pinning most of a split
 route's code into the main module (see the Effect of each). 0003 is a separate
-fix (reproducible output) and has its own section below.
+fix (reproducible output) and has its own section below, and so is 0004 (the
+main module's data).
 
 Status of 0001 and 0002: approved by the repository owner 2026-11-19
 ("diagnose and fix"). Status of 0003: made under the repository owner's GO of
 2026-11-19 for the investigation of the changing file names of a split
-application and "fixing whatever you need to fix".
+application and "fixing whatever you need to fix". Status of 0004: made under
+the repository owner's GO of 2026-11-23 ("GO on the fix").
 
 
 THE BUG 0001 AND 0002 FIX
@@ -183,16 +189,82 @@ Drop when: upstream merges #5992 or an equivalent fix and the repository
         takes a stable release that has it.
 
 
+0004-keep-main-data-inside-split-symbols.patch
+----------------------------------------------
+The bug: in a split build, text formatting in the MAIN module could give an
+empty text. In the application that reported it, `format!("{}{}", a, b)`
+gave "" - and the platform's REST client builds every address with that
+expression, so no call left the browser ("Could not reach the server") and
+the pages stayed without content. The same code built without splitting
+worked.
+
+How it happens, proved on the ApplicationSplitter sample's sales application
+by reading the bytes of the linked module and of the split main module:
+
+  - rustc stores each `format!` as a short byte template ending in 00:
+    `"{}{}"` is C0 C0 00. A template that starts with 00 formats to nothing.
+  - Data symbols can OVERLAP. rustc asks wasm-ld for -O2 at opt-level 2, 3, s
+    and z, and at that level the linker stores a constant that is the tail of
+    a longer constant inside the longer one. In the sample, the main
+    module's C0 C0 00 was the last three bytes of a split page's template
+    `"order-{}{}"` (06 "order-" C0 C0 00): two symbols, one of them inside
+    the other.
+  - prune_main_symbols writes zeros over the whole range of every data symbol
+    that only split modules reach (so that wasm-opt can drop the data from
+    the main file; the split module writes its symbols back, as active data
+    segments, when it is loaded). It did not look at whether a symbol the
+    main module keeps lies in that range. The page's template was zeroed and
+    the main module's template with it: 00 00 00.
+  - The bytes come back when the module that owns the longer constant is
+    loaded, so the failure depends on which pages a visitor has opened.
+
+Whether an application is hit depends on which constants it has and which
+module owns the longer one, so it comes and goes with unrelated changes. The
+sample had one such pair before its diagnostics page existed (the template
+of `"{} {}"` inside a page's class text); nothing in its main module used
+it.
+
+What:   src/lib.rs, prune_main_symbols - before zeroing, the bytes of the
+        first data segment that a KEPT data symbol covers are marked (a kept
+        symbol is one that is not in the set of symbols only split modules
+        reach); the zeroing loop leaves marked bytes as they are. Nothing
+        else changes: a split module still writes back the whole range of
+        each of its symbols when it is loaded, which gives the kept bytes
+        the value they already have.
+Why:    the main module must keep every byte it reads.
+Effect: the main module's constants are whole in every split build. The
+        main file keeps the few bytes that are both in a kept symbol and in
+        a split one (in the sample: 12 bytes, three templates; its sales
+        application's files grew by 16 bytes in all). The change does not
+        touch what a split module holds. Unsplit builds do not run the
+        splitter and are unaffected.
+Upstream (checked 2026-11-23): the same defect is upstream's open issue
+        DioxusLabs/dioxus#5769 ("wasm-split-cli truncates a live data symbol
+        that overlaps a pruned dead one"), with the open pull request #5772,
+        which makes the same change (it marks the live bytes and skips them);
+        not merged. This patch was written here, before that pull request
+        was found; the comments are our own.
+How it is checked: the ApplicationSplitter sample's sales application has a
+        formatting self-check in its main module and a diagnostics page with
+        templates that end like the main module's (the sample's maintainer
+        file, CHECKING IN A BROWSER). With upstream's code the self-check
+        fails at start and the sample's REST calls fail; with this patch
+        both work.
+Drop when: upstream merges #5772 or an equivalent fix and the repository
+        takes a stable release that has it.
+
+
 UPGRADING
 ---------
 When dx is upgraded, the crate's version changes with it (dx asks for the same
 release of wasm-split-cli). Take the new release's .crate from crates.io (or
 the local cargo cache) and record its checksum, check upstream for #5795,
-the type-index fix and #5992 first, re-apply the patches that are still needed, and
+the type-index fix, #5992 and #5772 first, re-apply the patches that are still needed, and
 change the [patch] path and version in dx's Cargo.toml (dioxus-cli patch
 0007) to match. Then rebuild and check a split build with a field only on a
 split page, as above, and build a split application twice from clean: every
-file name and every byte must be the same (0003).
+file name and every byte must be the same (0003); and open the sample's
+sales application: its formatting self-check must pass (0004).
 
 ================================================================================
 END OF PATCH NOTES

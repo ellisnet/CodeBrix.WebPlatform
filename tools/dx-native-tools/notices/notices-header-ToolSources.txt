@@ -37,7 +37,7 @@ wasm-split-cli (dx's WebAssembly bundle splitter), modified
             (https://github.com/DioxusLabs/dioxus); the pristine archive is in
             tools/dx-native-tools/vendoring/wasm-split-cli
   License:  MIT OR Apache-2.0; used under Apache-2.0
-  Changes:  this copy is MODIFIED by the three numbered patch files in
+  Changes:  this copy is MODIFIED by the four numbered patch files in
             tools/dx-native-tools/vendoring/wasm-split-cli, described in
             PATCH-NOTES.txt there; dx's Cargo.toml puts it in place of the
             crates.io crate, which is therefore not in the vendor folder.

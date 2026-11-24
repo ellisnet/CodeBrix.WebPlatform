@@ -16,7 +16,8 @@ tools/dx-native-tools/windows - building dx.exe and wasm-bindgen.exe for win-x64
     DLL (0xC0000135), worked as written. It has been run with PowerShell 7.6
     only, not with Windows PowerShell 5.1. The script
     builds whatever the tool sources hold (today seven dioxus-cli patches,
-    three splitter patches); nothing in it names the patches. <<<
+    four splitter patches; the adopted Windows programs of 2026-11-22 have
+    three and are to be rebuilt); nothing in it names the patches. <<<
 
 WHAT THIS IS
 --------------------------------------------------------------------------------
