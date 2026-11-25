@@ -12,9 +12,232 @@ its section here is updated from that build's output/<rid>/BUILD-INFO.txt and
 the <program>.provenance.txt beside it is written from the same values.
 
 ================================================================================
+ADOPTED 2026-11-24 - ten dioxus-cli patches and six splitter patches: Tailwind
+in assets/generated, split points in unsplit builds, root addresses without
+"/./", the shared chunk filled: linux-x64 and linux-arm64 (win-x64, osx-arm64
+and osx-x64 NOT YET REBUILT)
+================================================================================
+(The times below are UTC, which was already 2026-11-25; the builds ran on the
+evening of 2026-11-24, Pacific time.)
+Why - what an application developer gains, one line per new patch
+(vendoring/dioxus-cli/PATCH-NOTES.txt, vendoring/wasm-split-cli/PATCH-NOTES.txt):
+  * dioxus-cli 0008: Tailwind's stylesheet is written where the FrontendBuilder
+    expects it, assets/generated/tailwind.css, and nothing lands in the
+    developer's own assets/ folder;
+  * dioxus-cli 0009: an application with split points works WITHOUT splitting
+    - an unsplit debug or release build and `dx serve` get a stand-in
+    __wasm_split.js instead of a blank page (the loader answered 404);
+  * dioxus-cli 0010: the root application's index.html and glue script use
+    the real addresses "/assets/..." (release) and "/wasm/..." (debug, serve)
+    instead of "/./assets/..."; applications with a base path are unchanged;
+  * splitter 0005: a split build no longer fails with "Failed to find data
+    symbol" when a data symbol of size 0 is used only by split modules (seen
+    in a split Debug build);
+  * splitter 0006: code and data that several split modules use go ONCE into
+    the shared chunk file (chunk_0_split, until now always empty), fetched once
+    before the first module that needs it, instead of being copied into each
+    module - later pages download less; the FIRST page a visitor opens also
+    brings everything any two modules share, so large code that only some
+    pages need belongs behind one lazily loaded piece. The first build with
+    this dx renames every split application's loader, main script and
+    index.html once.
+Made under the repository owner's GO of 2026-11-24; 0006 included in this
+rebuild by his decision; the Linux programs built on this laptop at his
+request.
+What changed in the source:
+  * dioxus-cli gains 0008-tailwind-output-in-assets-generated.patch,
+    0009-unsplit-build-split-loader.patch and
+    0010-site-root-addresses-without-dot.patch: TEN patches;
+    sources/dioxus-cli/src/build/web.rs sha256
+    9919dd53de4940521a560668213ef61beae9f89c5b5fab2f087fede118421551,
+    src/tailwind.rs sha256
+    0cc4d6f4e0d24d82689435643d65076227a8955da54722fc23c9409c58758199; its
+    Cargo.lock unchanged (bbc7445a...);
+  * wasm-split-cli gains 0005-skip-data-symbols-without-bytes.patch and
+    0006-shared-code-into-the-chunk.patch: SIX splitter patches;
+    sources/wasm-split-cli/src/lib.rs sha256
+    8ee89aaed955006a5867364dd3bbc8c02c5e65c9bf3d77c47fa2dba45b320d01,
+    src/__wasm_split.js sha256
+    3499310cf9b742e241b642d8bf664a7d8379c220f09bd6a876c8b6ef04158f27;
+  * 965 folders in sources/vendor (unchanged); wasm-bindgen-cli unpatched,
+    its Cargo.lock unchanged (653f29ed...);
+  * wasm-bindgen, both licence files and both notices files that travel with
+    the programs: byte-identical to the adopted ones. Only dx changed.
+  No source file was changed after the runs started (the newest, the splitter
+  sources, are from 20:24 Pacific; run 23 started at 20:47).
+Runs (this x86_64 laptop: Dell Precision 7770, LMDE 7, podman 5.4.2; the
+derived image codebrix-dx-build-x86_64, image id c66c136137d7, reused - not
+rebuilt; libgit2 from output/libgit2/ of an earlier run, checked against the
+pinned checksums; network off for every build - interfaces: lo; cargo's
+target inside the container, every build from scratch; logs output/run23-...
+to run26-...):
+  run23 x64     2026-11-25 04:47:06 UTC - ADOPTED. 124s in the container (dx
+                104s, wasm-bindgen 19s), about 4.6 minutes end to end. Gate
+                and host check passed every check; the functional gate passed
+                every check but ONE, the comparison with today's tools (THE
+                FUNCTIONAL GATE'S EXPECTED DIFFERENCE, below), so build.sh
+                ended with exit 1 (output/run23-x64-ten-patches.log)
+  run24 x64     04:52:00 UTC - the reproducibility check: 126s in the
+                container (dx 104s, wasm-bindgen 20s), about 4.4 minutes end
+                to end; the same gate results, the same single difference;
+                dx, wasm-bindgen and the four licence and notices files
+                BYTE-IDENTICAL to run 23's (output/run24-x64-repeat.log;
+                output/linux-x64/ holds this run's files)
+  run25 arm64   04:56:29 UTC - ADOPTED. 137s in the container (dx 110s,
+                wasm-bindgen 25s), 143s end to end; gate passed; qemu run
+                passed (output/run25-arm64.log)
+  run26 arm64   04:58:58 UTC - the reproducibility check: 132s in the
+                container (dx 109s, wasm-bindgen 22s), 139s end to end; gate
+                and qemu run (05:01:14 UTC) passed; dx, wasm-bindgen and the
+                four licence and notices files BYTE-IDENTICAL to run 25's
+                (output/run26-arm64-repeat.log; output/linux-arm64/ holds this
+                run's files)
+  linux-x64/dx    built 2026-11-25 04:47:06 UTC  59565544 bytes stripped
+                  (77259920 as linked; 21826246 gzip -9 -n)
+                  sha256 50ee060d9954d2898a5dc63e4a254748fd8de57f43e6a43582770860af2f81c0
+                  build-id b5f61017f99db34e211c36c67732dcf1b6b5f2a6
+                  replaces sha256 970e9742... (ADOPTED 2026-11-23)
+  linux-arm64/dx  built 2026-11-25 04:56:29 UTC  53344872 bytes stripped
+                  (76333720 as linked; 20278570 gzip -9 -n)
+                  sha256 742b4830309c877cbda9ef790dcdb471e680ba63ce00102b26d3ee65cb54d0e2
+                  build-id f06281f17a6afb03d30ba865324c86c89fe94693
+                  replaces sha256 f3620273... (ADOPTED 2026-11-23)
+  wasm-bindgen (both RIDs): unchanged, byte for byte (0efc609f..., 924af54d...).
+Gates:
+  linux-x64     every check PASSED (output/linux-x64/GATE.txt, HOST-CHECK.txt):
+                ELF64 x86-64, stripped, no RPATH/RUNPATH/TEXTREL, NEEDED
+                libdl.so.2 libgit2-49e408b.so.1.9 libgcc_s.so.1
+                libpthread.so.0 libm.so.6 libc.so.6 ld-linux-x86-64.so.2, no
+                OpenSSL symbol imported, glibc floor 2.28, no build paths,
+                "dioxus 0.7.10 (57d6794)" / "wasm-bindgen 0.2.130" in the image
+                and on the host, dx without libgit2 does not start (exit 127),
+                the licence and notices files present; 624 packages compiled
+                into dx. Functional gate, on a scratch copy of
+                samples/WorkSite/frontend in a network namespace with loopback
+                only (WasmShrink 1.0.323.365's wasm-opt, Styling
+                1.0.327.82's tailwindcss v4.3.5): dx exit 0 after 42s, no
+                "wasm-opt failed", one .wasm of 1,843,491 bytes shrunk, the
+                glue file loads it, Tailwind stylesheet 64,696 bytes, 19 site
+                files with the same file list as the reference build;
+                DX_SKIP_WASM_OPT=1 with no wasm-opt anywhere: exit 0, .wasm
+                2,090,327 bytes; `dx new` from a local git template with no git
+                program on PATH: passed. (19 site files, not the 17 of earlier
+                blocks, and a larger .wasm: the WorkSite frontend itself
+                changed since 2026-11-23 - two font files added, its code and
+                the platform's crates edited - not the build.)
+  linux-arm64   every check PASSED (output/linux-arm64/GATE.txt, QEMU-RUN.txt):
+                ELF64 AArch64, the same static checks, NEEDED libdl.so.2
+                libgit2-49e408b.so.1.9 libgcc_s.so.1 libpthread.so.0 libm.so.6
+                libc.so.6, glibc floor 2.28; under qemu in the pinned aarch64
+                image: both --version lines, ldd resolves, dx without libgit2
+                does not start (exit 127). No functional gate (as before).
+THE FUNCTIONAL GATE'S EXPECTED DIFFERENCE (linux-x64): the gate's check 5,
+"today's tools", read "[FAIL] the site built by today's tools differs from the
+new tools'" and its RESULT line "today's tools: DIFFERENT ... FAILED", in both
+runs 23 and 24. That difference is EXPECTED AND ACCEPTED (accepted on the
+owner's behalf, 2026-11-24): dioxus-cli patch 0010 deliberately changes
+the root application's addresses from "/./assets/..." to "/assets/...", and
+WorkSite's frontend is a root application. Exactly these differed between
+the dx of 2026-11-23 and the new dx building the same copy at the same path:
+  * index.html - two lines, the preload <link> and the module <script>:
+    "/./assets/worksite-frontend-dxh<hash>.js" became
+    "/assets/worksite-frontend-dxh<new hash>.js";
+  * the glue script - one line, its .wasm address (module_or_path:
+    "/./assets/..._bg-dxh<hash>.wasm" became "/assets/..."), and therefore its
+    content-hashed NAME (run 24: worksite-frontend-dxh16161f1ab46ebd7.js
+    became worksite-frontend-dxh28e1253d4b2cde7.js);
+  * two internal files of dx's target folder, not site files and not served:
+    .manifest.json (the same hash change) and .captured-args/*.bin.json (the
+    same hash change, plus the DX_HOME path the gate gives each of its runs);
+  * NOTHING ELSE: the .wasm (1,843,492 bytes in run 24, the same bytes from
+    both tools) and every other site file are byte-identical.
+Checked at adoption on run 24's kept output (diff -r of
+output/functional-gate/run-today-tools against run-new-tools, the hashed
+names normalised); run 23's diff file was overwritten by run 24, and run 23's
+log records the same single [FAIL] and the same 19-file listing. Every other
+gate check passed for both RIDs. With these programs adopted, the next
+linux-x64 build's comparison with today's tools compares against THIS dx, which
+already writes "/assets/...", and will pass again (BYTE-IDENTICAL) unless
+the sources change what dx writes.
+Verified before adoption (recomputed, not taken from the build's report):
+the sha256 of the four programs in output/linux-x64/ and output/linux-arm64/
+recomputed (the values above); wasm-bindgen and the four licence and notices
+files cmp-identical to native_libraries/<rid>/ (LICENSE-Dioxus.txt 603b882c...,
+LICENSE-WasmBindgen.txt a60eea81..., THIRD-PARTY-NOTICES-Dioxus.txt
+af5aced0..., THIRD-PARTY-NOTICES-WasmBindgen.txt 8986a5d1...); GATE.txt of
+both RIDs and HOST-CHECK.txt without a [FAIL].
+Proved elsewhere - with a dx built LOCALLY from the same patched sources
+(cargo on this laptop's host, not in the pinned container), NOT with these
+adopted binaries:
+  * the proof of dioxus-cli 0008 to 0010 and splitter 0005 (their "How
+    checked" in the PATCH-NOTES; made before splitter 0006 existed): on a
+    scratch copy of the ApplicationSplitter sample, sales built unsplit
+    (release, debug) and served with `dx serve` works in headless Chrome -
+    every page and deep link, the self-check at 0, the three lazy forms
+    (0009); the split debug
+    build with an added zero-sized static fails with "Failed to find data
+    symbol" without 0005 and works with it; the root application links
+    /assets/... and /wasm/... (0010); dx starts tailwindcss with the
+    assets/generated output (0008); four older split-build defects (dynamic
+    text in a lazy component, a suspending child, a Link with empty text,
+    classes chosen in a loop) no longer reproduce;
+  * the gate of splitter 0006 (its section in the splitter's PATCH-NOTES): a
+    dx built from a scratch copy of the sources equal (diff -r) to the
+    repository's current source, on a scratch ApplicationSplitter with an
+    added shared function: clean and incremental split release builds
+    identical (143 files), split debug twice identical;
+    120 browser checks each for split release and split debug, 0 failed (all
+    56 deep-link-then-navigate pairs, the three lazy forms, the chunk fetched
+    once per page load); all pieces together 263,248 -> 151,131 Brotli bytes;
+    home, admin and unsplit sales byte-identical to the baseline dx; the
+    WorkSite frontend's 19 site files byte-identical to the baseline dx's;
+  * the samples' proof: both samples brought to the new layout and proved in
+    a scratch copy, 44 browser checks passed, and the three opt-in real-dx
+    FrontendBuilder tests passed - with the dx built for the first proof:
+    the ten dioxus-cli patches and splitter patches 0001 to 0005, NOT 0006.
+    The temporary LinuxX64 package (1.0.329.2001) the samples used for that
+    proof carried that dx, not this one.
+After adoption, with THESE programs (linux-x64 host):
+  * `LibraryChecker patches`: 3 of 3 passed (dioxus-cli = archive + 10
+    patches, wasm-split-cli = archive + 6, wasm-bindgen-cli unmodified); the
+    full `LibraryChecker`: 16 of 16 passed;
+  * dotnet build -c Release of src/CodeBrix.WebPlatform.FrontendBuilder.LinuxX64
+    and .LinuxArm64: 0 warnings; each package in bin/Release carries the new dx
+    (sha256 as above, under tools/frontend-tools/<rid>/);
+  * tests/CodeBrix.WebPlatform.FrontendBuilder.HostTools.Tests: 9 passed, 0
+    failed, 0 skipped;
+  * the opt-in real-dx tests (CODEBRIX_WEBPLATFORM_DX_BUILD_TESTS=1,
+    PlatformFrontendDxBuildTests, which start native_libraries/linux-x64/dx):
+    3 of 3 passed, among them
+    the_dx_build_writes_the_tailwind_stylesheet_into_assets_generated_and_nothing_into_assets,
+    which cannot pass with a dx without 0008.
+Adopted into ../../native_libraries/linux-x64 and linux-arm64 on 2026-11-24
+(dx replaced, executable bit kept, sha256 checked after the copy; wasm-bindgen
+and the four licence and notices files came out byte-identical and were kept;
+dx.provenance.txt rewritten in both folders, wasm-bindgen.provenance.txt
+unchanged).
+Not done:
+  * win-x64, osx-arm64 and osx-x64 are NOT YET REBUILT: they still carry the
+    programs of 2026-11-22, built with SEVEN dioxus-cli patches and THREE
+    splitter patches (none of dioxus-cli 0008 to 0010, none of splitter 0004
+    to 0006). The owner rebuilds them himself (windows/build.dx.ps1,
+    macos/build.sh) and adopts them;
+  * linux-arm64 has no functional gate (qemu is not silicon): none of the five
+    new patches was exercised on arm64;
+  * the functional gate's comparison with today's tools was NOT re-run
+    against the adopted programs: it runs only as part of the whole gate
+    (functional-gate.sh, three frontend builds), and output/linux-x64/dx and
+    the adopted dx are now the same bytes, so it would compare a program with
+    itself;
+  * the samples' temporary packages and the published packages were not
+    repacked (a later step).
+
+================================================================================
 ADOPTED 2026-11-23 - the main module of a split build keeps its data: linux-x64
 and linux-arm64 (win-x64, osx-arm64 and osx-x64 NOT YET REBUILT)
 ================================================================================
+(REPLACED for linux-x64 and linux-arm64 on 2026-11-24 - the ADOPTED block
+above. win-x64, osx-arm64 and osx-x64 never had this build.)
 (The times below are UTC, which was already 2026-11-24; the builds ran on the
 afternoon of 2026-11-23, Pacific time.)
 Why: in a split build (`dx build --wasm-split`), text formatting in the MAIN
@@ -826,8 +1049,10 @@ Functional gate  : PASSED - dx build --platform web --release --debug-symbols
                    the only printable strings that differ (strings-diff.txt)
 Adopted          : YES, 2026-11-18, into native_libraries/linux-x64/; dx REPLACED
                    2026-11-19 by the first rebuild, and again the same day by
-                   the second, the third and the fourth (the four ADOPTED
-                   sections at the top)
+                   the second, the third and the fourth, on 2026-11-23 by the
+                   splitter's patch 0004 build and on 2026-11-24 by the
+                   ten-patch / six-splitter-patch build (the ADOPTED sections
+                   at the top; the newest is first)
 Re-checked       : 2026-11-19 05:45 UTC, from tools/dx-native-tools/sources:
                    byte-identical programs; functional gate PASSED on the
                    materialized frontend (it now carries the platform's crates
@@ -880,8 +1105,10 @@ Note             : qemu is not silicon, and no functional gate ran for arm64;
                    hardware before a release
 Adopted          : YES, 2026-11-18, into native_libraries/linux-arm64/; dx REPLACED
                    2026-11-19 by the first rebuild, and again the same day by
-                   the second, the third and the fourth (the four ADOPTED
-                   sections at the top)
+                   the second, the third and the fourth, on 2026-11-23 by the
+                   splitter's patch 0004 build and on 2026-11-24 by the
+                   ten-patch / six-splitter-patch build (the ADOPTED sections
+                   at the top; the newest is first)
 
 
 ================================================================================

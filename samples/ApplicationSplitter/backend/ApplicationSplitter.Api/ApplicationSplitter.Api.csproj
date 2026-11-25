@@ -5,9 +5,11 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <!--
-      wwwroot holds the built frontend applications, which the build program copies in. They are
-      served as plain files from that folder. The SDK's static-web-assets layer is switched off
-      so that a development or test host serves exactly its own web root.
+      The built frontend applications are in frontend-built/ beside this file (build output: the
+      build program writes them there, and the folder ignores itself in git). The Backend package
+      serves them as plain files and carries the folder into the build and publish output. The
+      SDK's static-web-assets layer is switched off so that a development or test host serves
+      exactly those files and nothing else from this project folder.
     -->
     <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
     <RootNamespace>ApplicationSplitter.Api</RootNamespace>

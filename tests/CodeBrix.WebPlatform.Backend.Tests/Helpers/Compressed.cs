@@ -55,15 +55,15 @@ public static class Compressed
     /// <summary>Writes a file and the copies asked for beside it.</summary>
     public static void WriteWithCopies(this TempWebRoot root, string relativePath, byte[] content, bool brotli = true, bool gzip = true)
     {
-        root.Write(relativePath, content);
+        root.WriteBuilt(relativePath, content);
         if (brotli)
         {
-            root.Write(relativePath + ".br", Brotli(content));
+            root.WriteBuilt(relativePath + ".br", Brotli(content));
         }
 
         if (gzip)
         {
-            root.Write(relativePath + ".gz", Gzip(content));
+            root.WriteBuilt(relativePath + ".gz", Gzip(content));
         }
     }
 

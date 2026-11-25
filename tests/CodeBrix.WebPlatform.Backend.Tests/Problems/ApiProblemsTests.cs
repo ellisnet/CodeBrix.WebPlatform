@@ -86,6 +86,18 @@ public class ApiProblemsTests
     }
 
     [Fact]
+    public void Offline_is_503_offline()
+    {
+        //Act
+        var problem = ApiProblems.Offline();
+
+        //Assert
+        problem.Status.Should().Be(503);
+        problem.Code.Should().Be("offline");
+        problem.Title.Should().Be(ApiProblems.OfflineTitle);
+    }
+
+    [Fact]
     public void ForbiddenOrigin_is_403_forbidden_origin()
     {
         //Act

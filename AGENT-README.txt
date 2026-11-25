@@ -45,8 +45,10 @@ This file documents every package of the platform. They target .NET 10
     CodeBrix.WebPlatform.Backend
         The ASP.NET Core plumbing every platform backend needs, in one
         services call and one pipeline call. It serves the frontend
-        applications the frontend build wrote into the web root (with the
-        build's compressed copies, to a browser that accepts them), answers
+        applications the frontend build wrote into the backend project's
+        frontend-built/ folder (with the build's compressed copies, to a
+        browser that accepts them) and the developer's own files in
+        wwwroot/, answers
         what the platform's rules say about API errors, demands the
         backend's request marker, checks the Origin of hub requests and sends
         the security headers. Every piece can be switched off. On request it
@@ -73,10 +75,11 @@ This file documents every package of the platform. They target .NET 10
         Rust crates and those of the registered crate bundles, the cargo
         configuration and, when it is missing, the Tailwind stylesheet, so
         that plain cargo works offline); and it BUILDS the servable site of
-        every application into the backend's web root, or SERVES one with hot
-        reload, by running the Dioxus build tool (dx), with release builds
-        shrunk by wasm-opt, Brotli and gzip copies of the built files in the
-        web root (see COMPRESSION) and, on request, the WebAssembly split
+        every application into the backend project's frontend-built/ folder,
+        or SERVES one with hot reload, by running the Dioxus build tool (dx),
+        with release builds shrunk by wasm-opt and given Brotli and gzip
+        copies of the built files (see COMPRESSION) and, on request, the
+        WebAssembly split
         into pieces that load when they are needed (see CODE SPLITTING). It
         carries the shared Rust crate (the one set-up call, the REST client,
         the SignalR client, the browser helpers and the other code every
@@ -248,14 +251,16 @@ KEY NAMESPACES / USINGS
         // ApiProblem, ApiProblemCodes
 
     using CodeBrix.WebPlatform.Core.Applications;
-        // FrontendApplication, FrontendApplicationSet, FrontendManifest
+        // FrontendApplication, FrontendApplicationSet, FrontendManifest,
+        // BuiltFrontend
 
     using CodeBrix.WebPlatform.Core.Crates;
         // CrateBundle, CrateBundles
 
     using CodeBrix.WebPlatform.Backend;
         // AddPlatformBackend, UsePlatformBackend (extension methods),
-        // PlatformBackendOptions, PlatformBackendPaths, ResponseCompression
+        // PlatformBackendOptions, PlatformBackendPaths, ResponseCompression,
+        // FrontendFilePrecedence
 
     using CodeBrix.WebPlatform.Backend.Problems;
         // ApiProblems, ApiProblemWriter, ApiProblemResult,
@@ -634,7 +639,15 @@ CodeBrix.WebPlatform.Core.Problems
         NotFound             = "not_found"                // 404
         Conflict             = "conflict"                 // 409
         RateLimited          = "rate_limited"             // 429
-        ServerError          = "server_error"             // 5xx
+        Offline              = "offline"                  // 503: the backend
+                                                          // is offline (for
+                                                          // maintenance) while
+                                                          // its offline file is
+                                                          // in place (see THE
+                                                          // OFFLINE FILE)
+        ServerError          = "server_error"             // any 5xx that
+                                                          // carries no code of
+                                                          // its own
     }
 
 An application adds codes of its own beside these. Serialize ApiProblem with
@@ -673,8 +686,8 @@ them from the manifest (Backend); these types are what both pass around.
         public bool IsDefault { get; }
         public string BasePath { get; }    // first address segment: "" for
                                            // the default one, else the name
-        public string Folder { get; }      // its folder below the web root:
-                                           // "" (the web root), else the name
+        public string Folder { get; }      // its folder below frontend-built/:
+                                           // "" (that folder), else the name
         public override string ToString(); // "sales", "app (site root)"
     }
 
@@ -699,10 +712,22 @@ them from the manifest (Backend); these types are what both pass around.
         public int Count { get; }
     }
 
+    public static class BuiltFrontend
+    {
+        public const string FolderName = "frontend-built";
+            // the folder, in the backend project's folder (the backend's
+            // content root), that the frontend build writes the built
+            // applications into and the backend serves them from. The name
+            // is fixed (no option); the folder is build output (see GIT:
+            // WHAT IS BUILD OUTPUT, and THE BUILT FRONTEND FOLDER AND
+            // wwwroot/).
+    }
+
     public static class FrontendManifest
-        // the names of the file the frontend build writes into the web root
-        // for the backend: FileName = "codebrix-frontends.toml", and the names
-        // used inside it. What it is for: BACKEND: HOW THE FRONTEND
+        // the names of the file the frontend build writes at the top of
+        // frontend-built/ for the backend: FileName =
+        // "codebrix-frontends.toml", and the names used inside it. What it
+        // is for: BACKEND: HOW THE FRONTEND
         // APPLICATIONS ARE SERVED. Its layout is the platform's business:
         // never write or edit the file yourself.
 
@@ -768,6 +793,15 @@ What the mapper needs from each action, and what it does with it.
       default value, or is a reference type marked [WireOptional]. A class
       read with [FromQuery] is spread into one query value per settable
       single-value property.
+
+      AN EMPTY TEXT VALUE ARRIVES AS A MISSING ONE. ASP.NET Core binds a
+      query value that is empty or blank (`name=`) exactly as a missing
+      value: null for a string (MVC's ConvertEmptyStringToNull), and the
+      generated client sends neither. So an action whose [WireRequired]
+      string query value may legitimately be empty must treat null as
+      empty. (With nullable reference annotations on in the backend, a
+      non-nullable string query parameter answers 400 for both, so such a
+      parameter cannot be empty at all: declare it optional.)
 
   Who may call
       [Authorize] or [AllowAnonymous] on the action or the controller.
@@ -857,7 +891,9 @@ the hubs under /api too (for example /api/hubs/clock). And because a browser
 does not apply the same-origin policy to WebSockets, the backend checks the
 Origin header of every hub request (public hubs too): the Backend package does
 that for every address below /api/hubs (PlatformBackendPaths.Hubs), so map
-the hubs there.
+the hubs there. Pages of another origin of the developer's own (the dx dev
+server) are allowed by listing it in AdditionalHubOrigins (see BACKEND API
+REFERENCE: THE OPTIONS).
 
 
 BACKEND API REFERENCE: THE TWO CALLS
@@ -900,9 +936,16 @@ answer, the platform's own refusals and static files included) goes BEFORE
 UsePlatformBackend. Everything else of the application goes AFTER it,
 starting with its own app.UseRouting(). Call UseRouting yourself: without it
 WebApplication puts routing at the very start of the pipeline, and then a
-controller wins over a web-root file at the same address. HSTS, rate
+controller wins over a served file at the same address. HSTS, rate
 limiting, authentication, authorization, CORS, the controllers and the hubs'
 mapping stay the application's.
+
+A BACKEND NAMED X.WebApplication. When the backend's root namespace ends in
+".WebApplication" (MyApp.WebApplication), the plain name WebApplication in
+its own files means that NAMESPACE, not ASP.NET Core's type, and
+`WebApplication.CreateBuilder(args)` does not compile. Spell the type out
+there: Microsoft.AspNetCore.Builder.WebApplication.CreateBuilder(args) (and
+the same wherever the type is named).
 
     public static IServiceCollection AddPlatformBackend(
         this IServiceCollection services,
@@ -914,12 +957,13 @@ mapping stay the application's.
 
     public static WebApplication UsePlatformBackend(this WebApplication app);
         // adds the platform's part of the pipeline and serves the frontend
-        // applications the manifest in the web root names - read ONCE, here
+        // applications the manifest in frontend-built/ (in the content root)
+        // names - read ONCE, here - and the developer's own files in wwwroot/
     public static WebApplication UsePlatformBackend(this WebApplication app,
         FrontendApplicationSet applications);
         // the same, but serves the applications given instead of reading the
         // manifest (tests, or a developer who prefers to say it in code);
-        // each is served from its folder in the web root
+        // each is served from its folder in frontend-built/
 
     public const string PlatformBackendApplicationExtensions.LogCategory;
         // "CodeBrix.WebPlatform.Backend": the start-up log lines
@@ -927,15 +971,20 @@ mapping stay the application's.
     {
         public const string Api  = "/api";        // every API address
         public const string Hubs = "/api/hubs";   // every hub's address
+        public const string OfflineFileName = "app-offline.html";
+            // in wwwroot/: the backend is offline while it is there (see
+            // THE OFFLINE FILE)
     }
 
 UsePlatformBackend adds, in this order and each only when its option is on:
 the compression of the backend's answers (CompressResponses; off by
 default), first, so that it covers the platform's own error bodies too; the
 security headers; the standard body for bodiless 4xx answers below /api;
-the X-Requested-With check; the hub Origin check; the web root's static files
-(the manifest and the .br / .gz copies never by name; a file's copy in its
-place when ServePrecompressedFiles is on); then it maps the frontend
+the offline check (always there, whatever the options say; see THE OFFLINE
+FILE); the X-Requested-With check; the hub Origin check; the served files of
+frontend-built/ and wwwroot/ (the manifest, the .gitignore and the .br / .gz
+copies never by name; a file's copy in its place when ServePrecompressedFiles
+is on); then it maps the frontend
 applications' fallbacks (which serve an index.html's copy the same way) and
 the unknown-API answer. Those two are endpoints of the lowest priority, so a
 controller or a hub always wins over them.
@@ -949,9 +998,15 @@ It THROWS at start-up (the message says what to do):
                                 of applications was given while
                                 ServeFrontendApplications is off;
                                 CompressResponses is not a ResponseCompression
-                                value
-    FrontendManifestException   the web root holds a manifest that cannot be
-                                used
+                                value; FilePrecedence is not a
+                                FrontendFilePrecedence value; a Cache-Control
+                                value is not one line; an entry of
+                                StaticFileContentTypes or CompressedFileTypes
+                                cannot be read; an AdditionalHubOrigins entry
+                                is not an origin (only while RequireHubOrigin
+                                is on)
+    FrontendManifestException   frontend-built/ holds a manifest that cannot
+                                be used
     ArgumentNullException       app (or applications) is null
 
 
@@ -960,12 +1015,37 @@ BACKEND API REFERENCE: THE OPTIONS
 
     public sealed class PlatformBackendOptions   // every switch: true, except
     {                                            // CompressResponses (None)
-        bool ServeFrontendApplications;     // the web root's static files
-                                            // (.wasm as application/wasm) and
-                                            // the applications' fallbacks
-        bool ServePrecompressedFiles;       // a file's .br / .gz copy (written
-                                            // by the frontend build) to a
-                                            // browser that accepts it; see
+        bool ServeFrontendApplications;     // the files of frontend-built/
+                                            // and wwwroot/ and the
+                                            // applications' fallbacks
+        FrontendFilePrecedence FilePrecedence;
+                                            // DEFAULT BuiltFrontendWins; or
+                                            // WebRootWins: which file an
+                                            // address in both folders serves
+                                            // (see THE BUILT FRONTEND FOLDER
+                                            // AND wwwroot/)
+        bool ServePrecompressedFiles;       // a built file's .br / .gz copy
+                                            // (written by the frontend build)
+                                            // to a browser that accepts it;
+                                            // only frontend-built/ has copies
+                                            // (a .br in wwwroot/ is an
+                                            // ordinary file); see COMPRESSION
+        string HashedFileCacheControl;      // DEFAULT "public, max-age=
+                                            // 31536000, immutable": a built
+                                            // file whose name carries dx's
+                                            // content hash
+        string UnhashedFileCacheControl;    // DEFAULT "no-cache": every other
+                                            // file (each index.html and
+                                            // fallback, every wwwroot/ file).
+                                            // For both: null or blank sends
+                                            // no header; one line
+        IDictionary<string, string> StaticFileContentTypes { get; }
+                                            // extension -> content type of a
+                                            // served file; an extension not
+                                            // in it answers 404
+        ISet<string> CompressedFileTypes { get; }
+                                            // the content types a [WireFile]
+                                            // answer is compressed for; see
                                             // COMPRESSION
         ResponseCompression CompressResponses;
                                             // DEFAULT None. FileAnswers: the
@@ -990,9 +1070,16 @@ BACKEND API REFERENCE: THE OPTIONS
                                             // marker; else 400
                                             // missing_request_header
         bool RequireHubOrigin;              // Origin must be this site's
-                                            // scheme and host on every request
-                                            // below /api/hubs; else 403
-                                            // forbidden_origin
+                                            // scheme and host, or one of
+                                            // AdditionalHubOrigins, on every
+                                            // request below /api/hubs; else
+                                            // 403 forbidden_origin
+        IList<string> AdditionalHubOrigins { get; }
+                                            // empty by default; origins other
+                                            // than the site's own whose pages
+                                            // may use the hubs while
+                                            // RequireHubOrigin is on (see
+                                            // below)
         bool SendSecurityHeaders;           // on every answer:
                                             // X-Content-Type-Options: nosniff,
                                             // X-Frame-Options: DENY,
@@ -1003,7 +1090,12 @@ BACKEND API REFERENCE: THE OPTIONS
                                             // or blank = the header is not sent
         string RequestMarker;               // normally null (see below)
         Assembly BackendAssembly;           // normally null (see below)
+
+        const string DefaultHashedFileCacheControl;
+        const string DefaultUnhashedFileCacheControl;
     }
+
+    public enum FrontendFilePrecedence { BuiltFrontendWins, WebRootWins }
 
 THE REQUEST MARKER the check demands is, in this order: RequestMarker; the
 [assembly: WireRequestMarker] of BackendAssembly; the one of the
@@ -1019,6 +1111,26 @@ nothing else of a platform frontend needs more. It is the same with code
 splitting (the pieces are WebAssembly from the same site). The platform sends
 the policy you give, and none when you give none.
 
+ADDITIONAL HUB ORIGINS. A page served from another origin of the developer's
+own - the dx dev server under ServeAsync, http://localhost:8080 - is allowed
+to use the hubs by listing that origin, normally only in Development (see
+STEP 3, THE DEV SERVER AND THE BACKEND):
+
+    if (builder.Environment.IsDevelopment())
+    {
+        options.AdditionalHubOrigins.Add("http://localhost:8080");
+    }
+
+Each entry is an http or https origin: scheme, host and, when it is not the
+default, the port; a trailing slash is allowed. Matching is exact on scheme,
+host and port, without regard to case (HTTP://LocalHost:80 is
+http://localhost); no wildcards. An entry with a path, a query, a fragment, a
+wildcard, user info or no scheme makes UsePlatformBackend throw. The list is
+ignored (and not checked) while RequireHubOrigin is off; every other origin
+still gets 403 forbidden_origin. Do NOT switch RequireHubOrigin off instead:
+the check is what stops another site's page from using the hubs with the
+user's cookies.
+
 A setting that comes from the application's own configuration goes in with
 the options pattern, after AddPlatformBackend:
 
@@ -1030,40 +1142,55 @@ the options pattern, after AddPlatformBackend:
 BACKEND: HOW THE FRONTEND APPLICATIONS ARE SERVED
 =================================================
 
-THE MANIFEST. When the frontend build fills the web root it writes, beside
-the applications, a small file named codebrix-frontends.toml
+TWO FOLDERS. The backend serves the built frontend from frontend-built/ in
+its content root (the backend project's folder; see THE BUILT FRONTEND
+FOLDER AND wwwroot/) and the developer's own files from wwwroot/, which
+holds nothing of the build's and need not exist. Below, "a file" is a file
+of either folder; at an address both folders have, FilePrecedence decides.
+
+THE MANIFEST. When the frontend build fills frontend-built/ it writes,
+beside the applications, a small file named codebrix-frontends.toml
 (FrontendManifest.FileName): it tells the backend which frontend
 applications were built and where they are. The backend reads it ONCE, in
-UsePlatformBackend, and serves what it names; the backend's code names no
-application anywhere. The file is BUILD OUTPUT: it is rewritten on every
-build into a web root, never edited, never committed, and never served.
-Restart the backend after building the frontend into its web root.
+UsePlatformBackend, from frontend-built/, and serves what it names; the
+backend's code names no application anywhere. The file is BUILD OUTPUT: it
+is rewritten on every build, never edited, never committed, and never
+served. Restart the backend after building the frontend.
 
-NO MANIFEST (no frontend built into the web root yet, or an empty web root):
-the API works as usual; the web root's files are still served and "/"
-answers <web root>/index.html if there is one; nothing else falls back. A
-start-up log line (LogCategory) says what is served; a warning names an
+NO MANIFEST (no frontend built yet, or an empty frontend-built/): the API
+works as usual; the files are still served and "/" answers an index.html
+at the top of wwwroot/ (or of frontend-built/) if there is one; nothing else
+falls back. A start-up log line (LogCategory) says what is served ("No
+frontend manifest was found in frontend-built/ ...", or "Serving the
+frontend applications ... from frontend-built/."); a warning names an
 application whose index.html is missing (its addresses then answer 404).
 
 For GET and HEAD the backend serves:
 
-    the web root's files           as files (.wasm as application/wasm)
+    the files of frontend-built/   as files, with the content type of
+      and wwwroot/                   StaticFileContentTypes (.wasm as
+                                   application/wasm) and the Cache-Control
+                                   of THE BUILT FRONTEND FOLDER AND wwwroot/
     the default application        "/" and every address that is not a file,
                                    not below a named application and not
-                                   below /api -> <web root>/index.html
+                                   below /api -> frontend-built/index.html
     a named application X          /X, /X/ and every address below it that
-                                   is not a file -> <web root>/X/index.html
-    no default application         "/" -> <web root>/index.html when the
-                                   developer put one there, else 404; any
+                                   is not a file ->
+                                   frontend-built/X/index.html
+    no default application         "/" -> an index.html the developer put at
+                                   the top of wwwroot/, else 404; any
                                    address outside every application -> 404
     below /api                     NEVER an index.html: an address nothing
                                    answers is 404 not_found with the standard
                                    body, for every method
-    the manifest                   never, under any spelling (404)
+    the manifest, the built        never, under any spelling (404)
+      folder's .gitignore, the
+      offline file
     a .br / .gz copy by its name   never (404, as for an unknown file): a
       (x.wasm.br beside x.wasm)      copy is served only in its file's place
                                    (see COMPRESSION). A .br / .gz file with
-                                   no file of the shorter name beside it is
+                                   no file of the shorter name beside it,
+                                   and every .br / .gz file in wwwroot/, is
                                    an ordinary file.
     a file-like address that       404. An address whose last segment has a
       does not exist                 dot is a file (/assets/x.js), as in
@@ -1076,11 +1203,12 @@ the application never locks a frontend out.
 
     public static class FrontendManifestReader   // ...Backend.Applications
     {
-        public static FrontendApplicationSet Read(string webRootDirectory);
-            // null when there is no manifest (or no web root)
+        public static FrontendApplicationSet Read(
+            string builtFrontendDirectory);
+            // null when there is no manifest (or no such folder)
         public static FrontendApplicationSet Parse(string text,
             string sourceName = "codebrix-frontends.toml");
-        public static string GetPath(string webRootDirectory);
+        public static string GetPath(string builtFrontendDirectory);
     }
     public sealed class FrontendManifestException : Exception
     {
@@ -1092,6 +1220,223 @@ The reader is strict: anything the frontend build of the same release would
 not have written is refused with a FrontendManifestException whose message
 names the file and says to build the frontend again. The application does
 not normally call the reader; UsePlatformBackend does.
+
+
+THE BUILT FRONTEND FOLDER AND wwwroot/
+======================================
+
+A platform backend serves files from TWO folders of its content root (the
+backend project's folder under `dotnet run`):
+
+    frontend-built/   THE BUILD'S. The fixed name is BuiltFrontend.FolderName
+                      (no option). BuildAsync fills it (see STEP 3) with the
+                      built applications, their .br / .gz copies, the
+                      manifest and the folder's own .gitignore; a full build
+                      leaves exactly the built applications in it. Build
+                      output: never edited, never committed (see GIT: WHAT IS
+                      BUILD OUTPUT).
+    wwwroot/          THE DEVELOPER'S. ASP.NET Core's web root, holding only
+                      the developer's own files (a page of the developer's
+                      own at "/" when every application has a name, the
+                      offline file and what it uses). The build never writes
+                      into it, and it need not exist (no .gitkeep is
+                      needed): one created after start-up (or deleted and
+                      created again) is served as soon as it exists, without
+                      a restart; while it is missing its addresses answer
+                      404.
+
+PRECEDENCE (FilePrecedence). When an address names a file in both folders:
+
+    FrontendFilePrecedence.BuiltFrontendWins   (the default) the built
+        frontend's file is served and the wwwroot/ file is hidden: a stray
+        index.html left in wwwroot/ cannot silently hide an application.
+    FrontendFilePrecedence.WebRootWins   the wwwroot/ file is served and the
+        built frontend's file is hidden, its compressed copies included: the
+        developer's own file overrides the generated one at the same
+        address, the root application's index.html (and so its fallback)
+        included.
+
+In both modes the backend logs ONE warning at start-up naming the clashing
+addresses (the first 20, then "and N more"), worded for the side that won:
+"N address(es) name a file in both frontend-built/ and wwwroot/; the built
+frontend's file is served and the wwwroot/ file is hidden (FilePrecedence is
+BuiltFrontendWins): ...", or the same with wwwroot/ first for WebRootWins.
+The warning names only what existed at start-up: a clashing file added to
+wwwroot/ later is still governed by FilePrecedence, but no warning names it.
+
+CACHE-CONTROL of the served files:
+
+    HashedFileCacheControl     default "public, max-age=31536000, immutable"
+                               (PlatformBackendOptions.DefaultHashed...): a
+                               built file whose name carries dx's content
+                               hash, <stem>-dxh<8 to 16 lowercase hex
+                               digits> then the extension
+                               (app_bg-dxh4e7e6d433fe816da.wasm), which never
+                               changes under its name
+    UnhashedFileCacheControl   default "no-cache" (...DefaultUnhashed...):
+                               every other file - each application's
+                               index.html, by its address or through its
+                               fallback, and EVERY wwwroot/ file whatever its
+                               name (the browser may keep it but asks each
+                               time whether it changed)
+
+Null or blank sends no header; a value must be one line (start-up throws
+otherwise). A compressed copy and its 304 carry its file's value. The FILE
+NAME decides: wasm-bindgen's snippets (assets/snippets/<crate>-<hash>/...)
+carry their hash in the folder's name, not the file's, so they get the
+unhashed value and are revalidated on each page load.
+
+CONTENT TYPES (StaticFileContentTypes). The extension -> content type table
+of the served files, pre-filled with ASP.NET Core's table and the
+platform's corrections and additions: .wasm application/wasm, .ttf font/ttf,
+.otf font/otf, .hdr image/vnd.radiance, .glb model/gltf-binary, .gltf
+model/gltf+json, .wgsl text/wgsl (.bin is application/octet-stream in
+ASP.NET Core's table). A file whose extension is NOT in the table is not
+served (404) - .toml, for example, has no type in it. A text/ type without
+a charset is served with "; charset=utf-8" added. Change it in the options
+call (it is read once, by UsePlatformBackend):
+
+    options.StaticFileContentTypes[".toml"] = "application/toml";
+
+PUBLISHING. The Backend package carries a buildTransitive targets file that
+copies frontend-built/ (without its .gitignore, in the same layout) into the
+backend's BUILD output and its PUBLISH output, and keeps the folder's files
+out of the SDK's default items (so the Web SDK's own globs never take them
+twice). The backend's .csproj needs nothing for it. Build the frontend
+BEFORE building or publishing the backend: what is copied is what the
+folder holds then. The backend looks in frontend-built/ of its CONTENT ROOT,
+which is:
+
+    dotnet run (an IDE)      the project folder: frontend-built/ itself
+    from the build output    the current folder: run it with
+                             bin/<Configuration>/<tfm>/ as the current folder
+    from a publish folder    the current folder: run it with the publish
+                             folder as the current folder (or pass
+                             --contentRoot <folder>)
+
+(`dotnet publish/App.dll` started from another folder has that other folder
+as its content root and serves no frontend: ASP.NET Core's usual rule, the
+same as for wwwroot/.) A file removed from frontend-built/ also leaves the
+build output on the next build, but `dotnet publish` does not remove stale
+files from an existing publish folder: publish into an empty one.
+
+A TEST HOST (WebApplicationFactory<Program>) that serves a fake built
+frontend needs a content root of its own, holding its frontend-built/:
+builder.UseContentRoot(<temp folder>) in ConfigureWebHost (copy the
+application's appsettings.json there too: settings are read from the
+content root). UseWebRoot does not place a built frontend.
+
+
+THE OFFLINE FILE
+================
+
+While a file named app-offline.html (PlatformBackendPaths.OfflineFileName,
+a fixed name) is at the top of wwwroot/, the backend is OFFLINE - the
+convention IIS has with app_offline.htm. The backend looks for the file as
+requests arrive, so there is no restart to go offline or to come back: put
+the page there to take the site down for maintenance, delete it to bring
+the site back. While offline:
+
+  - every request below /api, hubs included, is answered 503 with the
+    standard error body: code "offline" (ApiProblemCodes.Offline), title
+    "The site is offline for now. Try again later." (ApiProblems.OfflineTitle;
+    ApiProblems.Offline() builds the body), and Cache-Control: no-store. It
+    comes before the X-Requested-With and hub Origin checks, so every API
+    request gets the same answer;
+  - the developer's OTHER files in wwwroot/ are served as usual, so the
+    offline page may use its own stylesheet or images from there;
+  - every other request - each frontend application's pages, "/", the
+    fallbacks, the built frontend's files, the backend's own addresses
+    outside /api, and app-offline.html's own address - is answered 503 with
+    the file's content, as text/html; charset=utf-8, Cache-Control:
+    no-store (a HEAD gets the headers alone).
+
+app-offline.html is never served as an ordinary file at its own address.
+The built frontend is never touched. It works whatever the options say
+(ServeFrontendApplications off included), and also when wwwroot/ was
+created after start-up: an offline page dropped into a new wwwroot/
+together with its stylesheet or images is served as the 503, with those
+files served 200. Starting while the file is there logs a warning.
+
+IN THE FRONTEND. A REST call made while offline fails with
+ApiError::Problem { status: 503, code: "offline", .. }; err.is_offline() is
+true for exactly that (a 503 without the code - from a proxy - is not
+offline), and err.message() is the title above. A session refresh answered
+this way FAILS, it is not refused: the user stays signed in (see SESSION
+REFRESH OUTCOMES). A hub keeps retrying with its usual backoff, its calls
+failing with NotConnected { cause: Some("negotiate answered 503") } (or,
+when its session refresh was answered 503, "the server answered 503
+(offline): ..."), and connects again once the file is gone.
+
+
+FONTS
+=====
+
+An application's own typeface is a font file the site serves to the
+stylesheet's @font-face rule. Under the platform's Content-Security-Policy
+nothing is added for it: with no font-src, default-src 'self' allows a font
+from the site itself (a policy that does set font-src must include 'self').
+A font from another site is not allowed.
+
+THE FIXED-NAME ASSETS FOLDER (the usual route; the WorkSite sample does
+this). The font lives in a folder of the frontend's assets, with its
+licence file beside it:
+
+    frontend/assets/fonts/Roboto.ttf
+    frontend/assets/fonts/OFL.txt          the font's licence
+
+The frontend declares the FOLDER as an asset, which dx copies into the site
+under its own name and never renames (a folder asset, and the names in it,
+get no dx hash). Nothing in the Rust code reads it, so `#[used]` keeps it in
+the build:
+
+    #[used]
+    static FONTS: Asset = asset!("/assets/fonts", AssetOptions::folder());
+
+(An asset!() of the .ttf itself would get dx's -dxh<hex> name, which a
+stylesheet cannot know. A single file can keep its name with
+AssetOptions::builder().with_hash_suffix(false).) The root application's
+font is then at /assets/fonts/Roboto.ttf, a named application's at
+/<name>/assets/fonts/.... The rule goes in the frontend's tailwind.css
+(Tailwind keeps it, and the address, as written):
+
+    @font-face {
+      font-family: "Roboto";
+      src: url("/assets/fonts/Roboto.ttf") format("truetype");
+      font-weight: 100 900;            /* a variable font: every weight */
+      font-style: normal;
+      font-display: swap;
+    }
+
+    @theme {
+      --font-sans: "Roboto", sans-serif;   /* every font-sans text */
+    }
+
+Write the url ABSOLUTE (with the application's name for a named
+application, /sales/assets/fonts/...): the generated stylesheet is served
+from another folder under a hashed name, so a relative url would not reach
+the fonts folder.
+
+WHAT THE FONT IS SERVED WITH (Backend defaults): Content-Type font/ttf
+(font/otf for .otf; StaticFileContentTypes); the build's .br / .gz copies
+(.ttf and .otf are in DefaultCompressibleExtensions), served to a browser
+that accepts them, with Vary: Accept-Encoding; and Cache-Control: no-cache
+(UnhashedFileCacheControl: the name carries no dx hash), so the browser
+keeps the font and revalidates it on each page load (a 304 while it is
+unchanged). The licence file beside it is served the same way (text/plain;
+charset=utf-8). .woff and .woff2 files are compressed already: they get no
+copies.
+
+THE BACKEND FILE ACTION (the alternative). A [WireFile] action that answers
+the font's bytes with File(bytes, "font/ttf"), and an @font-face url naming
+its address (/api/fonts/roboto.ttf). The action's own answer decides its
+Cache-Control. With CompressResponses = FileAnswers the answer is
+compressed as it is sent: TTF and OTF types (font/ttf, font/otf and their
+older names) are in CompressedFileTypes; WOFF and WOFF2 are not.
+
+THE LICENCE TRAVELS WITH THE FONT: keep the font's licence file beside the
+font file wherever it goes (in the assets folder it is copied and served
+with it), and record the font in the application's own notices.
 
 
 COMPRESSION: THE BUILT FILES AND THE BACKEND'S ANSWERS
@@ -1107,7 +1452,8 @@ below before switching it on).
 THE THREE OPTIONS
 
     options.CompressOutput = FrontendCompression.BrotliAndGzip;
-        // the build program's PlatformFrontendOptions (the default)
+        // the build program's PlatformFrontendOptions (default null:
+        // BrotliAndGzip for a Release build, None for a Debug build)
     options.ServePrecompressedFiles = true;
         // AddPlatformBackend's PlatformBackendOptions (the default)
     options.CompressResponses = ResponseCompression.FileAnswers;
@@ -1115,20 +1461,33 @@ THE THREE OPTIONS
 
     public enum FrontendCompression     // CodeBrix.WebPlatform.FrontendBuilder
     { None, Brotli, Gzip, BrotliAndGzip }
+    public FrontendCompression? CompressOutput { get; set; }
+        // null (the default): BrotliAndGzip for Release, None for Debug;
+        // set: that value for both. Not a member: refused before anything
+        // starts.
+    public ISet<string> CompressibleExtensions { get; }
+        // which files get copies; pre-filled with
+        // PlatformFrontendOptions.DefaultCompressibleExtensions
     public enum ResponseCompression     // CodeBrix.WebPlatform.Backend
     { None, FileAnswers, FileAnswersAndJson }
 
-WHAT THE BUILD DOES TO THE WEB ROOT (CompressOutput)
-  - BuildAsync with a web root, after it has filled it, writes beside every
-    file of the built applications (dx's files, in each application's folder
-    of the web root) whose extension is one of
-        .wasm .js .mjs .css .html .htm .json .map .webmanifest .svg .txt
-        .xml .csv .md .toml .yaml .yml .wgsl .glsl .gltf .obj .ttf .otf
-    a <name>.br copy (Brotli at its strongest: quality 11, window 24) and/or
-    a <name>.gz copy (gzip at its smallest size), each ONLY when it is
-    smaller than the file. Every other file - PNG, JPEG, GIF, WebP, AVIF,
-    ICO, WOFF, WOFF2, audio, video, ZIP, .gz, .br and the like, which are
-    compressed already - gets no copy.
+WHAT THE BUILD DOES TO frontend-built/ (CompressOutput)
+  - BuildAsync with a backend project folder, after it has filled
+    frontend-built/, writes beside every file of the built applications
+    (dx's files, in each application's folder there) whose extension is in
+    CompressibleExtensions - by default the code, text, shader, model and
+    TrueType/OpenType font formats (.wasm .js .css .html .json .svg .wgsl
+    .gltf .glb .bin .hdr .ttf .otf and the like; the full list is
+    DefaultCompressibleExtensions) - a <name>.br copy (Brotli at its
+    strongest: quality 11, window 24) and/or a <name>.gz copy (gzip at its
+    smallest size), each ONLY when it is smaller than the file. Formats that
+    are compressed already - PNG, JPEG, GIF, WebP, AVIF, ICO, WOFF, WOFF2,
+    audio, video, archives - are not in the defaults and gain nothing. Add
+    or remove entries in the build program:
+        options.CompressibleExtensions.Add(".dat");
+    Each entry is one extension with its dot (".glb"); "glb", "", ".tar.gz",
+    a path, ".br" and ".gz" are refused by BuildAsync before anything
+    starts. The folder's .gitignore is never compressed.
   - The copies are deterministic: the same file gives the same bytes, on
     every machine.
   - Copies never outlive their files: the build replaces the applications'
@@ -1137,20 +1496,22 @@ WHAT THE BUILD DOES TO THE WEB ROOT (CompressOutput)
     that dx itself wrote beside a file (Dioxus.toml's pre_compress) is
     replaced by the platform's copy, or removed when the option does not ask
     for that copy; None leaves dx's output exactly as dx wrote it.
-  - THE DEVELOPER'S OWN FILES ARE NEVER GIVEN COPIES. When every application
-    has a name, the web root's other files (a page of your own at "/",
-    images beside it) are left exactly as they are; so is a file the build
-    program writes into the web root AFTER BuildAsync (the notices, for
-    example). A <name>.br / <name>.gz you put beside such a file yourself is
-    served in the same way as the platform's.
+  - THE DEVELOPER'S OWN FILES ARE NEVER GIVEN COPIES: they are in wwwroot/,
+    which the build never touches, and a .br / .gz file there is an
+    ordinary file (it is never served in another file's place). A file the
+    build program writes into frontend-built/ AFTER BuildAsync gets its
+    copies only through WriteBuiltFile (see STEP 3), and is removed by the
+    next full build or root-application build: write it again after every
+    build.
   - NOTHING for ServeAsync (dx serve answers the browser itself), and
-    nothing without a web root.
+    nothing without a backend project folder.
   - THE TIME. Brotli at its strongest takes seconds on a large .wasm (the
     files are compressed in parallel); result.Compression.Elapsed says how
-    long it took, and the build writes one line per application to Output.
-    CompressOutput = None skips it, for example for quick local builds.
+    long it took, and the build writes one line per application to Output
+    ("Compressed N files of <application> in frontend-built (...)"). That is
+    why a Debug build is not compressed unless CompressOutput is set.
   - The copies are BUILD OUTPUT, like everything else the build writes into
-    the web root: never edited, never committed. The manifest
+    frontend-built/: never edited, never committed. The manifest
     (codebrix-frontends.toml) does not change: the backend finds the copies
     on disk.
 
@@ -1179,13 +1540,13 @@ WHAT THE BUILD DOES TO THE WEB ROOT (CompressOutput)
     }
 
 HOW THE BACKEND SERVES THE COPIES (ServePrecompressedFiles, default true)
-  - A GET or HEAD of a web-root file that has a copy - and an application's
+  - A GET or HEAD of a built file that has a copy - and an application's
     index.html reached through its fallback (/sales/orders) - is answered
     with the copy when the request's Accept-Encoding prefers it: the .br
     copy, else the .gz copy, with Content-Encoding, the FILE's own
     Content-Type, the copy's Content-Length, and the copy's own
     Last-Modified and ETag (If-None-Match / If-Modified-Since answer 304,
-    If-Match / If-Unmodified-Since 412).
+    If-Match / If-Unmodified-Since 412), and the file's Cache-Control.
   - Accept-Encoding is read with its q-values: the heaviest coding the
     request accepts wins, Brotli before gzip at equal weight; "identity"
     (the file itself) wins only when it is listed (or "*" is) with a
@@ -1199,9 +1560,11 @@ HOW THE BACKEND SERVES THE COPIES (ServePrecompressedFiles, default true)
   - A copy is never served under its own name: /x.wasm.br answers what any
     unknown file answers (404), whatever ServePrecompressedFiles says. A
     .br / .gz file with no file of the shorter name beside it is an
-    ordinary file of the web root.
+    ordinary file, and so is every .br / .gz file in wwwroot/ (only
+    frontend-built/ has copies). A copy is used only while its file is the
+    one served at the address (FilePrecedence).
   - Off: every file is served as it is (the copies stay hidden). With no
-    copies in the web root the option changes nothing.
+    copies in frontend-built/ the option changes nothing.
   - THE FRONTEND NEEDS NOTHING. The browser decompresses: the frontend's
     fetches - the generated REST client, <name>_bytes (send_bytes), the
     hubs' negotiate call - go through the browser's fetch (reqwest in the
@@ -1216,23 +1579,31 @@ COMPRESSING THE BACKEND'S ANSWERS (CompressResponses, default None)
     File(...) or PhysicalFile(...) result, JSON. To have a download
     compressed, mark its action [WireFile] (which also gives the frontend
     its <name>_url and <name>_bytes functions), or let a proxy compress it.
-    Inside a [WireFile] answer, the types that are compressed already are
-    skipped; every other type is compressed: application/octet-stream,
-    text/* (not text/event-stream), XML and every +xml type (SVG too),
-    JavaScript, application/wasm, YAML, TOML, JSON - and the action's error
-    answers (its problem bodies) as well.
+    Inside a [WireFile] answer, a type in CompressedFileTypes is
+    compressed, and so are JSON and the action's error answers (its problem
+    bodies); every other type is not. The set's defaults:
+    application/octet-stream, text/* (never text/event-stream), XML and
+    every +xml type (SVG too), JavaScript, application/wasm, YAML, TOML,
+    TrueType and OpenType fonts (font/ttf, font/otf and their older names),
+    image/vnd.radiance (.hdr) and model/gltf-binary (.glb). WOFF and WOFF2,
+    images, archives, audio and video are compressed already and are not in
+    it. An entry is a type (application/wasm), a type's every subtype
+    (text/*) or every type with a suffix (*/*+xml); any casing:
+        options.CompressedFileTypes.Add("application/x-my-mesh");
+    Whatever the set holds, JSON follows CompressResponses alone and
+    text/event-stream is never compressed.
   - FileAnswersAndJson: the [WireFile] answers as above, and the JSON
     answers of EVERY action too - application/json, text/json, NDJSON and
     every +json type, application/problem+json (the platform's error bodies,
     those of the X-Requested-With and hub Origin checks included). Other
     answers of actions without [WireFile] are still not compressed.
-  - NEVER compressed this way: types that are compressed already (images,
-    archives, PDF, fonts, audio, video - every type not listed above), not
-    even in a [WireFile] answer; the
-    web root's files (compressed when the frontend is built, served as they
-    are); every address below /api/hubs and every hub endpoint (negotiate,
-    long polling, WebSockets); text/event-stream; an answer that already
-    has a Content-Encoding or a Content-Range (a range answer).
+  - NEVER compressed this way: a type not in CompressedFileTypes (by
+    default images, archives, PDF, WOFF and WOFF2 fonts, audio, video), not
+    even in a [WireFile] answer; the served files (compressed when the
+    frontend is built, served as they are); every address below /api/hubs
+    and every hub endpoint (negotiate, long polling, WebSockets);
+    text/event-stream; an answer that already has a Content-Encoding or a
+    Content-Range (a range answer).
   - Brotli when the request prefers it, otherwise gzip (the same reading of
     Accept-Encoding as above), at the FASTEST setting; over HTTPS as well;
     with Vary: Accept-Encoding and without Content-Length (the body is sent
@@ -1276,7 +1647,7 @@ BEHIND A PROXY THAT COMPRESSES
 WHAT YOU CANNOT DO
   - fetch a copy by its name (x.wasm.br is 404);
   - have ServeAsync (dx serve) compress anything;
-  - have the build compress your own files in the web root;
+  - have the build compress your own files in wwwroot/;
   - choose the encoder or the level of the answers compressed as they are
     sent.
 
@@ -1479,6 +1850,8 @@ BACKENDMAPPER API REFERENCE: WRITING THE RUST CODE
     {
         public const string GeneratedMarker =
             "// @generated by CodeBrix.WebPlatform.BackendMapper";
+        public const string IgnoreFileName = ".gitignore";
+        public const string IgnoreFileText;   // the folder's .gitignore
         public static IReadOnlyList<GeneratedFile> Generate(
             BackendMap map, RustClientOptions options = null);
         public static IReadOnlyList<string> WriteTo(
@@ -1515,11 +1888,17 @@ WriteTo(directory, files) makes a folder hold exactly those files:
   * a stale file that carries the generated marker is deleted;
   * a file WITHOUT the marker makes it throw InvalidOperationException and
     write nothing, so hand-written code is never destroyed. Give the generated
-    code a folder of its own (for example the frontend's src/generated).
-  Returns the relative paths written or deleted (empty when up to date).
+    code a folder of its own (for example the frontend's src/generated);
+  * the folder's own .gitignore (RustClientGenerator.IgnoreFileName, text
+    IgnoreFileText: a header saying what wrote it, then `*`) is written
+    whenever it is missing or differs, and is never refused or deleted.
+  Returns the relative paths written or deleted (empty when up to date; the
+  .gitignore is never listed).
 
-The generated code is BUILD OUTPUT: never edit it, do not commit it, and
-ignore its folder in git.
+The generated code is BUILD OUTPUT: never edit it and do not commit it. Its
+folder ignores itself (the .gitignore above), so no ignore rule of the
+application's is needed - also for a program that calls WriteTo without
+FrontendBuilder (see GIT: WHAT IS BUILD OUTPUT).
 
 WHAT THE GENERATED CODE LOOKS LIKE
 
@@ -1701,41 +2080,44 @@ everything else in the options is shared by all of them.
         public CrateMode CrateMode { get; set; }          // where crates come
             // from; default PlatformCratesOnly (offline) - see THE
             // PLATFORM'S CRATES
-        public string VendorDirectory { get; set; }       // where the
-            // crates are written; default <frontend>/platform/vendor (the
-            // FIRST application's: all applications share the one folder)
         public string DxPath { get; set; }                // see HOST TOOLS
         public string WasmBindgenPath { get; set; }
-        public string DxHomeDirectory { get; set; }       // dx's DX_HOME;
-            // default <frontend>/target/dx-home of each application; when
-            // set and there are several applications, <it>/<name> each
         public bool GenerateMissingStylesheet { get; set; }  // default true:
             // MaterializeAsync writes a missing Tailwind stylesheet (STEP 2)
-        public string TailwindInputFile { get; set; }     // default
-            // <frontend>/tailwind.css (relative: from the frontend folder)
-        public string TailwindOutputFile { get; set; }    // default
-            // <frontend>/assets/tailwind.css (where dx writes it)
         public bool? Shrink { get; set; }                 // see SHRINKING
-        public FrontendCompression CompressOutput { get; set; }
-            // default BrotliAndGzip: .br and .gz copies beside the built
-            // files in the web root (BuildAsync only); see COMPRESSION
+        public FrontendCompression? CompressOutput { get; set; }
+            // default null: BrotliAndGzip for a Release build, None for a
+            // Debug build; set: that value for both. .br and .gz copies
+            // beside the built files in frontend-built/ (BuildAsync only);
+            // see COMPRESSION
+        public ISet<string> CompressibleExtensions { get; }
+            // the extensions that get copies; pre-filled with
+            // DefaultCompressibleExtensions (static); see COMPRESSION
         public IList<string> ServeFeatures { get; }       // cargo features
             // for ServeAsync, e.g. the one that enables dioxus/devtools
         public TextWriter Output { get; set; }            // progress lines;
             // null = none
-        // the paths below are the ONE application's (FrontendDirectory);
-        // null when only Applications is used
+        // THE FIXED LAYOUT: full paths, none of them can be changed. The
+        // paths below are the ONE application's (FrontendDirectory); null
+        // when only Applications is used - except VendorDirectory
         public string GeneratedClientDirectory { get; }
             // <frontend>/src/generated
         public string SharedCrateDirectory { get; }
             // <frontend>/platform/codebrix-webplatform
         public string CargoConfigurationFile { get; }
             // <frontend>/.cargo/config.toml
-        public string ResolvedTailwindInputFile { get; }  // full paths of the
-        public string ResolvedTailwindOutputFile { get; } //   two stylesheets
-        public string ResolvedVendorDirectory { get; }
-            // VendorDirectory, or <frontend>/platform/vendor (of the first
-            // application in Applications when that list is used)
+        public string DxHomeDirectory { get; }
+            // <frontend>/target/dx-home: dx's DX_HOME (each application has
+            // its own)
+        public string TailwindInputFile { get; }
+            // <frontend>/tailwind.css (the developer's own file)
+        public string TailwindOutputFile { get; }
+            // <frontend>/assets/generated/tailwind.css (build output; the
+            // frontend names it asset!("/assets/generated/tailwind.css"))
+        public string VendorDirectory { get; }
+            // <frontend>/platform/vendor, where the crates are written - of
+            // the FIRST application in Applications when that list is used
+            // (all applications share the one folder)
     }
 
     public sealed class FrontendApplicationOptions   // ...Applications
@@ -1747,8 +2129,6 @@ everything else in the options is shared by all of them.
         public bool? WasmSplit { get; set; }              // null: the first
             // application's setting; the first's null: the options' WasmSplit,
             // else off
-        public string TailwindInputFile { get; set; }     // as in the options,
-        public string TailwindOutputFile { get; set; }    //   for this one
         public IList<string> ServeFeatures { get; }       // empty: the
             // options' ServeFeatures
     }
@@ -1789,8 +2169,13 @@ everything else in the options is shared by all of them.
             CancellationToken cancellationToken = default);
         public Task<FrontendBuildResult> BuildAsync(
             FrontendConfiguration configuration = FrontendConfiguration.Release,
-            string webRootDirectory = null,
+            string backendProjectDirectory = null,
             CancellationToken cancellationToken = default);
+        public Task<FrontendBuildResult> BuildAsync(string applicationName,
+            FrontendConfiguration configuration = FrontendConfiguration.Release,
+            string backendProjectDirectory = null,
+            CancellationToken cancellationToken = default);
+            // ONE application (see STEP 3)
         public Task<int> ServeAsync(
             CancellationToken cancellationToken = default);
         public Task<int> ServeAsync(string applicationName,
@@ -1879,7 +2264,7 @@ STEP 2 - MaterializeAsync
       3. checks the registered crate bundles against the platform's crates
          (see CRATE BUNDLES); CrateMode.PlatformCratesOnly (the default):
          writes the platform's crates and the bundles' into
-         ResolvedVendorDirectory, ONE folder that every application uses -
+         VendorDirectory, ONE folder that every application uses -
          unpacked only when an archive changed (a stamp file in the folder
          records the platform's archive and every bundle it holds).
          CrateMode.ApplicationAddsCrates: removes that folder if this library
@@ -1908,17 +2293,31 @@ STEP 2 - MaterializeAsync
          the exact command to run. A lock file with nothing stale is never
          touched, marker or not;
       8. THE TAILWIND STYLESHEET: when the frontend uses Tailwind (its input
-         stylesheet, ResolvedTailwindInputFile, exists) and the generated one
-         (ResolvedTailwindOutputFile, the file the application's
-         asset!("/assets/tailwind.css") names and dx normally writes during a
-         build) is MISSING, it starts the packaged Tailwind program once, by
-         its full path - `tailwindcss -i <input> -o <output>` in the frontend
-         folder. An existing stylesheet is never touched (dx rewrites it on
-         every build). When the packaged program is not beside the build
-         program, or fails, Materialize does NOT fail - the
-         result says so (Stylesheet, StylesheetMessage), and the message is
-         also written to Output. Switch the step off with
+         stylesheet, <frontend>/tailwind.css, exists) and the generated one
+         (<frontend>/assets/generated/tailwind.css, the file the
+         application's asset!("/assets/generated/tailwind.css") names and dx
+         normally writes during a build) is MISSING, it starts the packaged
+         Tailwind program once, by its full path - `tailwindcss -i <input> -o
+         <output>` in the frontend folder. An existing stylesheet is never
+         touched (dx rewrites it on every build). When the packaged
+         program is not beside the build program, or fails, Materialize
+         does NOT fail - the result says so (Stylesheet, StylesheetMessage),
+         and the message is also written to Output. Switch the step off with
          GenerateMissingStylesheet = false.
+      9. THE IGNORE FILES: a .gitignore in every folder the library owns
+         (see GIT: WHAT IS BUILD OUTPUT), written again whenever it is
+         missing or differs - on every run, whether anything else changed
+         or not. Writing one does not count as a change (WasUpToDate stays
+         true; it is listed in no result).
+    THE LAYOUT IS FIXED: src/generated, platform/codebrix-webplatform,
+    platform/vendor (one, in the first application's frontend),
+    .cargo/config.toml, target/ (dx's data in target/dx-home), tailwind.css
+    and assets/generated/tailwind.css in each frontend folder, and
+    frontend-built/ in the backend project's folder. None of them is an
+    option. A Dioxus.toml (or dioxus.toml) that sets tailwind_input or
+    tailwind_output to anything else makes MaterializeAsync fail FIRST
+    (nothing is written), and BuildAsync / ServeAsync fail before dx starts:
+    remove the setting (do not set either at all).
     Only changed files are rewritten, so cargo does not rebuild for nothing.
     AFTERWARDS PLAIN `cargo check`, `cargo test` AND `cargo build` WORK in
     every frontend folder - offline, in the default crate mode - and so does an
@@ -1994,9 +2393,10 @@ STEP 2 - MaterializeAsync
         SkippedTailwindFailed,       // missing: Tailwind ran and failed
     }
 
-    Fails when: a frontend folder has no Cargo.toml; neither backend option
-    is set; the project does not exist or does not build; the contract is not
-    fully declared (every problem listed); src/generated holds a file without
+    Fails when: a frontend folder has no Cargo.toml; its Dioxus.toml moves
+    the Tailwind stylesheets (see above); neither backend option is set;
+    the project does not exist or does not build; the contract is not fully
+    declared (every problem listed); src/generated holds a file without
     the generated marker; the shared crate's folder holds something else; the
     vendor folder holds files this library did not write (no stamp); a
     frontend's .cargo/config.toml was not written by this library; the
@@ -2022,8 +2422,8 @@ STEP 3 - BuildAsync / ServeAsync
                  one it runs), then the packaged wasm-opt's folder (when the
                  WasmShrink package has one for this machine), then
                  wasm-bindgen's folder, then the existing PATH;
-        DX_HOME  the application's DX_HOME (DxHomeDirectory for one
-                 application): a folder the build owns, because dx looks in
+        DX_HOME  the application's own <frontend>/target/dx-home
+                 (DxHomeDirectory): a folder the build owns, because dx looks in
                  its own data folder BEFORE PATH, and a wasm-opt some other dx
                  once downloaded there would be used instead;
         the loader's search variable - LD_LIBRARY_PATH (Linux),
@@ -2051,34 +2451,63 @@ STEP 3 - BuildAsync / ServeAsync
     (or "dx serve cannot start: ...") and lists each missing item with the
     check's own advice. So a build program without the packaged Tailwind gets
     that sentence, not
-    dx's "Failed to hash asset .../assets/tailwind.css" - and never a build
+    dx's "Failed to hash asset .../assets/generated/tailwind.css" - and never
+    a build
     that quietly keeps an old generated stylesheet. Calling
     CheckPrerequisitesAsync first yourself is still useful to fail before
     slower work (MaterializeAsync builds the backend), as WorkSite's build
     program does.
 
-    THE WEB ROOT. With a webRootDirectory (typically the backend's wwwroot),
-    once EVERY application has been built, BuildAsync fills it:
-      - the default application's site goes into the web root itself, a
-        named application's into <web root>/<name>/, and the manifest
-        codebrix-frontends.toml beside them (for the backend; see BACKEND:
-        HOW THE FRONTEND APPLICATIONS ARE SERVED);
-      - WITH a default application the build owns the WHOLE web root:
-        everything in it is replaced (a .gitkeep file is kept);
-      - when EVERY application has a name, the build owns only the
-        applications' sub-folders (this build's, and those the previous
-        manifest names) and the manifest; any other file in the web root -
-        a page of the developer's own at "/", for example - is left alone;
+    THE BUILT FRONTEND FOLDER. backendProjectDirectory is the BACKEND
+    PROJECT'S FOLDER (its content root, where its .csproj is), which must
+    exist; the library appends frontend-built (BuiltFrontend.FolderName,
+    fixed) itself and creates that folder. Once EVERY application has been
+    built, BuildAsync fills it:
+      - the default (root) application's site goes into frontend-built/
+        itself, a named application's into frontend-built/<name>/, and the
+        manifest codebrix-frontends.toml beside them (for the backend; see
+        BACKEND: HOW THE FRONTEND APPLICATIONS ARE SERVED), with the
+        folder's own .gitignore;
+      - the folder belongs to the build entirely: afterwards it holds
+        EXACTLY the built applications - everything else in it (an old
+        application's folder, a stray file) is removed, except its
+        .gitignore. wwwroot/ is never touched by the build;
       - a default application's site with an entry named like another
         application (a folder "sales" beside an application "sales") is
-        refused with a FrontendBuildException, before the web root is
+        refused with a FrontendBuildException, before the folder is
         touched;
       - then, beside each compressible file of the built applications, the
         compressed copies CompressOutput asks for (<name>.br and <name>.gz
-        by default; see COMPRESSION). The developer's own files in the web
-        root are never given copies.
-    Without a webRootDirectory each site stays where dx left it
-    (GetOutputDirectory), no manifest is written and nothing is compressed.
+        for a Release build by default, none for a Debug build; see
+        COMPRESSION).
+    Without a backendProjectDirectory (null) each site stays where dx left
+    it (GetOutputDirectory), no manifest is written and nothing is
+    compressed. A blank string, or a folder that does not exist, is refused
+    before anything starts.
+
+    BUILDING ONE APPLICATION. BuildAsync(applicationName, configuration,
+    backendProjectDirectory) builds only that application (null, "" or
+    "app": the root application; an unknown name is a FrontendBuildException
+    listing the applications), with the same checks, and replaces only its
+    part of frontend-built/: a named application's sub-folder; for the root
+    application, the top-level entries that are not a registered named
+    application's folder, the manifest or the .gitignore. The other
+    applications' output stays as it is - or missing, which is not an error
+    at build time (the backend reports what it finds). The manifest is
+    written for ALL registered applications, only this application's files
+    are compressed, and result.Applications holds only this result. A build
+    program can offer it as an argument:
+        var built = name == null
+            ? await frontend.BuildAsync(FrontendConfiguration.Release, backend)
+            : await frontend.BuildAsync(name, FrontendConfiguration.Release,
+                backend);
+
+    THE MESSAGES call the application without a name "the root application"
+    ("Building the root application for development ...", "Compressed 12
+    files of the root application in frontend-built ..."), and a named one
+    "the frontend application 'sales'"; a single application is "the
+    frontend". Its name in the manifest and in FrontendApplication.DefaultName
+    stays "app".
 
     public sealed class FrontendBuildResult   // the FIRST application's
     {
@@ -2090,17 +2519,23 @@ STEP 3 - BuildAsync / ServeAsync
         FrontendConfiguration Configuration; string OutputDirectory;
         bool Shrunk; WasmOptSource WasmOpt; HostTools Tools;
         bool WasmSplit;                          // built with splitting
-        string WebRootDirectory;                 // null without a web root
-        string WebRootApplicationDirectory;      // the web root itself, or
-                                                 // <web root>/<name>
-        int WebRootFileCount;                    // files copied for it
+        string BuiltFrontendDirectory;           // <backend>/frontend-built;
+                                                 // null without a backend
+                                                 // project folder
+        string BuiltApplicationDirectory;        // that folder itself, or
+                                                 // frontend-built/<name>
+        int BuiltFileCount;                      // files copied for it
                                                  // (dx's files; the .br /
-                                                 // .gz copies not counted)
+                                                 // .gz copies, the manifest
+                                                 // and .gitignore not
+                                                 // counted)
         string ManifestFile;                     // the manifest written;
-                                                 // null without a web root
+                                                 // null without a backend
+                                                 // project folder
         FrontendCompressionResult Compression;   // the copies written for
                                                  // it (see COMPRESSION);
-                                                 // null without a web root
+                                                 // null without a backend
+                                                 // project folder
     }
 
     ServeAsync(applicationName) runs `dx serve --platform web [--base-path
@@ -2115,10 +2550,83 @@ STEP 3 - BuildAsync / ServeAsync
         application, that one; otherwise a FrontendBuildException listing the
         names.
     ServeAsync does NOT split the bundle, whatever WasmSplit says: hot reload
-    serves one WebAssembly file. Nor does it compress anything (dx serve
-    answers the browser itself; CompressOutput is for BuildAsync). Use BuildAsync to see the split pieces. The
-    frontend's API calls need a running backend; Dioxus.toml can proxy /api
-    to it.
+    serves one WebAssembly file, and its split points are ordinary code that
+    is already loaded (see CODE SPLITTING). Nor does it compress anything (dx
+    serve answers the browser itself; CompressOutput is for BuildAsync). Use
+    BuildAsync to see the split pieces.
+
+    THE DEV SERVER AND THE BACKEND. The frontend's API calls need a running
+    backend. dx serve passes /api to it with a [[web.proxy]] table in the
+    frontend's Dioxus.toml (the backend's real address and port):
+
+        # Dioxus.toml of the frontend: dx serve passes /api to the backend.
+        [[web.proxy]]
+        backend = "http://localhost:5210/api"
+
+    The PATH of the backend address is the prefix that is passed on (it must
+    not be empty): /api, /api/ and every address below it go to that host and
+    port with their full path and query (/api/sales/summary ->
+    http://localhost:5210/api/sales/summary); a trailing slash makes no
+    difference. One table per prefix ([[web.proxy]] may repeat). dx sets Host
+    to the backend's and adds x-proxied-by-dioxus: true; the other headers
+    (the X-Requested-With marker included) pass through, and WebSockets are
+    proxied too. The proxy is at the site root, so it works for an
+    application served below a name (/sales/... pages calling /api/...).
+    REST calls work through it as they are. THE HUBS answer 403
+    forbidden_origin through it: the browser's Origin is the dev server's
+    (http://localhost:8080) while the request reaches the backend. List the
+    dev server's origin in the backend, normally only in Development, and
+    leave RequireHubOrigin on (see BACKEND API REFERENCE: THE OPTIONS):
+
+        builder.Services.AddPlatformBackend(options =>
+        {
+            if (builder.Environment.IsDevelopment())
+            {
+                options.AdditionalHubOrigins.Add("http://localhost:8080");
+            }
+        });
+
+    Use the port dx serves on.
+
+    A FILE OF THE BUILD PROGRAM'S OWN (a generated notices file, for
+    example) goes into frontend-built/ with WriteBuiltFile, which gives it
+    the compressed copies a build would:
+
+        public FrontendCompressionResult WriteBuiltFile(
+            string backendProjectDirectory, string relativePath,
+            byte[] content,
+            FrontendConfiguration configuration = FrontendConfiguration.Release,
+            CancellationToken cancellationToken = default);
+        public FrontendCompressionResult WriteBuiltFile(
+            string backendProjectDirectory, string relativePath, string text,
+            FrontendConfiguration configuration = FrontendConfiguration.Release,
+            CancellationToken cancellationToken = default);
+            // the text as UTF-8 without a byte order mark, as given
+
+      - backendProjectDirectory: the folder BuildAsync got; it must exist
+        (frontend-built/ and its .gitignore are created when missing).
+        relativePath: relative to frontend-built/, "/" or "\" separated
+        ("THIRD-PARTY-NOTICES.txt", "legal/NOTICES.txt"); the file's address
+        is that path (/THIRD-PARTY-NOTICES.txt).
+      - The copies are a build's for that extension: CompressOutput, or for
+        configuration's default (Release: Brotli and gzip; Debug: none),
+        and CompressibleExtensions, each only when smaller; copies of an
+        earlier version that are not written again are removed. Pass the
+        build's configuration. The result's Files holds the file when it was
+        compressed (empty otherwise); RemovedCopyCount counts the removed
+        copies.
+      - REFUSED (FrontendBuildException, nothing written): a blank or
+        missing backend project folder; a blank or rooted path, or one with
+        a "." or ".." segment; the manifest's name at the top; any
+        .gitignore; a .br / .gz name; a path inside (or naming) a
+        registered named application's folder; an existing folder; a file
+        the root application's built site holds; a CompressOutput or
+        CompressibleExtensions a build would refuse.
+      - ITS LIFETIME: such a file does NOT survive a build that replaces its
+        place. A full BuildAsync and a build of the root application remove
+        it (and its copies) like anything else the build did not write; a
+        named application's build leaves it alone. Write it after EVERY
+        build.
 
     Call MaterializeAsync before BuildAsync or ServeAsync; neither does it by
     itself (a build program may run checks of its own in between).
@@ -2173,8 +2681,10 @@ THE PLATFORM'S CRATES
     platform crates its own code names directly, and - in the second mode -
     any crate of its own. Its Cargo.lock is its own (commit it; see THE
     FRONTEND'S Cargo.lock for what the build may change in it). Everything
-    MaterializeAsync writes - platform/, src/generated/, .cargo/ - is build
-    output: git-ignore it and never edit it. A cargo setting of the
+    MaterializeAsync writes - platform/codebrix-webplatform/,
+    platform/vendor/, src/generated/, .cargo/ - is build output: never edit
+    it; each of those folders ignores itself in git (see GIT: WHAT IS BUILD
+    OUTPUT). A cargo setting of the
     application's own belongs in a .cargo/config.toml in a folder ABOVE the
     frontend (cargo reads both).
 
@@ -2253,19 +2763,22 @@ NOTICES FOR A BUILT SITE
 
         string platformNotices = PlatformCrates.ReadNotices();
 
-    Serve them with the site - typically as THIRD-PARTY-NOTICES.txt in the
-    backend's wwwroot, after the application's own notices (crates it adds,
-    its stylesheet tool, anything else it ships):
+    Serve them with the site - typically as THIRD-PARTY-NOTICES.txt beside
+    the built site, after the application's own notices (crates it adds,
+    its stylesheet tool, anything else it ships). The generated file is
+    BUILD OUTPUT: write it into frontend-built/ with WriteBuiltFile (see
+    STEP 3, A FILE OF THE BUILD PROGRAM'S OWN), which gives it its .br / .gz
+    copies, AFTER EVERY BUILD (a full build and a build of the root
+    application remove it), with the build's configuration - never into
+    wwwroot/, which holds the developer's own files:
 
-        File.WriteAllText("backend/MyApp.Api/wwwroot/THIRD-PARTY-NOTICES.txt",
+        frontend.WriteBuiltFile("backend/MyApp.Api", "THIRD-PARTY-NOTICES.txt",
             File.ReadAllText("THIRD-PARTY-NOTICES.txt") + "\n\n\n"
-                + PlatformCrates.ReadNotices());
+                + PlatformCrates.ReadNotices(),
+            FrontendConfiguration.Release);
 
-    (Write it AFTER BuildAsync: with a default application BuildAsync
-    replaces the web root's whole content. When every application has a
-    name the build leaves the file alone, but writing it after the build is
-    right either way.) The Backend package serves it like any other file of
-    the web root, at /THIRD-PARTY-NOTICES.txt. One file serves every
+    The Backend package serves it like the built site's files, at
+    /THIRD-PARTY-NOTICES.txt. One file serves every
     frontend application of the site. PlatformCrates.ReadNotices covers the
     platform's crates only: it does not cover the crates a registered crate
     bundle adds (serve their notices too, from the package that brings
@@ -2403,6 +2916,56 @@ DX NEEDS libgit2
     }
 
 
+GIT: WHAT IS BUILD OUTPUT
+=========================
+
+THE FOLDERS THE BUILD WRITES are build output - never edited, never
+committed:
+
+    <frontend>/src/generated/          the generated client code
+                                       (RustClientGenerator.WriteTo)
+    <frontend>/platform/codebrix-webplatform/
+                                       the shared Rust crate
+                                       (SharedRustCrate.ExtractTo)
+    <first frontend>/platform/vendor/  the platform's and the bundles' crates
+    <frontend>/.cargo/                 the cargo configuration
+    <frontend>/target/                 cargo's and dx's output (dx's data in
+                                       target/dx-home)
+    <frontend>/assets/generated/       the generated Tailwind stylesheet (a
+                                       frontend that uses Tailwind)
+    <backend project>/frontend-built/  the built site (BuildAsync)
+
+EVERY ONE OF THEM IGNORES ITSELF. The library writes a .gitignore into each
+of those folders - a header comment saying what wrote it and that the
+folder is build output, then the line `*` (which ignores the .gitignore
+too) - whenever it is missing or differs: MaterializeAsync on every run,
+whether anything else changed or not; BuildAsync and ServeAsync again for
+target/, assets/generated/ and (BuildAsync) frontend-built/. `cargo clean`
+deletes target/ with its .gitignore; the next materialize, build or serve
+writes it again. So an application needs NO ignore rules for any of them,
+in any .gitignore of its own. (Tailwind honours the same files, so it never
+reads class names from the build's output either.)
+
+THE LIBRARY NEVER WRITES INTO A FOLDER THE DEVELOPER OWNS: not the frontend
+folder itself, not src/, assets/ or platform/, not wwwroot/, not a path
+crate beside the frontend - no .gitignore, nothing else. It does not check
+what git ignores either.
+
+WHAT THE APPLICATION COMMITS, per frontend: Cargo.toml, Cargo.lock (see THE
+FRONTEND'S Cargo.lock), its own src/ (everything but src/generated/),
+tailwind.css, Dioxus.toml and its own assets (everything in assets/ but
+assets/generated/). And the backend project with its wwwroot/ files, the
+build program, the contract projects, any path crate the frontends share.
+
+OUTPUT ALREADY COMMITTED. A repository that committed one of those folders
+before it ignored itself keeps tracking what is committed. Untrack it once
+and commit the change; the folder's own .gitignore keeps it out afterwards:
+
+    git rm -r --cached frontend/target backend/MyApp.Api/frontend-built
+
+(`--cached` removes the files from git only; the folder stays on disk.)
+
+
 CODE SPLITTING
 ==============
 
@@ -2427,10 +2990,25 @@ SWITCHING IT ON takes both of these:
 
 WHAT IS SPLIT. With the feature on, EVERY route of the application's
 Routable enum becomes a piece of its own, loaded when the route is first
-shown: dx writes one module_<n>_route<Name>...wasm per route, the main file,
-and shared chunk_<n>_split...wasm files for code several pieces use. A
-second visit to a page downloads nothing. The lower-level forms, in
-dioxus::wasm_split, split off code by hand:
+shown: dx writes one module_<n>_route<Name>...wasm per route, the main
+file, and ONE shared chunk file, chunk_0_split...wasm. A second visit to a
+page downloads nothing. CODE AND DATA THAT SEVERAL PIECES USE (and the main
+file does not hold) GO ONCE INTO THE SHARED CHUNK, which the browser fetches
+once per page load, before the first piece that needs it (with nothing
+shared the chunk is empty and is never requested). A first page therefore
+requests the main file, the shared chunk and its own piece; every other
+page opened later requests only its own piece. THE TRADE-OFF: because there
+is one chunk, the FIRST page a visitor opens also downloads everything that
+ANY two pieces share, whether that page uses it or not - a visit to one
+page can download more than with each piece holding its own copies, and
+every later page downloads less. So put LARGE code that only SOME pages need
+- a crate bundle's engine, for example - behind ONE lazily loaded piece of
+its own (one #[wasm_split] function or one lazy_loader!) that those pages
+call: code reached through a single piece is not shared, so it stays in that
+piece and out of the chunk, and a visitor who never opens those pages never
+downloads it. Two pages that call such code DIRECTLY put it into the chunk,
+and every visitor downloads it with the first page. The lower-level forms,
+in dioxus::wasm_split, split off code by hand:
 
     #[wasm_split::wasm_split(forecast)]       // an ASYNC function whose code
     async fn run_forecast(runs: u32) -> Forecast { ... }   // is the piece
@@ -2451,8 +3029,14 @@ dioxus::wasm_split, split off code by hand:
   * #[wasm_split] takes async functions only, and drops the function's `pub`
     in the WebAssembly build: keep it private and call it from a public
     function beside it.
-  * In a build without splitting (ServeAsync, or WasmSplit off) all of this
-    is ordinary code that is already loaded.
+  * lazy_loader! takes a function of EXACTLY ONE argument (LazyLoader<Args,
+    Ret>: one Args): pass several values as a tuple or a struct, and none as
+    `()`. A function of no argument, or of two or more, does not compile.
+  * In a build without splitting (ServeAsync, or WasmSplit off, Debug or
+    Release) all of this is ordinary code that is already loaded: dx writes
+    a stand-in loader (__wasm_split.js) that reports every split point as
+    loaded and calls the main module's own copy of each piece, so the same
+    frontend works split and unsplit. A split Debug build works too.
 
 THE LOADING STATE. A route's piece (or a lazy component) SUSPENDS while it
 downloads. Put a SuspenseBoundary around the Router, or around the Outlet
@@ -2509,10 +3093,11 @@ code carries the absolute paths of the frontend's folder and its crates
 (dx's asset references are named from them), so the main file, the pieces
 and everything that names them get other bytes and other names. Build a
 site that is deployed from one place in one fixed folder.
-KEEP target/ IGNORED: Tailwind looks for class names in every file of the
-frontend folder that a .gitignore does not exclude. Without a .gitignore
-line for target/ (the build output) it reads the build's own files, and the
-stylesheet - and its name - changes from one build to the next.
+THE STYLESHEET'S NAME stays the same between builds because Tailwind skips
+the build's own files: it looks for class names in every file of the
+frontend folder that a .gitignore does not exclude, and target/ (like every
+folder the build writes) carries its own .gitignore (see GIT: WHAT IS BUILD
+OUTPUT). No ignore rule of the application's is needed.
 
 
 CRATE BUNDLES
@@ -2605,6 +3190,44 @@ WRITING A PACKAGE THAT BRINGS A BUNDLE (the package author):
     platform's notices (PlatformCrates.ReadNotices) do not cover them.
 
 
+SHARING RUST CODE BETWEEN FRONTENDS
+===================================
+
+Several frontend applications that share code of their own (a palette,
+components, page parts) keep it in a LOCAL PATH CRATE of the application's
+own beside them, which each frontend names in its Cargo.toml:
+
+    frontends/
+        shared/      Cargo.toml, src/      the application's own crate
+        home/        Cargo.toml:  shared = { path = "../shared" }
+        sales/       Cargo.toml:  shared = { path = "../shared" }
+
+  - It works in the default crate mode (CrateMode.PlatformCratesOnly)
+    PROVIDED ITS OWN DEPENDENCIES ARE ALL IN THE VENDORED SET - the
+    platform's crates and those of the registered crate bundles: the
+    frontends materialize, their Cargo.lock files take the path crate in
+    with no stale entries, the lock-file check before dx passes, and they
+    build offline. Name its dependencies as the frontends do (dioxus with
+    the features it uses, at the platform's versions). A dependency the
+    vendor folder does not hold is cargo's "no matching package": that is
+    the moment for CrateMode.ApplicationAddsCrates.
+  - The frontend's own .cargo/config.toml (written by MaterializeAsync)
+    governs the path crate's dependencies too when cargo runs in the
+    frontend folder, as dx and the build do.
+  - It is the developer's folder: the library writes nothing into it (no
+    .gitignore, no .cargo). Commit it.
+  - TAILWIND does not see class names in it, because it is outside the
+    frontend folder. Each frontend that uses it adds an @source line to its
+    tailwind.css, the path relative to tailwind.css:
+
+        @import "tailwindcss";
+        @source "../shared/src";
+
+  - With CODE SPLITTING, code of the path crate that several pieces use goes
+    once into the shared chunk, like any other shared code, and so arrives
+    with the first page a visitor opens (see CODE SPLITTING, WHAT IS SPLIT).
+
+
 FRONTENDBUILDER API REFERENCE: THE SHARED RUST CRATE
 ====================================================
 
@@ -2636,7 +3259,9 @@ The frontend names that folder as a path dependency:
     codebrix-webplatform = { path = "platform/codebrix-webplatform" }
 
 The extracted crate is BUILD OUTPUT, like the generated code: never edit it in
-an application, do not commit it, ignore its folder in git. It always matches
+an application and do not commit it; its folder carries its own .gitignore,
+which ExtractTo writes and never deletes (see GIT: WHAT IS BUILD OUTPUT). It
+always matches
 the FrontendBuilder package in use (and so the BackendMapper the generated code
 was written with).
 
@@ -2701,8 +3326,12 @@ WHAT THE CRATE PROVIDES (Rust)
           cookies itself;
         - the X-Requested-With header on every request that changes state;
         - on 401 from an endpoint that needs sign-in: ONE refresh call, shared
-          by every request waiting on it, and ONE retry; if that fails too the
-          application is told the session ended;
+          by every request waiting on it, and ONE retry (see SESSION REFRESH
+          OUTCOMES below): when the server REFUSES the refresh, or the retry
+          is 401 again, the application is told the session ended and the
+          request fails with Unauthorized; when the refresh FAILS (no
+          answer, a 5xx, 408 or 429) the session is left alone and the
+          request fails with the refresh's own error;
         - a success answer read as JSON (send_json), as nothing
           (send_empty) or as the bytes it is (send_bytes, which the
           generated <name>_bytes functions of [WireFile] actions call);
@@ -2728,8 +3357,16 @@ WHAT THE CRATE PROVIDES (Rust)
       }
       pub const REQUEST_MARKER_HEADER: &str = "X-Requested-With";
       pub fn configure(config: ClientConfig);   // the REST client alone
-      pub async fn refresh_session() -> bool;   // shared with the SignalR client;
-                                                // false at once without a path
+      pub async fn refresh_session() -> RefreshOutcome;
+          // shared with the SignalR client; single-flight (every caller
+          // waiting on one refresh gets the same outcome); Refused at once
+          // without a path
+      pub enum RefreshOutcome {             // also api::RefreshOutcome
+          Refreshed,          // 2xx: on_refreshed was handed the answer
+          Refused,            // a 4xx other than 408 and 429, or no refresh
+                              // path: the session is gone
+          Failed(ApiError),   // not settled: the session is left alone
+      }
       pub enum Auth { Session, Public }
       pub use reqwest::Method;
       pub async fn send_json<T>(method, path, body, auth) -> Result<T, ApiError>
@@ -2737,20 +3374,52 @@ WHAT THE CRATE PROVIDES (Rust)
       pub async fn send_bytes(method, path, body, auth) -> Result<Vec<u8>, ApiError>
       pub fn body<B: Serialize>(value: &B) -> Result<String, ApiError>
 
+      SESSION REFRESH OUTCOMES. A refresh is REFUSED only when the server
+      looked at the session and said no: a 4xx answer other than 408 and 429
+      (or there is no refresh path). Then the session ends:
+      on_session_ended is called and the request fails with Unauthorized
+      (as it does when the request is 401 again after a renewed session). A
+      refresh FAILS - Failed(error) - when it did not settle the session:
+      no answer (error = Network { cause }), a request that could not be
+      sent (NotSent { cause }), or an answer that only says "not now": a
+      5xx (503 with code "offline" while the site is offline), 408, 429, or
+      a 1xx / 3xx (error = Problem { .. }, built from the answer). Then the
+      session is LEFT ALONE, on_session_ended is NOT called, and the request
+      fails with that same error - the user can simply try again. A hub
+      treats a failed refresh as a failed connection attempt (see the
+      SignalR client's SET-UP).
+
   codebrix_webplatform::api::{ApiError, ApiResult}
       pub enum ApiError {
           Problem { status: u16, title: String, code: String,
                     errors: BTreeMap<String, Vec<String>> },   // an ApiProblem
           Unauthorized,   // 401 with an empty body: the session is gone
-          Network,        // no answer
+          Network { cause: String },  // sent, no (complete) answer: server
+                                      // unreachable, connection failed,
+                                      // fetch refused, body unreadable
+          NotSent { cause: String },  // could not be built, nothing sent
+                                      // (an address that is not a URL):
+                                      // a defect of the page or its set-up
           Decode,         // an answer that could not be read
       }
       message() -> String        a sentence fit to show, always
       status() -> Option<u16>    code() -> &str    is_not_found() -> bool
+      is_offline() -> bool       code() == "offline": the site is offline
+                                 for maintenance (THE OFFLINE FILE); a 503
+                                 without that code is not
+      cause() -> Option<&str>    the transport's text, for Network /
+                                 NotSent (reqwest's error and its sources,
+                                 ": "-joined); for the developer's log,
+                                 NOT fit to show; None otherwise
       field(name) -> Option<String>     the first message for a field
       form_message(known_fields) -> String   the title plus messages for
                                              fields the form does not show
       pub type ApiResult<T> = Result<T, ApiError>;
+      code() is "network" for Network and "not_sent" for NotSent; their
+      message() is "Could not reach the server. ..." and "This page could
+      not send its request to the server. Reload the page and try again.".
+      Match them with `{ .. }`: ApiError::Network { .. }. {:?} shows the
+      cause.
 
   codebrix_webplatform::dates::Date
       A calendar date without time or zone; the default Rust type of a .NET
@@ -2813,14 +3482,22 @@ WHAT THE CRATE PROVIDES (Rust)
       SET-UP: the one set-up call (THE ONE SET-UP CALL) does it. When
         negotiate for a hub that needs sign-in answers 401, the session is
         renewed ONCE through api::client::refresh_session, the same shared
-        refresh the REST client uses, and the attempt is repeated; without a
-        refresh path a 401 leaves the connection Disconnected. Every
-        negotiate request carries the backend's request marker. (Underneath:
+        refresh the REST client uses. Refreshed: negotiate again. Refused
+        (or no refresh path): the connection is Disconnected and its calls
+        fail with Unauthorized. Failed (no answer, a 5xx, 408, 429): a
+        failed attempt like any transport failure - the connection stays
+        Connecting / Reconnecting and retries with the usual backoff, and
+        its calls fail with NotConnected { cause: Some(..) } or NotSent
+        carrying the refresh's cause ("the server answered 503 (offline):
+        <title>"); never Unauthorized. Every negotiate request carries the
+        backend's request marker. (Underneath:
         signalr::configure(SignalRConfig::using_rest_refresh()) and
         signalr::set_negotiate_headers; an application with a refresh of its
-        own may call those after the set-up call:
-        `SignalRConfig { refresh: Some(Rc::new(|| Box::pin(async { true })
-        as RefreshFuture)) }`.)
+        own may call those after the set-up call; its hook resolves to a
+        RefreshOutcome (RefreshFuture = Pin<Box<dyn Future<Output =
+        RefreshOutcome>>>):
+        `SignalRConfig { refresh: Some(Rc::new(|| Box::pin(async {
+        RefreshOutcome::Refreshed }) as RefreshFuture)) }`.)
 
       SIGNING IN AND OUT. Tell the client when it happens:
           signalr::session_ended();     // signed out: every hub that needs
@@ -2897,8 +3574,17 @@ WHAT THE CRATE PROVIDES (Rust)
         dropping it before the end cancels the stream on the server. It is
         read by the task that awaits it (a Dioxus task in a component).
       ConnectionState: Disconnected, Connecting, Connected, Reconnecting.
-      HubError: NotConnected, Unauthorized, Network, Server(text), Decode,
-        Cancelled, Closed. message() (and Display) is a sentence fit to show;
+      HubError: NotConnected { cause: Option<String> }, NotSent { cause:
+        String }, Unauthorized, Network, Server(text), Decode, Cancelled,
+        Closed. NotConnected: no live connection and none could be made;
+        its cause is what went wrong in the LAST failed attempt (None when
+        none has failed yet). NotSent: the last attempt could not even be
+        made (its request could not be built, or the WebSocket could not be
+        opened) - a defect of the page or its set-up. cause() -> Option<&str>
+        gives either cause, for the developer, never part of message().
+        Match them with `{ .. }`: HubError::NotConnected { .. }. A hub whose
+        negotiate answers 503 reports NotConnected { cause: Some("negotiate
+        answered 503") }. message() (and Display) is a sentence fit to show;
         for Server it is the server's text, and for a HubException thrown by
         the hub, the exception's own message.
       HubDescriptor { name, path, requires_sign_in }: one static per hub,
@@ -2940,7 +3626,8 @@ WHAT THE CRATE PROVIDES (Rust)
         last_negotiate_url(), sockets_opened(), open_sockets(),
         last_socket_url(), refused_sockets(); and to misbehave:
         drop_connection(), refuse_connections(bool),
-        require_sign_in_failure(bool) (401 until the refresh has run),
+        require_sign_in_failure(bool) (401 until a refresh has renewed the
+        session: a refresh hook that resolved to RefreshOutcome::Refreshed),
         silence(bool) (stop answering pings), on_negotiate(hook) (runs as
         each negotiate request arrives). Like the server, the fake refuses a
         socket opened after the session cookies changed since its token was
@@ -3063,9 +3750,10 @@ COMPLETE EXAMPLES
                 app.UseHsts();
             }
 
-            // serves the frontend applications the build wrote into wwwroot
-            // (read from its manifest), the error bodies, the X-Requested-With
-            // and Origin checks, the security headers
+            // serves the frontend applications the build wrote into
+            // frontend-built/ (read from its manifest) and the files of
+            // wwwroot/, the error bodies, the X-Requested-With and Origin
+            // checks, the security headers
             app.UsePlatformBackend();
 
             app.UseRouting();
@@ -3078,8 +3766,9 @@ COMPLETE EXAMPLES
     }
 
 The backend's project is a Microsoft.NET.Sdk.Web project that references the
-Backend package; nothing in it names a frontend application. Its wwwroot is
-the web root the build program builds into.
+Backend package; nothing in it names a frontend application. Its project
+folder is the folder the build program builds into (frontend-built/ in it);
+its wwwroot/ holds only the developer's own files.
 
 3. The build program (builds the frontend)
 ------------------------------------------
@@ -3125,18 +3814,20 @@ the web root the build program builds into.
                 // backend -> src/generated; shared crate and the platform's
                 // crates -> platform/; .cargo/config.toml (offline)
                 await frontend.MaterializeAsync(stop.Token);
-                // the site, shrunk, copied into the backend's static files
+                // the site, shrunk, copied into the backend project's
+                // frontend-built/ folder
                 var built = await frontend.BuildAsync(
                     FrontendConfiguration.Release,
-                    "backend/MyApp.Api/wwwroot",
+                    "backend/MyApp.Api",
                     stop.Token);
                 // the notices the site serves: the application's, then the
-                // platform's
-                File.WriteAllText(
-                    "backend/MyApp.Api/wwwroot/THIRD-PARTY-NOTICES.txt",
+                // platform's - build output, after every build
+                frontend.WriteBuiltFile("backend/MyApp.Api",
+                    "THIRD-PARTY-NOTICES.txt",
                     File.ReadAllText("THIRD-PARTY-NOTICES.txt") + "\n\n\n"
-                        + PlatformCrates.ReadNotices());
-                Console.WriteLine($"Built {built.WebRootFileCount} files.");
+                        + PlatformCrates.ReadNotices(),
+                    FrontendConfiguration.Release, stop.Token);
+                Console.WriteLine($"Built {built.BuiltFileCount} files.");
                 // for development instead:
                 //     return await frontend.ServeAsync(stop.Token);
                 return 0;
@@ -3217,18 +3908,22 @@ The same steps by hand, with the lower-level APIs (no dx involved):
                         args.Length > 1 ? args[1] : null, stop.Token);
                 }
 
-                var webRoot = "backend/MyApp.Api/wwwroot";
-                var built = await frontend.BuildAsync(
-                    FrontendConfiguration.Release, webRoot, stop.Token);
-                File.WriteAllText(
-                    Path.Combine(webRoot, "THIRD-PARTY-NOTICES.txt"),
+                var backend = "backend/MyApp.Api";   // the project's folder
+                // "build sales": that application alone; otherwise all three
+                var built = args.Length > 1 && args[0] == "build"
+                    ? await frontend.BuildAsync(args[1],
+                        FrontendConfiguration.Release, backend, stop.Token)
+                    : await frontend.BuildAsync(
+                        FrontendConfiguration.Release, backend, stop.Token);
+                frontend.WriteBuiltFile(backend, "THIRD-PARTY-NOTICES.txt",
                     File.ReadAllText("THIRD-PARTY-NOTICES.txt") + "\n\n\n"
-                        + PlatformCrates.ReadNotices());
+                        + PlatformCrates.ReadNotices(),
+                    FrontendConfiguration.Release, stop.Token);
                 foreach (var application in built.Applications)
                 {
                     Console.WriteLine($"{application.ApplicationName}: "
-                        + $"{application.WebRootFileCount} files in "
-                        + application.WebRootApplicationDirectory
+                        + $"{application.BuiltFileCount} files in "
+                        + application.BuiltApplicationDirectory
                         + (application.WasmSplit ? " (split)" : ""));
                 }
 
@@ -3242,9 +3937,9 @@ The same steps by hand, with the lower-level APIs (no dx involved):
         }
     }
 
-The web root then holds home's site at its top, sales/ and admin/ beside it,
-and codebrix-frontends.toml; the backend of example 2 serves all three with
-no change.
+backend/MyApp.Api/frontend-built/ then holds home's site at its top, sales/
+and admin/ beside it, and codebrix-frontends.toml; the backend of example 2
+serves all three with no change.
 
 5. Using the generated code (frontend, Rust)
 --------------------------------------------
@@ -3365,14 +4060,27 @@ The frontend crate keeps a small Cargo.toml of its own:
     [features]
     devtools = ["dioxus/devtools"]      # for ServeAsync's hot reload
 
-and its own Cargo.lock (committed), and git-ignores what is materialized and
-built: frontend/src/generated/, frontend/platform/, frontend/.cargo/ and
-frontend/target/. With several frontend applications each folder is such a
-crate (frontends/home, frontends/sales, ...) and each ignores the same four
-folders. What the build writes into the backend's wwwroot (the sites and the
-manifest) is build output as well: ignore it in git - with a default
-application that is the folder's whole content (a .gitkeep keeps the
-folder).
+and its own Cargo.lock (committed). With several frontend applications each
+folder is such a crate (frontends/home, frontends/sales, ...). What is
+materialized and built - frontend/src/generated/,
+frontend/platform/codebrix-webplatform/, frontend/platform/vendor/,
+frontend/.cargo/, frontend/target/, frontend/assets/generated/ and the
+backend's frontend-built/ - ignores itself in git: the application writes NO
+ignore rules for them (see GIT: WHAT IS BUILD OUTPUT).
+
+A global.json OF ITS OWN. The application's repository needs a global.json
+at its root that pins the .NET SDK the projects are built with (a net10.0
+SDK; the newest SDK on the machine is used otherwise). An application started
+from a copy of one of this repository's samples has none: the samples build
+with the global.json at this repository's root, which is not copied with
+them. Copy it (or write one) beside the copied application:
+
+    {
+      "sdk": { "version": "<an installed .NET 10 SDK>",
+               "rollForward": "latestFeature" }
+    }
+
+("rollForward": "latestFeature" accepts later .NET 10 SDKs too).
 
 
 PERFORMANCE TIPS
@@ -3393,13 +4101,17 @@ PERFORMANCE TIPS
     vendor folder; only the generated code, the shared crate and the cargo
     configuration are written per application.
   * Split the application whose pages are many or heavy (CODE SPLITTING):
-    the first page then downloads the main file and its own piece only.
+    the first page then downloads the main file, the shared chunk and its
+    own piece only (see CODE SPLITTING for what the chunk holds).
   * BuildAsync starts from a clean target/dx folder on purpose; cargo's own
     compiled crates in target/ are kept, so a second build is quick.
-  * Leave CompressOutput and ServePrecompressedFiles on (the defaults): the
-    Brotli copy of a platform application's .wasm is a fraction of its size
-    (see COMPRESSION), compressed once at build time and served without any
-    work per request. CompressOutput = None makes a local build quicker.
+  * Leave CompressOutput unset and ServePrecompressedFiles on (the
+    defaults): the Brotli copy of a platform application's .wasm is a
+    fraction of its size (see COMPRESSION), compressed once at build time
+    and served without any work per request. A Debug build is not
+    compressed by default, which keeps a local build quick.
+  * While working on one frontend application, build only that one
+    (BuildAsync(name, ...)), in Debug, unsplit.
 
 
 COMMON PITFALLS TO AVOID
@@ -3518,7 +4230,7 @@ COMMON PITFALLS TO AVOID
     exist (and the Tailwind stylesheet the asset!() names, which Materialize
     also writes, with the packaged Tailwind).
 
-  * "Asset at /assets/tailwind.css doesn't exist" from cargo after
+  * "Asset at /assets/generated/tailwind.css doesn't exist" from cargo after
     MaterializeAsync: the result's StylesheetMessage says why it was not
     generated (the packaged Tailwind is not beside the build program, or it
     failed). Reference the machine's host-tools package (it brings the
@@ -3555,9 +4267,37 @@ COMMON PITFALLS TO AVOID
     MaterializeAsync owns that file and refuses one it did not write; put
     them in a .cargo/config.toml in a folder above the frontend.
 
-  * Committing frontend/platform/ or frontend/.cargo/. They are build output
+  * Committing frontend/platform/codebrix-webplatform/,
+    frontend/platform/vendor/ or frontend/.cargo/. They are build output
     (platform/vendor alone is the size of the platform's crates); they are
-    rewritten from the package on every materialize.
+    rewritten from the package on every materialize, and each ignores
+    itself. Already committed: see GIT: WHAT IS BUILD OUTPUT.
+
+  * Setting tailwind_input or tailwind_output in Dioxus.toml. The platform's
+    Tailwind paths are fixed (tailwind.css and assets/generated/tailwind.css
+    in the frontend folder): MaterializeAsync, BuildAsync and ServeAsync
+    refuse the setting ("... so that setting cannot be used: remove it from
+    the file"). Remove it.
+
+  * Naming the generated stylesheet asset!("/assets/tailwind.css"). It is
+    asset!("/assets/generated/tailwind.css").
+
+  * Passing wwwroot (or frontend-built) to BuildAsync. Its folder argument
+    is the BACKEND PROJECT'S folder ("backend/MyApp.Api"); the library
+    appends frontend-built itself.
+
+  * Leaving an old built site, or a stray index.html, in wwwroot/. With the
+    default FilePrecedence the built frontend's file still wins, and the
+    start-up warning names every clashing address: delete the wwwroot/ copies.
+
+  * Hubs answering 403 forbidden_origin under ServeAsync with a
+    [[web.proxy]]: add the dx dev server's origin to AdditionalHubOrigins
+    in Development (STEP 3, THE DEV SERVER AND THE BACKEND); never switch
+    RequireHubOrigin off for it.
+
+  * Matching ApiError::Network or HubError::NotConnected without `{ .. }`:
+    both carry a cause (ApiError::Network { .. }).
+
 
   * Pointing FrontendDirectory at a folder that also holds other projects'
     output in src/generated or platform/codebrix-webplatform: both folders
@@ -3567,7 +4307,7 @@ COMMON PITFALLS TO AVOID
   * The pipeline in the wrong order: UseRouting, MapControllers or the
     authentication BEFORE UsePlatformBackend, or no UseRouting of your own at
     all. Without your own app.UseRouting() after UsePlatformBackend, routing
-    runs first and a controller wins over a web-root file at the same
+    runs first and a controller wins over a served file at the same
     address. The order: Build; UseHsts (and whatever must see every answer);
     UsePlatformBackend; UseRouting; rate limiter; authentication;
     authorization; controllers and hubs.
@@ -3658,17 +4398,19 @@ COMMON PITFALLS TO AVOID
     the committed Cargo.lock.
 
   * Expecting `dx serve` (ServeAsync) to serve compressed files. It never
-    does: only BuildAsync into a web root writes the .br / .gz copies, and
+    does: only BuildAsync into a backend project folder writes the .br / .gz
+    copies (by default for a Release build only), and
     only the platform backend serves them. Look at sizes and
     Content-Encoding on a build served by the backend.
 
-  * Committing the web root's .br / .gz files. They are build output, like
-    the rest of what the build writes into the web root; the repository's
-    .gitignore should ignore the web root's content (.gitkeep excepted).
+  * Committing frontend-built/ or its .br / .gz files. They are build
+    output, like the rest of what the build writes there, and the folder
+    ignores itself (see GIT: WHAT IS BUILD OUTPUT).
 
-  * Editing a file in the web root by hand after a build. Its .br / .gz
+  * Editing a file in frontend-built/ by hand after a build. Its .br / .gz
     copies still hold the old content, and they are what browsers get.
-    Change the frontend and build again (or delete the copies).
+    Change the frontend and build again (or put your own file in wwwroot/
+    and set FilePrecedence = WebRootWins).
 
   * Linking to x.wasm.br, or expecting it to download. A copy is never
     served under its own name (404); ask for x.wasm and the backend picks
@@ -3681,15 +4423,15 @@ COMMON PITFALLS TO AVOID
     Mark the action [WireFile] (it must answer GET and read no body; the
     frontend gets its <name>_url and <name>_bytes functions with it), or let
     a proxy compress the download. Read THE RISK first either way. (A type
-    that is compressed already - PNG, ZIP, PDF ... - is never compressed,
-    marked or not.)
+    that is not in CompressedFileTypes - PNG, ZIP, PDF, WOFF2 ... - is never
+    compressed, marked or not.)
 
   * Expecting CompressResponses = FileAnswers to compress JSON. It does not,
     on purpose (THE RISK in COMPRESSION), except in a [WireFile] answer;
     FileAnswersAndJson compresses every action's JSON answers. Do not
     add app.UseResponseCompression() of your own on top: it compresses by
-    its own rules, without the platform's exclusions (the hubs, the web
-    root's files).
+    its own rules, without the platform's exclusions (the hubs, the served
+    files).
 
   * "The registered crate bundles cannot be combined with the platform's
     crates ...": two packages (or a package and the platform) bring
@@ -3707,7 +4449,7 @@ WHAT THIS PACKAGE DOES NOT DO
     CORS, the controllers and the hub mapping are the application's.
   * The Backend package does not build the frontend, and serves only the
     frontend applications the manifest names (or the set given to
-    UsePlatformBackend), from the web root.
+    UsePlatformBackend), from frontend-built/, and the files of wwwroot/.
   * A platform application has ONE backend: frontend applications that need
     different backends are separate platform applications.
   * Core and BackendMapper do not build the frontend; FrontendBuilder does,
@@ -3715,8 +4457,9 @@ WHAT THIS PACKAGE DOES NOT DO
     target are the developer's to install (Tailwind comes in a package), and
     CheckPrerequisitesAsync says what is missing.
   * FrontendBuilder does not deploy: no containers, no database, no hosting.
-    Publishing the backend with the built site in its wwwroot is the
-    application's own step.
+    Publishing the backend is the application's own step; the Backend
+    package carries frontend-built/ into the publish output by itself (see
+    THE BUILT FRONTEND FOLDER AND wwwroot/, PUBLISHING).
   * FrontendBuilder does not include dx, wasm-bindgen or Tailwind; they come
     from the host-tools package for the build machine (Tailwind through its
     Styling package).
@@ -3770,7 +4513,7 @@ FrontendBuilder
                         https://github.com/ellisnet/CodeBrix.WebPlatform/blob/main/tests/CodeBrix.WebPlatform.FrontendBuilder.Tests/PlatformFrontendTests.cs
     several frontend applications, splitting, ServeAsync(name)
                         https://github.com/ellisnet/CodeBrix.WebPlatform/blob/main/tests/CodeBrix.WebPlatform.FrontendBuilder.Tests/PlatformFrontendApplicationsTests.cs
-    the application options, the web root, the manifest
+    the application options, the built frontend folder, the manifest
                         https://github.com/ellisnet/CodeBrix.WebPlatform/tree/main/tests/CodeBrix.WebPlatform.FrontendBuilder.Tests/Applications
     crate bundles and the strict rule
                         https://github.com/ellisnet/CodeBrix.WebPlatform/blob/main/tests/CodeBrix.WebPlatform.FrontendBuilder.Tests/Crates/CrateBundleMergeTests.cs
@@ -3798,9 +4541,10 @@ QUICK REFERENCE CARD
   BACKEND (references Backend, which brings Core)
     builder.Services.AddPlatformBackend(o => o.ContentSecurityPolicy = "...");
     app.UseHsts();                    // (outside Development) BEFORE
-    app.UsePlatformBackend();         // serves wwwroot's applications (its
-                                      // manifest), error bodies, checks,
-                                      // security headers
+    app.UsePlatformBackend();         // serves the applications in
+                                      // frontend-built/ (its manifest) and
+                                      // wwwroot/, error bodies, checks,
+                                      // security headers, the offline file
     app.UseRouting(); ...auth...; app.MapControllers(); app.MapHub<..>(..);
     return new ApiProblemResult(ApiProblems.NotFound());   // in an action
     await ApiProblemWriter.WriteAsync(context, problem);   // in middleware
@@ -3810,6 +4554,18 @@ QUICK REFERENCE CARD
     o.CompressResponses = ResponseCompression.FileAnswers   // default None;
                                       // [WireFile] answers only; read
                                       // COMPRESSION (THE RISK) first
+    o.FilePrecedence                  BuiltFrontendWins (default) |
+                                      WebRootWins, for an address in both
+                                      folders
+    o.HashedFileCacheControl / o.UnhashedFileCacheControl
+                                      "public, max-age=31536000, immutable"
+                                      (dx-hashed names) / "no-cache"
+    o.StaticFileContentTypes[".toml"] = "application/toml";   // else 404
+    o.CompressedFileTypes             [WireFile] types compressed
+    o.AdditionalHubOrigins.Add("http://localhost:8080");  // dx serve, in
+                                      // Development only
+    wwwroot/app-offline.html          offline while it is there: 503 (API:
+                                      code "offline"), no restart
     [WireRequired] / [WireOptional]   on contract classes, client interfaces,
                                       members; nearest wins
     [WireRequired] on a `T?` member   the frontend always sends it
@@ -3840,11 +4596,17 @@ QUICK REFERENCE CARD
     await frontend.MaterializeAsync();   // src/generated, platform/ (crate +
                                          // crates), .cargo/config.toml, and a
                                          // missing Tailwind stylesheet
+                                         // (assets/generated/tailwind.css)
     result.Stylesheet / .StylesheetMessage   // Generated, AlreadyPresent, ...
-    options.GenerateMissingStylesheet = false;   // TailwindInputFile/OutputFile
+    options.GenerateMissingStylesheet = false;
     options.CrateMode = CrateMode.ApplicationAddsCrates;   // own crates
-    await frontend.BuildAsync(FrontendConfiguration.Release, "wwwroot");
-                                         // every application, + the manifest
+    await frontend.BuildAsync(FrontendConfiguration.Release,
+        "backend/MyApp.Api");            // every application, into the
+                                         // project's frontend-built/, + the
+                                         // manifest
+    await frontend.BuildAsync("sales", FrontendConfiguration.Release,
+        "backend/MyApp.Api");            // that application alone
+    build output ignores itself in git: no ignore rules (GIT)
     await frontend.ServeAsync();         // dx serve, hot reload (never split)
     several applications: options.Applications.Add(new
         FrontendApplicationOptions { Name = "sales", FrontendDirectory =
@@ -3855,14 +4617,18 @@ QUICK REFERENCE CARD
                SuspenseBoundary around the Router; always wasm-opt
     crate bundles: the package's Register call BEFORE MaterializeAsync;
                result.CrateBundles; strict rule: one version per crate
-    PlatformCrates.ReadNotices()          // serve after the app's notices
+    PlatformCrates.ReadNotices()          // serve after the app's notices,
+    frontend.WriteBuiltFile(backend, "THIRD-PARTY-NOTICES.txt", text,
+        configuration);                   // into frontend-built/, with copies;
+                                          // again after every build
     catch (FrontendBuildException e)  ->  e.Message says what to do
     options.Types.Map<decimal>(new RustType("Money") { Import = "..." });
     options.ClientOptions = new RustClientOptions { MaxSeparateQueryArguments = 3 };
     Shrink: null = Release shrunk, Debug not; true = Debug too; false =
             Release not shrunk (dx skips wasm-opt)
-    CompressOutput: BrotliAndGzip (default) = .br + .gz beside the built
-            files in the web root (BuildAsync only); None = no copies;
+    CompressOutput: null (default) = .br + .gz beside the built files in
+            frontend-built/ for Release, none for Debug (BuildAsync only);
+            set = that value for both; CompressibleExtensions = which files;
             result.Compression says what was written and how long it took
     dx needs libgit2 to start: the library supplies it (Libgit2Directory)
     lower level: BackendMapper.Map, RustClientGenerator.Generate/WriteTo,
@@ -3890,7 +4656,10 @@ QUICK REFERENCE CARD
         use_<message>() / <method>(..).await / <stream>(..).next().await
     signalr::use_subscription(|| hub.on_x(..))   handlers may write signals
     tests: signalr::testing::{FakeHub, settle, advance, block_on}
-    ApiError::message() and HubError::message() are always fit to show
+    ApiError::message() and HubError::message() are always fit to show;
+    cause() is for the developer's log; err.is_offline() during maintenance
+    api::client::refresh_session() -> RefreshOutcome (Refreshed | Refused |
+        Failed(err)): only Refused ends the session
 
 ================================================================================
 END OF AGENT-README

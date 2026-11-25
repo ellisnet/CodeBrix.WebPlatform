@@ -55,6 +55,8 @@ use serde_json::Value;
 use connection::Inner;
 use transport::Transport;
 
+use crate::api::client::RefreshOutcome;
+
 use crate::app_runtime::AppRuntime;
 
 pub use connection::{HubConnection, HubStream, Subscription};
@@ -87,8 +89,18 @@ pub enum ConnectionState {
 /// Why a hub call, stream or connection failed. Every failure of the client is one of these.
 #[derive(Clone, Debug, PartialEq)]
 pub enum HubError {
-    /// No live connection and none could be made.
-    NotConnected,
+    /// No live connection and none could be made. When an attempt to connect has failed (the
+    /// connection keeps retrying), `cause` says what went wrong in the LAST failed attempt - the
+    /// transport's text (as in [`ApiError::Network`](crate::api::ApiError::Network)), the status
+    /// negotiate answered, a handshake that timed out - for the developer, not fit to show the
+    /// user. `None` when no attempt has failed: the connection is still being made, or it was
+    /// closed on purpose.
+    NotConnected { cause: Option<String> },
+    /// The last attempt to connect could not even be made: its request could not be built (for
+    /// example the hub's address is not a valid URL), so nothing was sent. A defect in the page or
+    /// its set-up, never the network (as [`ApiError::NotSent`](crate::api::ApiError::NotSent)).
+    /// `cause` as for [`NotConnected`](HubError::NotConnected).
+    NotSent { cause: String },
     /// The hub needs sign-in and the session could not be refreshed.
     Unauthorized,
     /// Transport failure.
@@ -107,7 +119,8 @@ impl HubError {
     /// A sentence fit to show the user (the same text as `Display`).
     pub fn message(&self) -> String {
         match self {
-            HubError::NotConnected => "Could not connect to the server. Check your connection and try again.".to_string(),
+            HubError::NotConnected { .. } => "Could not connect to the server. Check your connection and try again.".to_string(),
+            HubError::NotSent { .. } => "This page could not connect to the server. Reload the page and try again.".to_string(),
             HubError::Unauthorized => "Your session has ended. Sign in again to continue.".to_string(),
             HubError::Network => "The connection to the server failed. Try again in a moment.".to_string(),
             HubError::Server(text) if !text.trim().is_empty() => text.clone(),
@@ -115,6 +128,20 @@ impl HubError {
             HubError::Decode => "The server sent an answer this page could not read.".to_string(),
             HubError::Cancelled => "The request was cancelled.".to_string(),
             HubError::Closed => "The connection to the server was lost before the answer arrived.".to_string(),
+        }
+    }
+}
+
+impl HubError {
+    /// Why the connection could not be made, for the developer: the cause of the last failed
+    /// attempt for [`NotConnected`](HubError::NotConnected) (when there was one) and
+    /// [`NotSent`](HubError::NotSent); `None` for every other error. Never part of
+    /// [`message`](HubError::message).
+    pub fn cause(&self) -> Option<&str> {
+        match self {
+            HubError::NotConnected { cause } => cause.as_deref(),
+            HubError::NotSent { cause } => Some(cause),
+            _ => None,
         }
     }
 }
@@ -152,16 +179,23 @@ pub fn to_arg<T: Serialize>(value: &T) -> Value {
 
 // ---- Configuration and sign-in ---------------------------------------------------------------
 
-/// What the refresh hook returns: a future that resolves to whether the session is fresh again.
-pub type RefreshFuture = Pin<Box<dyn Future<Output = bool>>>;
+/// What the refresh hook returns: a future that resolves to how the refresh ended - renewed,
+/// refused by the server, or not reached (see [`RefreshOutcome`]).
+pub type RefreshFuture = Pin<Box<dyn Future<Output = RefreshOutcome>>>;
 
 /// Supplied by the application at start-up.
 #[derive(Clone, Default)]
 pub struct SignalRConfig {
-    /// Refreshes the session; resolves to whether it worked. Called once when negotiate for a
-    /// hub that needs sign-in answers 401. The client calls it, and polls what it returns, inside
-    /// the application's Dioxus runtime. The application should share one refresh between
-    /// callers, as [`SignalRConfig::using_rest_refresh`] does.
+    /// Refreshes the session; resolves to how that ended. Called once per attempt when
+    /// negotiate for a hub that needs sign-in answers 401. [`RefreshOutcome::Refreshed`]:
+    /// negotiate again. [`RefreshOutcome::Refused`]: the connection stays Disconnected and
+    /// operations fail with [`HubError::Unauthorized`]. [`RefreshOutcome::Failed`] (no
+    /// answer, a 5xx such as 503 while the site is offline, 408 or 429): the attempt failed like
+    /// any other, so the connection keeps retrying with backoff and operations fail with
+    /// [`HubError::NotConnected`] / [`HubError::NotSent`] carrying the refresh's cause; never
+    /// [`HubError::Unauthorized`]. The client calls it, and polls what it returns, inside the
+    /// application's Dioxus runtime. The application should share one refresh between callers,
+    /// as [`SignalRConfig::using_rest_refresh`] does.
     pub refresh: Option<Rc<dyn Fn() -> RefreshFuture>>,
 }
 
@@ -274,7 +308,7 @@ pub(crate) fn release(inner: &Rc<Inner>) {
             all.remove(path);
         }
     });
-    inner.shut_down(HubError::Cancelled, HubError::NotConnected);
+    inner.shut_down(HubError::Cancelled, HubError::NotConnected { cause: None });
 }
 
 /// Closes and forgets the connection for `path`, whoever holds it (the fake hub installs and
@@ -286,7 +320,7 @@ pub(crate) fn forget_connection(path: &str) {
         .ok()
         .flatten();
     if let Some(inner) = inner {
-        inner.shut_down(HubError::Cancelled, HubError::NotConnected);
+        inner.shut_down(HubError::Cancelled, HubError::NotConnected { cause: None });
     }
 }
 

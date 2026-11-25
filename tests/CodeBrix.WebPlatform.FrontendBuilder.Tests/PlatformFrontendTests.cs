@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using CodeBrix.WebPlatform.BackendMapper;
 using CodeBrix.WebPlatform.BackendMapper.Rust;
 using CodeBrix.WebPlatform.FrontendBuilder.Crates;
+using CodeBrix.WebPlatform.FrontendBuilder.Internal;
 using CodeBrix.WebPlatform.FrontendBuilder.Prerequisites;
 using CodeBrix.WebPlatform.FrontendBuilder.SharedCrate;
 using CodeBrix.WebPlatform.FrontendBuilder.Stylesheet;
@@ -60,11 +61,16 @@ public class PlatformFrontendTests
         //Assert
         options.GeneratedClientDirectory.Should().Be(Path.Combine(frontend, "src", "generated"));
         options.SharedCrateDirectory.Should().Be(Path.Combine(frontend, "platform", "codebrix-webplatform"));
-        options.ResolvedVendorDirectory.Should().Be(Path.Combine(frontend, "platform", "vendor"));
+        options.VendorDirectory.Should().Be(Path.Combine(frontend, "platform", "vendor"));
         options.CargoConfigurationFile.Should().Be(Path.Combine(frontend, ".cargo", "config.toml"));
+        options.DxHomeDirectory.Should().Be(Path.Combine(frontend, "target", "dx-home"));
+        options.TailwindInputFile.Should().Be(Path.Combine(frontend, "tailwind.css"));
+        options.TailwindOutputFile.Should().Be(Path.Combine(frontend, "assets", "generated", "tailwind.css"));
         options.CrateMode.Should().Be(CrateMode.PlatformCratesOnly);
         new PlatformFrontendOptions().GeneratedClientDirectory.Should().BeNull();
-        new PlatformFrontendOptions().ResolvedVendorDirectory.Should().BeNull();
+        new PlatformFrontendOptions().VendorDirectory.Should().BeNull();
+        new PlatformFrontendOptions().DxHomeDirectory.Should().BeNull();
+        new PlatformFrontendOptions().TailwindOutputFile.Should().BeNull();
         options.Shrink.Should().BeNull();
     }
 
@@ -139,15 +145,13 @@ public class PlatformFrontendTests
         //Arrange
         using var folder = new TempFolder();
         var options = Frontends.CreateOptions(folder);
-        var byDefault = Create(options, folder).CreateDxEnvironment(FakeTools(folder))["DX_HOME"];
-        options.DxHomeDirectory = folder.Combine("artifacts/dx-home");
 
         //Act
-        var named = Create(options, folder).CreateDxEnvironment(FakeTools(folder))["DX_HOME"];
+        var home = Create(options, folder).CreateDxEnvironment(FakeTools(folder))["DX_HOME"];
 
         //Assert
-        byDefault.Should().Be(Path.Combine(options.FrontendDirectory, "target", "dx-home"));
-        named.Should().Be(folder.Combine("artifacts/dx-home"));
+        home.Should().Be(Path.Combine(options.FrontendDirectory, "target", "dx-home"));
+        home.Should().Be(options.DxHomeDirectory);
     }
 
     [Fact]
@@ -499,8 +503,8 @@ public class PlatformFrontendTests
         first.CargoConfigurationWritten.Should().BeTrue();
         first.LockFileWritten.Should().BeTrue();
         second.WasUpToDate.Should().BeTrue();
-        File.Exists(Path.Combine(options.ResolvedVendorDirectory, "fake-crate-1.0.0", "Cargo.toml")).Should().BeTrue();
-        File.Exists(Path.Combine(options.ResolvedVendorDirectory, PlatformCrates.StampFileName)).Should().BeTrue();
+        File.Exists(Path.Combine(options.VendorDirectory, "fake-crate-1.0.0", "Cargo.toml")).Should().BeTrue();
+        File.Exists(Path.Combine(options.VendorDirectory, PlatformCrates.StampFileName)).Should().BeTrue();
         var configuration = File.ReadAllText(options.CargoConfigurationFile);
         configuration.Should().Contain("replace-with = \"codebrix-webplatform-crates\"");
         configuration.Should().Contain("directory = \"platform/vendor\"");
@@ -524,7 +528,7 @@ public class PlatformFrontendTests
         //Assert
         result.VendorChanged.Should().BeTrue();
         result.CargoConfigurationWritten.Should().BeFalse();
-        Directory.EnumerateDirectories(options.ResolvedVendorDirectory).Select(Path.GetFileName).Should().Equal("other-crate-2.0.0");
+        Directory.EnumerateDirectories(options.VendorDirectory).Select(Path.GetFileName).Should().Equal("other-crate-2.0.0");
     }
 
     [Fact]
@@ -542,7 +546,7 @@ public class PlatformFrontendTests
 
         //Assert
         result.VendorChanged.Should().BeTrue("the vendor folder the platform wrote is removed");
-        Directory.Exists(options.ResolvedVendorDirectory).Should().BeFalse();
+        Directory.Exists(options.VendorDirectory).Should().BeFalse();
         var configuration = File.ReadAllText(options.CargoConfigurationFile);
         configuration.Should().Contain("CrateMode.ApplicationAddsCrates");
         configuration.Should().NotContain("[source.");
@@ -572,8 +576,7 @@ public class PlatformFrontendTests
         //Arrange
         using var folder = new TempFolder();
         var options = Frontends.CreateOptions(folder);
-        options.VendorDirectory = folder.Combine("my-crates");
-        folder.Write("my-crates/mine/Cargo.toml", "[package]\nname = \"mine\"\n");
+        folder.Write("frontend/platform/vendor/mine/Cargo.toml", "[package]\nname = \"mine\"\n");
         var frontend = Create(options, folder);
 
         //Act
@@ -581,7 +584,8 @@ public class PlatformFrontendTests
 
         //Assert
         await act.Should().ThrowAsync<FrontendBuildException>().WithMessage("*vendor folder*did not write*");
-        File.Exists(folder.Combine("my-crates/mine/Cargo.toml")).Should().BeTrue();
+        File.Exists(folder.Combine("frontend/platform/vendor/mine/Cargo.toml")).Should().BeTrue();
+        File.Exists(folder.Combine("frontend/platform/vendor/.gitignore")).Should().BeFalse("nothing is written into a folder the library does not own");
     }
 
     [Fact]
@@ -648,24 +652,18 @@ public class PlatformFrontendTests
     private const string TailwindInput = "@import \"tailwindcss\";\n";
 
     [Fact]
-    public void the_options_name_the_stylesheets_where_dx_expects_them()
+    public void the_options_name_the_stylesheets_at_the_platforms_fixed_paths()
     {
         //Arrange
         using var folder = new TempFolder();
-        var options = Frontends.CreateOptions(folder);
 
         //Act
-        var input = options.ResolvedTailwindInputFile;
-        var output = options.ResolvedTailwindOutputFile;
-        options.TailwindInputFile = "styles/input.css";
-        options.TailwindOutputFile = folder.Combine("elsewhere/out.css");
+        var options = Frontends.CreateOptions(folder);
 
         //Assert
         options.GenerateMissingStylesheet.Should().BeTrue();
-        input.Should().Be(Path.Combine(options.FrontendDirectory, "tailwind.css"));
-        output.Should().Be(Path.Combine(options.FrontendDirectory, "assets", "tailwind.css"));
-        options.ResolvedTailwindInputFile.Should().Be(Path.Combine(options.FrontendDirectory, "styles", "input.css"));
-        options.ResolvedTailwindOutputFile.Should().Be(folder.Combine("elsewhere/out.css"));
+        options.TailwindInputFile.Should().Be(Path.Combine(options.FrontendDirectory, "tailwind.css"));
+        options.TailwindOutputFile.Should().Be(Path.Combine(options.FrontendDirectory, "assets", "generated", "tailwind.css"));
     }
 
     [Fact]
@@ -682,7 +680,7 @@ public class PlatformFrontendTests
         //Assert
         result.Stylesheet.Should().Be(StylesheetOutcome.NotApplicable);
         result.StylesheetMissing.Should().BeFalse();
-        File.Exists(options.ResolvedTailwindOutputFile).Should().BeFalse();
+        File.Exists(options.TailwindOutputFile).Should().BeFalse();
     }
 
     [Fact]
@@ -691,8 +689,8 @@ public class PlatformFrontendTests
         //Arrange
         using var folder = new TempFolder();
         var options = Frontends.CreateOptions(folder);
-        File.WriteAllText(options.ResolvedTailwindInputFile, TailwindInput);
-        folder.Write("frontend/assets/tailwind.css", "/* built by dx */");
+        File.WriteAllText(options.TailwindInputFile, TailwindInput);
+        folder.Write("frontend/assets/generated/tailwind.css", "/* built by dx */");
         var frontend = Create(options, folder);
 
         //Act
@@ -700,7 +698,7 @@ public class PlatformFrontendTests
 
         //Assert
         outcome.Should().Be(StylesheetOutcome.AlreadyPresent);
-        File.ReadAllText(options.ResolvedTailwindOutputFile).Should().Be("/* built by dx */");
+        File.ReadAllText(options.TailwindOutputFile).Should().Be("/* built by dx */");
     }
 
     [Fact]
@@ -710,7 +708,7 @@ public class PlatformFrontendTests
         using var folder = new TempFolder();
         var options = Frontends.CreateOptions(folder);
         options.GenerateMissingStylesheet = false;
-        File.WriteAllText(options.ResolvedTailwindInputFile, TailwindInput);
+        File.WriteAllText(options.TailwindInputFile, TailwindInput);
         var frontend = Create(options, folder);
 
         //Act
@@ -719,7 +717,7 @@ public class PlatformFrontendTests
         //Assert
         outcome.Should().Be(StylesheetOutcome.SwitchedOff);
         message.Should().Contain("GenerateMissingStylesheet");
-        File.Exists(options.ResolvedTailwindOutputFile).Should().BeFalse();
+        File.Exists(options.TailwindOutputFile).Should().BeFalse();
     }
 
     [Fact]
@@ -728,7 +726,7 @@ public class PlatformFrontendTests
         //Arrange
         using var folder = new TempFolder();
         var options = Frontends.CreateOptions(folder);
-        File.WriteAllText(options.ResolvedTailwindInputFile, TailwindInput);
+        File.WriteAllText(options.TailwindInputFile, TailwindInput);
         var output = new StringWriter();
         options.Output = output;
         var frontend = Create(options, folder);
@@ -742,7 +740,7 @@ public class PlatformFrontendTests
         result.StylesheetMessage.Should().Contain("was not generated because").And.Contain("Tailwind program").And.Contain("Plain cargo commands");
         output.ToString().Should().Contain(result.StylesheetMessage);
         result.GeneratedFiles.Should().Contain("mod.rs");
-        File.Exists(options.ResolvedTailwindOutputFile).Should().BeFalse();
+        File.Exists(options.TailwindOutputFile).Should().BeFalse();
     }
 
     [Fact]
@@ -752,7 +750,7 @@ public class PlatformFrontendTests
         Assert.SkipWhen(PackagedTailwind.GetPackageId(HostTools.CurrentRuntimeIdentifier) == null, "This machine is not a build platform.");
         using var folder = new TempFolder();
         var options = Frontends.CreateOptions(folder);
-        File.WriteAllText(options.ResolvedTailwindInputFile, TailwindInput);
+        File.WriteAllText(options.TailwindInputFile, TailwindInput);
         var suffix = OperatingSystem.IsWindows() ? ".exe" : string.Empty;
         folder.Write($"build-program/tailwind/{HostTools.CurrentRuntimeIdentifier}/tailwindcss{suffix}", "not a program");
         var frontend = Create(options, folder);
@@ -763,7 +761,7 @@ public class PlatformFrontendTests
         //Assert
         outcome.Should().Be(StylesheetOutcome.SkippedTailwindFailed);
         message.Should().Contain("the Tailwind program failed");
-        File.Exists(options.ResolvedTailwindOutputFile).Should().BeFalse();
+        File.Exists(options.TailwindOutputFile).Should().BeFalse();
     }
 
     [Fact]
@@ -776,7 +774,7 @@ public class PlatformFrontendTests
             "The packaged Tailwind program is not in this test project's output: " + probe[PrerequisiteKind.Tailwind].Message);
         using var folder = new TempFolder();
         var options = Frontends.CreateOptions(folder);
-        File.WriteAllText(options.ResolvedTailwindInputFile, TailwindInput + "@source \"./src/**/*.rs\";\n");
+        File.WriteAllText(options.TailwindInputFile, TailwindInput + "@source \"./src/**/*.rs\";\n");
         folder.Write("frontend/src/main.rs", "fn main() { let _ = \"flex text-indigo-600\"; }\n");
         var copy = Directory.CreateDirectory(folder.Combine($"build-program/tailwind/{probe.Tailwind.RuntimeIdentifier}")).FullName;
         File.Copy(probe.Tailwind.Path, Path.Combine(copy, Path.GetFileName(probe.Tailwind.Path)));
@@ -789,8 +787,189 @@ public class PlatformFrontendTests
         //Assert
         probe.TailwindVersion.Should().Be(File.ReadAllText(Path.Combine(probe.Tailwind.Directory, "version.txt")).Trim());
         first.Stylesheet.Should().Be(StylesheetOutcome.Generated, first.StylesheetMessage);
-        File.ReadAllText(options.ResolvedTailwindOutputFile).Should().Contain(".flex");
+        File.ReadAllText(options.TailwindOutputFile).Should().Contain(".flex");
         second.Stylesheet.Should().Be(StylesheetOutcome.AlreadyPresent);
         second.WasUpToDate.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task MaterializeAsync_writes_a_gitignore_into_every_folder_it_owns_and_into_none_of_the_developers()
+    {
+        //Arrange
+        using var folder = new TempFolder();
+        var options = Frontends.CreateOptions(folder);
+        File.WriteAllText(options.TailwindInputFile, TailwindInput);
+        options.GenerateMissingStylesheet = false;
+        var frontend = Create(options, folder);
+
+        //Act
+        await frontend.MaterializeAsync(TestContext.Current.CancellationToken);
+
+        //Assert
+        File.ReadAllText(folder.Combine("frontend/src/generated/.gitignore")).Should().Be(RustClientGenerator.IgnoreFileText);
+        foreach (var owned in new[] { "platform/codebrix-webplatform", "platform/vendor", ".cargo", "target", "assets/generated" })
+        {
+            File.ReadAllText(folder.Combine("frontend/" + owned + "/.gitignore")).Should().Be(BuildOutputFolder.IgnoreFileText, owned);
+        }
+
+        foreach (var developers in new[] { ".gitignore", "assets/.gitignore", "src/.gitignore", "platform/.gitignore" })
+        {
+            File.Exists(folder.Combine("frontend/" + developers)).Should().BeFalse(developers);
+        }
+    }
+
+    [Fact]
+    public async Task MaterializeAsync_writes_no_assets_folder_for_a_frontend_without_tailwind()
+    {
+        //Arrange
+        using var folder = new TempFolder();
+        var options = Frontends.CreateOptions(folder);
+        var frontend = Create(options, folder);
+
+        //Act
+        await frontend.MaterializeAsync(TestContext.Current.CancellationToken);
+
+        //Assert
+        Directory.Exists(folder.Combine("frontend/assets")).Should().BeFalse();
+        File.Exists(folder.Combine("frontend/target/.gitignore")).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task MaterializeAsync_writes_the_ignore_files_again_when_everything_else_is_up_to_date()
+    {
+        //Arrange
+        using var folder = new TempFolder();
+        var options = Frontends.CreateOptions(folder);
+        var frontend = Create(options, folder);
+        await frontend.MaterializeAsync(TestContext.Current.CancellationToken);
+        foreach (var owned in new[] { "src/generated", "platform/codebrix-webplatform", "platform/vendor", ".cargo" })
+        {
+            File.Delete(folder.Combine("frontend/" + owned + "/.gitignore"));
+        }
+
+        // what `cargo clean` does: the whole target folder goes, its .gitignore with it
+        Directory.Delete(folder.Combine("frontend/target"), recursive: true);
+
+        //Act
+        var again = await frontend.MaterializeAsync(TestContext.Current.CancellationToken);
+
+        //Assert
+        again.WasUpToDate.Should().BeTrue("an ignore file written again is not a change");
+        again.VendorChanged.Should().BeFalse("the vendor folder's stamp is unchanged");
+        foreach (var owned in new[] { "src/generated", "platform/codebrix-webplatform", "platform/vendor", ".cargo", "target" })
+        {
+            File.Exists(folder.Combine("frontend/" + owned + "/.gitignore")).Should().BeTrue(owned);
+        }
+    }
+
+    [Fact]
+    public async Task MaterializeAsync_refuses_a_Dioxus_toml_that_moves_the_stylesheets_before_writing_anything()
+    {
+        //Arrange
+        using var folder = new TempFolder();
+        var options = Frontends.CreateOptions(folder);
+        folder.Write("frontend/Dioxus.toml", "[application]\nname = \"sample\"\ntailwind_output = \"assets/tailwind.css\"\n");
+        var frontend = Create(options, folder);
+
+        //Act
+        Func<Task> act = () => frontend.MaterializeAsync(TestContext.Current.CancellationToken);
+
+        //Assert
+        await act.Should().ThrowAsync<FrontendBuildException>().WithMessage("*Dioxus.toml' sets tailwind_output = \"assets/tailwind.css\"*assets/generated/tailwind.css*remove it*Nothing was written.");
+        Directory.Exists(folder.Combine("frontend/src/generated")).Should().BeFalse();
+        Directory.Exists(folder.Combine("frontend/target")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task MaterializeAsync_accepts_a_Dioxus_toml_that_names_the_fixed_paths()
+    {
+        //Arrange
+        using var folder = new TempFolder();
+        var options = Frontends.CreateOptions(folder);
+        folder.Write("frontend/Dioxus.toml", "[application]\ntailwind_input = \"tailwind.css\"\ntailwind_output = \"./assets/generated/tailwind.css\"\n");
+        var frontend = Create(options, folder);
+
+        //Act
+        var result = await frontend.MaterializeAsync(TestContext.Current.CancellationToken);
+
+        //Assert
+        result.GeneratedFiles.Should().Contain("mod.rs");
+    }
+
+    [Fact]
+    public async Task BuildAsync_refuses_a_Dioxus_toml_that_moves_the_stylesheets_before_starting_dx()
+    {
+        //Arrange
+        using var folder = new TempFolder();
+        var options = Frontends.CreateOptions(folder);
+        folder.Write("frontend/dioxus.toml", "[application]\ntailwind_input = \"styles/input.css\"\n");
+        var frontend = Create(options, folder);
+
+        //Act
+        Func<Task> act = () => frontend.BuildAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        //Assert
+        await act.Should().ThrowAsync<FrontendBuildException>().WithMessage("*tailwind_input = \"styles/input.css\"*dx was not started.");
+    }
+
+    [Fact]
+    public async Task BuildAsync_refuses_a_backend_project_folder_that_does_not_exist()
+    {
+        //Arrange
+        using var folder = new TempFolder();
+        var frontend = Create(Frontends.CreateOptions(folder), folder);
+
+        //Act
+        Func<Task> missing = () => frontend.BuildAsync(FrontendConfiguration.Release, folder.Combine("backend/MyApp.Api"), TestContext.Current.CancellationToken);
+        Func<Task> blank = () => frontend.BuildAsync(FrontendConfiguration.Release, " ", TestContext.Current.CancellationToken);
+
+        //Assert
+        await missing.Should().ThrowAsync<FrontendBuildException>().WithMessage("*backend project folder*MyApp.Api' does not exist*frontend-built*");
+        await blank.Should().ThrowAsync<FrontendBuildException>().WithMessage("*blank*");
+        Directory.Exists(folder.Combine("backend")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task BuildAsync_for_one_application_refuses_a_name_that_is_not_registered()
+    {
+        //Arrange
+        using var folder = new TempFolder();
+        var frontend = Create(Frontends.CreateOptions(folder), folder);
+
+        //Act
+        Func<Task> act = () => frontend.BuildAsync("billing", cancellationToken: TestContext.Current.CancellationToken);
+
+        //Assert
+        await act.Should().ThrowAsync<FrontendBuildException>().WithMessage("There is no frontend application named 'billing'. The applications are: the root application (no name).");
+    }
+
+    [Fact]
+    public async Task the_packaged_tailwind_does_not_scan_the_target_folder_because_of_its_own_gitignore()
+    {
+        //Arrange
+        var probe = await new PlatformFrontend(new PlatformFrontendOptions { FrontendDirectory = Path.GetTempPath() })
+            .CheckPrerequisitesAsync(TestContext.Current.CancellationToken);
+        Assert.SkipWhen(probe[PrerequisiteKind.Tailwind].Status != PrerequisiteStatus.Ok,
+            "The packaged Tailwind program is not in this test project's output: " + probe[PrerequisiteKind.Tailwind].Message);
+        using var folder = new TempFolder();
+        var options = Frontends.CreateOptions(folder);
+        File.WriteAllText(options.TailwindInputFile, TailwindInput);
+        folder.Write("frontend/src/main.rs", "fn main() { let _ = \"flex\"; }\n");
+        folder.Write("frontend/target/dx/sample-frontend/debug/web/public/index.html", "<div class=\"text-fuchsia-900\"></div>\n");
+        folder.Write("frontend/platform/notes.html", "<div class=\"text-lime-300\"></div>\n");
+        var copy = Directory.CreateDirectory(folder.Combine($"build-program/tailwind/{probe.Tailwind.RuntimeIdentifier}")).FullName;
+        File.Copy(probe.Tailwind.Path, Path.Combine(copy, Path.GetFileName(probe.Tailwind.Path)));
+        var frontend = Create(options, folder);
+
+        //Act
+        var result = await frontend.MaterializeAsync(TestContext.Current.CancellationToken);
+
+        //Assert
+        result.Stylesheet.Should().Be(StylesheetOutcome.Generated, result.StylesheetMessage);
+        var css = File.ReadAllText(options.TailwindOutputFile);
+        css.Should().Contain(".flex");
+        css.Should().Contain(".text-lime-300", "a folder without a .gitignore of the build's is scanned (the check works)");
+        css.Should().NotContain(".text-fuchsia-900", "target/ ignores itself, and Tailwind honours that without any rule at the frontend's root");
+        File.Exists(folder.Combine("frontend/.gitignore")).Should().BeFalse();
     }
 }

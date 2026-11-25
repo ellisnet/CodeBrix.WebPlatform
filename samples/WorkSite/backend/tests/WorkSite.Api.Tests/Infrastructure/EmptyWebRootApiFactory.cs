@@ -1,6 +1,6 @@
 namespace WorkSite.Api.Tests.Infrastructure;
 
-/// <summary>A factory whose wwwroot is empty, as before the frontend has been built.</summary>
+/// <summary>A factory with no built frontend (no frontend-built/), as before the frontend has been built.</summary>
 public sealed class EmptyWebRootApiFactory : WorkSiteApiFactory
 {
     /// <inheritdoc />

@@ -28,6 +28,21 @@ The patches, in the order they apply:
   0007-wasm-split-cli-call-graph.patch      wasm-split-cli -> the patched copy
                                             (the splitter's call graph, and
                                             its reproducible output)
+  0008-tailwind-output-in-assets-generated.patch
+                                            Tailwind's default output is
+                                            assets/generated/tailwind.css
+  0009-unsplit-build-split-loader.patch     a build or `dx serve` WITHOUT
+                                            bundle splitting of an application
+                                            with split points gets a stand-in
+                                            __wasm_split.js
+  0010-site-root-addresses-without-dot.patch
+                                            "/assets/..." instead of
+                                            "/./assets/..." for an application
+                                            at the site root
+
+Which adopted programs carry them (BUILD-PROVENANCE.txt): linux-x64 and
+linux-arm64 carry all ten (adopted 2026-11-24); win-x64, osx-arm64 and
+osx-x64 carry 0001 to 0007 only (adopted 2026-11-22, NOT YET REBUILT).
 
 
 0001-image-crate-encoders.patch
@@ -237,6 +252,148 @@ On an upgrade: the Cargo.toml part is re-applied with 0001 to 0003, 0005 and
         0006, before 0004 is regenerated, and 0004's regeneration then
         includes the lock change; the [patch] must name the wasm-split-cli
         release the new dx asks for.
+
+0008-tailwind-output-in-assets-generated.patch
+---------------------------------------------
+What:   src/tailwind.rs, TailwindCli::run - when Dioxus.toml sets no
+        `tailwind_output`, the stylesheet Tailwind writes is
+        <package folder>/assets/generated/tailwind.css (upstream:
+        <package folder>/assets/tailwind.css). The folder is created when it
+        is missing, as upstream already did for assets/. Nothing else: the
+        input default (<package folder>/tailwind.css), the v3 / v4 detection
+        and the `tailwind_input` / `tailwind_output` settings are upstream's.
+Why:    the platform's generated stylesheet has one fixed place,
+        <frontend>/assets/generated/tailwind.css, so that build output does
+        not sit among the developer's own assets: the FrontendBuilder library
+        owns assets/generated (it writes the folder's .gitignore and makes the
+        stylesheet there when it is missing) and refuses a Dioxus.toml that
+        sets either Tailwind path. dx must write to the same file in every
+        build and in `dx serve`, or the application's asset!() reference and
+        the file dx keeps up to date would be two different files.
+Effect: dx (build and serve) writes Tailwind's output to
+        assets/generated/tailwind.css. dx does not write a .gitignore; the
+        library does. A RELATIVE `tailwind_output` (or `tailwind_input`) is,
+        as upstream, passed to tailwindcss unchanged and resolved by
+        tailwindcss against the package folder (dx starts it there); dx's own
+        "create the parent folder" step for a relative setting resolves it
+        against dx's working directory instead, which is the same folder only
+        when dx is started in the package folder (the FrontendBuilder library
+        does start it there). Projects outside the platform that relied on
+        the old default must set `tailwind_output = "assets/tailwind.css"`.
+Drop when: never while the platform's generated stylesheet lives in
+        assets/generated; on an upgrade, re-apply it with 0001 to 0003 and
+        0005 to 0007 (it does not touch Cargo.toml or the lock file).
+Status: decided by the repository owner, 2026-11-24 (the frontend's fixed
+        folder layout).
+        In the adopted programs (BUILD-PROVENANCE.txt): linux-x64 and
+        linux-arm64 since 2026-11-24; NOT YET in win-x64, osx-arm64 and
+        osx-x64 (their programs of 2026-11-22 have 0001 to 0007).
+
+0009-unsplit-build-split-loader.patch
+-------------------------------------
+What:   src/build/web.rs - bundle_web, for a web build WITHOUT bundle
+        splitting (no `--wasm-split`; `dx serve` never splits): after
+        wasm-bindgen, the new function write_unsplit_split_loader reads the
+        imports of the module wasm-bindgen wrote. When it imports from
+        "./__wasm_split.js" (the module name under which the `wasm_split`
+        macros - `wasm_split::lazy_loader!`, `#[wasm_split]` and dioxus's
+        `#[component(lazy)]` - import a split point's loader on wasm32), dx
+        writes `__wasm_split.js` beside the glue file, a stand-in loader:
+          - every `__wasm_split_load_<module>_<hash>_<name>(callback, data)`
+            calls the callback through the module's function table with
+            (data, true), in a microtask (the real loader calls it after its
+            fetch): "this piece is already loaded";
+          - every `__wasm_split_00___<module>___00_import_<hash>_<name>(...)`
+            (a piece's entry point) calls the function the main module
+            exports as `__wasm_split_00___<module>___00_export_<hash>_<name>`
+            - the same code, which an unsplit build keeps in the main module
+            and exports (the macros mark it #[no_mangle]);
+          - any other name imported from that module gets a function that
+            throws an error naming it (none exists in dioxus 0.7.10).
+        The callback needs the function table, which an unsplit module does
+        not export (only a split main module and a hot-patch build do). When
+        table 0 is not exported, dx adds ONE export to the module wasm-bindgen
+        wrote: table 0 under the name `__indirect_function_table` (the name a
+        split main module and a hot-patch build use). Only the export section
+        is rewritten; every other section is copied byte for byte, so DWARF
+        offsets into the code section stay valid. A module that imports
+        nothing from "./__wasm_split.js" is not touched and gets no file.
+        The stand-in reaches the module's exports through
+        globalThis.__wasm_split_main_initSync, which dx's glue shim already
+        sets for the real loader, so the glue file is unchanged.
+Why:    with the `wasm-split` feature of dioxus on, the main module ALWAYS
+        imports "./__wasm_split.js" on wasm32, and upstream writes that file
+        only for a split build. Every unsplit build and every `dx serve` of
+        such an application gave a page that never started (the module
+        script's import fails: 404 from a backend, or dx serve's fallback
+        index.html with no JavaScript content type), with no error from the
+        build. That left a split application with no development loop and no
+        working unsplit build.
+Effect: an application with split points works without splitting: built
+        unsplit (debug or release) or served, all of its code is in the one
+        main module and the split points resolve at once. The main module
+        carries one more export (the function table). A RELEASE build ships
+        the stand-in under a content-hashed name
+        (`__wasm_split-dxh<hash>.js`, through patch 0003's copy step, which
+        handles it exactly as it handles the real loader); a DEBUG build and
+        `dx serve` serve it as wasm/__wasm_split.js beside the glue file.
+        Builds WITH --wasm-split are unchanged (the splitter writes the real
+        loader), and so are applications without split points.
+Upstream: upstream has the same defect (the macros import the loader
+        unconditionally; dx writes it only in the --wasm-split branch of
+        bundle_web). No upstream issue or fix was looked up for this patch.
+How checked: the ApplicationSplitter sample's sales application (a scratch
+        copy, the published packages, a dx built from this source) built
+        WITHOUT splitting, release and debug, and served with `dx serve`:
+        each page loads (deep links included), the formatting self-check
+        and the diagnostics tables report 0 failures, and the three
+        hand-split parts work in headless Chrome - the lazy component
+        (customers page, "Show insights"), the `#[wasm_split]` function
+        (reports page, "Run the forecast") and the `lazy_loader!` panel
+        (orders page, "Details") - with no console error and no request for
+        a piece. With the published dx the same build stays blank
+        (`__wasm_split.js`: 404).
+Drop when: upstream writes a loader (or no import) for unsplit builds.
+Does not touch Cargo.toml or the lock file (wasmparser and serde_json are
+        dx dependencies already); on an upgrade it is re-applied with 0001 to
+        0003 and 0005 to 0008, before 0004 is regenerated.
+Status: made under the repository owner's GO of 2026-11-24 (S2 / B1).
+        In the adopted programs (BUILD-PROVENANCE.txt): linux-x64 and
+        linux-arm64 since 2026-11-24; NOT YET in win-x64, osx-arm64 and
+        osx-x64 (their programs of 2026-11-22 have 0001 to 0007).
+
+
+0010-site-root-addresses-without-dot.patch
+------------------------------------------
+What:   src/build/web.rs - the absolute addresses dx writes for an
+        application's own files start "/assets/..." or "/wasm/..." for an
+        application at the site root (no base path) and "/<base path>/..."
+        otherwise. Upstream builds them from base_path_or_default(), which is
+        "." without a base path, and writes "/./assets/...". Changed, through
+        one new helper (base_path_prefix): the script tag dx adds to
+        index.html, the glue shim's .wasm address, the split loader's
+        addresses of the split modules and chunks, and every
+        "/{base_path}/" in index.html (the form dx's own head resources -
+        stylesheets, preloads, scripts - and a hand-written index.html use).
+        A {base_path} written in any other way is replaced as upstream does.
+Why:    "/./assets/..." works (a browser removes the "./" when it resolves
+        the address) but is not the address of the file: it shows in the
+        page source, the network log and any tool that reads index.html.
+Effect: the root application's index.html links "/assets/<script>" (release)
+        or "/wasm/<script>" (debug, serve) and its glue file loads
+        "/assets/<module>.wasm". Applications with a base path are
+        unchanged ("/sales/assets/...").
+How checked: the ApplicationSplitter sample's root application (home) built
+        release and debug with a dx from this source: index.html and the glue
+        file carry "/assets/..." and "/wasm/..." addresses, and the page loads
+        in headless Chrome.
+Drop when: upstream stops writing "/./".
+Does not touch Cargo.toml or the lock file; on an upgrade it is re-applied
+        after 0009 (both change src/build/web.rs).
+Status: made under the repository owner's GO of 2026-11-24.
+        In the adopted programs (BUILD-PROVENANCE.txt): linux-x64 and
+        linux-arm64 since 2026-11-24; NOT YET in win-x64, osx-arm64 and
+        osx-x64 (their programs of 2026-11-22 have 0001 to 0007).
 
 
 BUILD SWITCHES (not a patch)

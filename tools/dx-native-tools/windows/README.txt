@@ -15,9 +15,13 @@ tools/dx-native-tools/windows - building dx.exe and wasm-bindgen.exe for win-x64
     The libgit2 import library step, and dx.exe refusing to start without the
     DLL (0xC0000135), worked as written. It has been run with PowerShell 7.6
     only, not with Windows PowerShell 5.1. The script
-    builds whatever the tool sources hold (today seven dioxus-cli patches,
-    four splitter patches; the adopted Windows programs of 2026-11-22 have
-    three and are to be rebuilt); nothing in it names the patches. <<<
+    builds whatever the tool sources hold (today ten dioxus-cli patches,
+    six splitter patches); nothing in it names the patches. NOT YET REBUILT:
+    the adopted Windows programs of 2026-11-22 carry dioxus-cli 0001 to 0007
+    and splitter 0001 to 0003 only - none of dioxus-cli 0008 to 0010 or
+    splitter 0004 to 0006, which the Linux programs carry since 2026-11-24
+    (../BUILD-PROVENANCE.txt, ADOPTED 2026-11-24) - and are to be rebuilt
+    and adopted. <<<
 
 WHAT THIS IS
 --------------------------------------------------------------------------------
@@ -98,10 +102,18 @@ STEP BY STEP, ON THE WINDOWS x64 MACHINE
          CodeBrix.WebPlatform.Styling.Tailwind4.WindowsX64 package
          (FUNCTIONAL_STYLING_PACKAGE_VERSION; -TailwindDir names another
          folder) - nothing is installed for it.
-  2. Clone (or pull) this repository and materialize the sample's frontend
-     once (in samples\WorkSite:  dotnet run --project
+  2. Clone (or pull) this repository and have the sample's frontend
+     MATERIALIZED BY A FrontendBuilder OF THE CURRENT LAYOUT (in
+     samples\WorkSite:  dotnet run --project
      build\WorkSite.BuildFrontend -- generate), so its platform\ (shared crate
-     and the platform's crates), src\generated\ and .cargo\ folders exist.
+     and the platform's crates), src\generated\, .cargo\ and
+     assets\generated\tailwind.css exist. Having materialized it once is not
+     enough: a frontend materialized by an older FrontendBuilder has its
+     stylesheet elsewhere and is not the layout dx now builds. While the
+     sample names packages that are not published yet, `generate` does not
+     build; those four folders are build output with relative paths only and
+     hold nothing of the machine they were written on, so they can be copied
+     into the clone from a machine that has them in the current layout.
   3. Open PowerShell (5.1 or 7) and run:
          cd <repository>\tools\dx-native-tools\windows
          .\build.dx.ps1

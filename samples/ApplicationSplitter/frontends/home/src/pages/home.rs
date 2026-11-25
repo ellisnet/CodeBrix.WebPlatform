@@ -25,7 +25,7 @@ const APPS: [App; 3] = [
 
 /// What to watch for in the browser's network panel.
 const STEPS: [&str; 4] = [
-    "The first visit downloads the sales application's main file and the piece of the page you opened.",
+    "The first visit downloads the sales application's main file, the shared piece that holds what several pages use, and the piece of the page you opened.",
     "Opening another page downloads its piece once; the header stays and the page area shows a loading panel meanwhile.",
     "Coming back to a page downloads nothing: its piece is already there.",
     "On Orders, Customers and Reports, a details panel, the account insights and the forecast are pieces of their own, fetched when first used.",

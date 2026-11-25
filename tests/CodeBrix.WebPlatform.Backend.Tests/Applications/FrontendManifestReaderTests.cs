@@ -194,7 +194,7 @@ public class FrontendManifestReaderTests
             .Should().Be("application table 1 is the default application, whose name is always 'app', but its name is 'main'.");
 
     [Theory]
-    [InlineData("app", "true", "app", "has the folder \"app\", but its folder is \"\" (the web root itself).")]
+    [InlineData("app", "true", "app", "has the folder \"app\", but its folder is \"\" (the built frontend's folder itself).")]
     [InlineData("sales", "false", "", "has the folder \"\", but its folder is \"sales\".")]
     [InlineData("sales", "false", "Sales", "has the folder \"Sales\", but its folder is \"sales\".")]
     [InlineData("sales", "false", "sales/", "has the folder \"sales/\", but its folder is \"sales\".")]
@@ -228,7 +228,7 @@ public class FrontendManifestReaderTests
         using var root = new TempWebRoot();
 
         //Act
-        var set = FrontendManifestReader.Read(root.Path);
+        var set = FrontendManifestReader.Read(root.BuiltPath);
 
         //Assert
         set.Should().BeNull();
@@ -241,7 +241,7 @@ public class FrontendManifestReaderTests
         using var root = new TempWebRoot(createWebRoot: false);
 
         //Act
-        var set = FrontendManifestReader.Read(root.Path);
+        var set = FrontendManifestReader.Read(root.BuiltPath);
 
         //Assert
         set.Should().BeNull();
@@ -252,10 +252,10 @@ public class FrontendManifestReaderTests
     {
         //Arrange
         using var root = new TempWebRoot();
-        root.Write(FrontendManifest.FileName, Header + DefaultTable + SalesTable);
+        root.WriteBuilt(FrontendManifest.FileName, Header + DefaultTable + SalesTable);
 
         //Act
-        var set = FrontendManifestReader.Read(root.Path);
+        var set = FrontendManifestReader.Read(root.BuiltPath);
 
         //Assert
         set.Select(a => a.Name).Should().Equal("app", "sales");
@@ -266,14 +266,14 @@ public class FrontendManifestReaderTests
     {
         //Arrange
         using var root = new TempWebRoot();
-        root.Write(FrontendManifest.FileName, Header);
+        root.WriteBuilt(FrontendManifest.FileName, Header);
 
         //Act
-        Action act = () => FrontendManifestReader.Read(root.Path);
+        Action act = () => FrontendManifestReader.Read(root.BuiltPath);
 
         //Assert
         act.Should().Throw<FrontendManifestException>()
-            .Which.Message.Should().StartWith("The frontend manifest " + Path.Combine(root.Path, FrontendManifest.FileName) + " cannot be used");
+            .Which.Message.Should().StartWith("The frontend manifest " + Path.Combine(root.BuiltPath, FrontendManifest.FileName) + " cannot be used");
     }
 
     [Theory]

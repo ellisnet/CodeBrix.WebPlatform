@@ -1,0 +1,24 @@
+diff -ruN a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -526,10 +526,16 @@
+ 
+                 // Otherwise, zero out the data segment, which should lead to elimination by wasm-opt
+                 Node::DataSymbol(id) => {
+-                    let symbol = self
+-                        .data_symbols
+-                        .get(&id)
+-                        .context("Failed to find data symbol")?;
++                    // CodeBrix change: a data symbol that is not in the table has no bytes to
++                    // zero - the table (parse_bytes_to_data_segment) leaves out the symbols of
++                    // size 0, such as a zero-sized static, and the undefined ones - so it is
++                    // skipped, as clear_data_segments already skips it. Upstream failed the
++                    // whole build here ("Failed to find data symbol") when only split modules
++                    // named such a symbol. See
++                    // tools/dx-native-tools/vendoring/wasm-split-cli/PATCH-NOTES.txt, patch 0005.
++                    let Some(symbol) = self.data_symbols.get(&id) else {
++                        continue;
++                    };
+ 
+                     // VERY IMPORTANT
+                     //

@@ -2,7 +2,7 @@ namespace CodeBrix.WebPlatform.FrontendBuilder.Stylesheet;
 
 /// <summary>
 /// What <see cref="PlatformFrontend.MaterializeAsync"/> did about the frontend's generated
-/// Tailwind stylesheet (<see cref="PlatformFrontendOptions.ResolvedTailwindOutputFile"/>), which
+/// Tailwind stylesheet (<see cref="PlatformFrontendOptions.TailwindOutputFile"/>), which
 /// the application's Rust names as an asset and dx normally writes during a build.
 /// </summary>
 public enum StylesheetOutcome
@@ -14,7 +14,7 @@ public enum StylesheetOutcome
     AlreadyPresent,
 
     /// <summary>The frontend does not use Tailwind: it has no input stylesheet
-    /// (<see cref="PlatformFrontendOptions.ResolvedTailwindInputFile"/>).</summary>
+    /// (<see cref="PlatformFrontendOptions.TailwindInputFile"/>).</summary>
     NotApplicable,
 
     /// <summary>The step is switched off (<see cref="PlatformFrontendOptions.GenerateMissingStylesheet"/>).</summary>

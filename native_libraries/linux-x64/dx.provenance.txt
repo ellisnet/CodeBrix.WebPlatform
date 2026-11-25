@@ -6,15 +6,20 @@ This program was BUILT HERE, from the source in this repository, by:
 
 inside a digest-pinned manylinux container with the network DISABLED. Nothing
 was downloaded during the build: every crate came from the vendored tool
-crates. It was built ONCE for this adoption, on the afternoon of 2026-11-23
-Pacific time (2026-11-24 UTC); the build was not repeated.
+crates. It was built TWICE for this adoption, on the evening of 2026-11-24
+Pacific time (2026-11-25 UTC), runs 23 and 24: byte-identical both times.
 
 Source            : dioxus-cli 0.7.10 (upstream commit 57d6794ad60b949e5bd8aa282f6f8c3dc97a365e) with the
-                    repository's SEVEN patches (0007 swaps in the repository's patched copy of the
+                    repository's TEN patches (0007 swaps in the repository's patched copy of the
                     bundle splitter, tools/dx-native-tools/sources/wasm-split-cli, which carries
-                    FOUR patches of its own: 0001 and 0002 fix its call graph, 0003 makes a split
+                    SIX patches of its own: 0001 and 0002 fix its call graph, 0003 makes a split
                     build give the same files from the same source, 0004 keeps the main
-                    module's data whole when a split module's constant lies over it)
+                    module's data whole when a split module's constant lies over it, 0005 lets a
+                    split build pass a data symbol of size 0, 0006 puts the code and data several
+                    split modules use into the shared chunk, once; 0008 makes Tailwind's default
+                    output assets/generated/tailwind.css, 0009 gives an unsplit build and
+                    `dx serve` a stand-in __wasm_split.js, 0010 writes the root application's
+                    addresses as "/assets/..." instead of "/./assets/...")
                     (tools/dx-native-tools/
                     vendoring/dioxus-cli/PATCH-NOTES.txt and vendoring/wasm-split-cli/
                     PATCH-NOTES.txt); every dx command is there.
@@ -34,16 +39,18 @@ LINKS libgit2     : libgit2 1.9.7 as a SHARED LIBRARY, NEEDED as
                     reaches a build through that package
 --version         : "dioxus 0.7.10 (57d6794)" (with the library on LD_LIBRARY_PATH)
 
-Built             : 2026-11-24 00:34:14 UTC - the rebuild of 2026-11-23 (Pacific time):
-                    the splitter's patch 0004 (see BUILD-PROVENANCE.txt)
-Build time        : 359s for this program (cargo, inside the container, from scratch)
-Build host        : the owner's Mac Pro running LMDE 7 (mac-pro-lmde), x86_64,
-                    podman 5.4.2 (native)
+Built             : 2026-11-25 04:47:06 UTC (run 23; run 24, 04:52:00 UTC, gave the same
+                    bytes) - the rebuild of 2026-11-24 (Pacific time): dioxus-cli
+                    patches 0008 to 0010 and the splitter's patches 0005 and 0006 (see
+                    BUILD-PROVENANCE.txt)
+Build time        : 104s for this program (cargo, inside the container, from scratch)
+Build host        : Dell Precision 7770 laptop, LMDE 7, x86_64, podman 5.4.2
+                    (the x86_64 laptop itself - native)
 Network           : DISABLED during this build (interfaces: lo)
-Derived image     : codebrix-dx-build-x86_64 (built on this machine on 2026-11-23
-                    from the same Containerfile and pins; it has the OpenSSL
-                    headers openssl-devel-1.1.1k-17.el8_6, read by openssl-sys's
-                    build script only - nothing of OpenSSL is linked)
+Derived image     : codebrix-dx-build-x86_64 (image id c66c136137d7, reused - not
+                    rebuilt for these runs; it has the OpenSSL headers
+                    openssl-devel-1.1.1k-17.el8_6, read by openssl-sys's build
+                    script only - nothing of OpenSSL is linked)
 Base image        : quay.io/pypa/manylinux_2_28_x86_64@sha256:a61875a2f84cab7df8de222ff12cabc08ff86eb4ad402ac90ba7bdaed9600cca
 Container OS      : AlmaLinux 8.10 (Cerulean Leopard)
 Toolchain         : rustc 1.100.0 (0ef1bc386 2026-11-09)
@@ -59,11 +66,11 @@ Command           : cargo build --release --locked --offline --target
                     then llvm-strip --strip-all
 
 File             : dx
-Size (as linked) : 77262456 bytes (not kept)
-Size (stripped)  : 59558528 bytes  <- the shipped file
-Size (gzip -9 -n): 21806023 bytes
-SHA256           : 970e9742f7de0e101266c3d490ec0bbeab6758ab729e7eda80855e2704dfcac4
-Build-id (sha1)  : 6ffefdfbeebdfac0913e4b2fa7e9cd493e21de98
+Size (as linked) : 77259920 bytes (not kept)
+Size (stripped)  : 59565544 bytes  <- the shipped file
+Size (gzip -9 -n): 21826246 bytes
+SHA256           : 50ee060d9954d2898a5dc63e4a254748fd8de57f43e6a43582770860af2f81c0
+Build-id (sha1)  : b5f61017f99db34e211c36c67732dcf1b6b5f2a6
 ELF              : ELF64, Advanced Micro Devices X86-64, DYN (Position-Independent Executable file)
 NEEDED           : libdl.so.2 libgit2-49e408b.so.1.9 libgcc_s.so.1 libpthread.so.0 libm.so.6 libc.so.6 ld-linux-x86-64.so.2
 glibc floor      : 2.28 (allowed <= 2.28)
@@ -80,15 +87,17 @@ Gate              : ELF class/machine, stripped, no RPATH/RUNPATH/TEXTREL,
                     RUN on the build host (LMDE 7, glibc 2.41) with libgit2 on LD_LIBRARY_PATH, and
                     WITHOUT it (does not start: exit 127, the loader names
                     libgit2-49e408b.so.1.9); the functional gate: the new dx + wasm-bindgen
-                    built a scratch copy of the WorkSite frontend (.wasm 1,833,078 bytes, 17
-                    site files), the tools then in native_libraries/linux-x64 (the fourth
-                    rebuild's dx of 2026-11-19) built the same copy at the same path
-                    BYTE-IDENTICALLY, a DX_SKIP_WASM_OPT release build with no wasm-opt
-                    succeeded (.wasm 2,075,249 bytes), and
+                    built a scratch copy of the WorkSite frontend (.wasm 1,843,491 bytes, 19
+                    site files), a DX_SKIP_WASM_OPT release build with no wasm-opt
+                    succeeded (.wasm 2,090,327 bytes), and
                     `dx new` from a local git template with no git program on PATH
-                    succeeded - ALL PASSED. The WorkSite frontend is not
-                    split, so the gate does not exercise the bundle-splitting change; it was
-                    proved separately, on the ApplicationSplitter sample (BUILD-PROVENANCE.txt)
+                    succeeded - ALL PASSED, but ONE: the comparison with the tools then in
+                    native_libraries/linux-x64 (the dx of 2026-11-23) read DIFFERENT, as
+                    expected and ACCEPTED: patch 0010 changes the root application's
+                    addresses from "/./assets/..." to "/assets/...", so index.html (two
+                    lines), the glue script (one line) and with it the glue script's
+                    hashed name differ; the .wasm and every other site file were
+                    byte-identical (BUILD-PROVENANCE.txt, ADOPTED 2026-11-24)
 
 LICENCE AND NOTICES FILES BESIDE THIS ONE:
   LICENSE-Dioxus.txt              dx's licence (Apache-2.0 text; dioxus-cli is

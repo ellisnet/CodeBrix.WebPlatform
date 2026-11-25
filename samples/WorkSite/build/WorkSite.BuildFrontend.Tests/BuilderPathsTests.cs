@@ -14,11 +14,11 @@ public class BuilderPathsTests
         var paths = new BuilderPaths(new WorkSiteLayout(root));
 
         //Assert
-        paths.WebRoot.Should().Be(Path.Combine(root, "backend", "WorkSite.Api", "wwwroot"));
+        paths.BuiltFrontend.Should().Be(Path.Combine(root, "backend", "WorkSite.Api", "frontend-built"));
         paths.PublishDirectory.Should().Be(Path.Combine(root, "artifacts", "publish"));
         paths.ComposeFile.Should().Be(Path.Combine(root, "docker", "compose.yaml"));
         paths.EnvFile.Should().Be(Path.Combine(root, ".env"));
-        paths.WebRootNoticesFile.Should().Be(Path.Combine(root, "backend", "WorkSite.Api", "wwwroot", "THIRD-PARTY-NOTICES.txt"));
+        paths.BuiltNoticesFile.Should().Be(Path.Combine(root, "backend", "WorkSite.Api", "frontend-built", "THIRD-PARTY-NOTICES.txt"));
     }
 
     [Fact]

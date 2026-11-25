@@ -70,6 +70,7 @@ public class ApiProblemTests
         ApiProblemCodes.NotFound.Should().Be("not_found");
         ApiProblemCodes.Conflict.Should().Be("conflict");
         ApiProblemCodes.RateLimited.Should().Be("rate_limited");
+        ApiProblemCodes.Offline.Should().Be("offline");
         ApiProblemCodes.ServerError.Should().Be("server_error");
     }
 }

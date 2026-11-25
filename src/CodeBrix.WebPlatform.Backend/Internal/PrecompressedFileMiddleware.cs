@@ -9,27 +9,34 @@ using Microsoft.Net.Http.Headers;
 namespace CodeBrix.WebPlatform.Backend.Internal;
 
 /// <summary>
-/// Answers a GET or HEAD of a web-root file with the file's compressed copy (<c>.br</c>, else
+/// Answers a GET or HEAD of a built frontend's file - when it is the file served at its address
+/// (<see cref="FrontendFileProvider.GetServedBuiltFile"/>) - with the file's compressed copy (<c>.br</c>, else
 /// <c>.gz</c>) when the request's <c>Accept-Encoding</c> prefers it, just before the static
 /// files (in the main pipeline and in each application's fallback). The answer carries
 /// <c>Content-Encoding</c>, the file's own <c>Content-Type</c>, the copy's
 /// <c>Content-Length</c>, <c>Last-Modified</c> and <c>ETag</c>, and honours the conditional
 /// headers (304, 412). Ranges are not offered for a copy: a request with a <c>Range</c> header
 /// is handed on to the static files, which answer it from the file itself. Every answer for a
-/// file that has a copy - compressed or not - carries <c>Vary: Accept-Encoding</c>. Anything
-/// else goes on unchanged.
+/// file that has a copy - compressed or not - carries <c>Vary: Accept-Encoding</c>. A compressed
+/// answer carries the file's Cache-Control (<see cref="FrontendServing.CacheControlFor"/>), the
+/// 304 too. Anything else (a web root's file among it) goes on unchanged.
 /// </summary>
 internal sealed class PrecompressedFileMiddleware
 {
     private readonly RequestDelegate _next;
-    private readonly ManifestHidingFileProvider _files;
+    private readonly FrontendFileProvider _files;
     private readonly IContentTypeProvider _contentTypes;
+    private readonly string _hashedCacheControl;
+    private readonly string _unhashedCacheControl;
 
-    public PrecompressedFileMiddleware(RequestDelegate next, ManifestHidingFileProvider files, IContentTypeProvider contentTypes)
+    public PrecompressedFileMiddleware(RequestDelegate next, FrontendFileProvider files, IContentTypeProvider contentTypes,
+        string hashedCacheControl, string unhashedCacheControl)
     {
         _next = next;
         _files = files;
         _contentTypes = contentTypes;
+        _hashedCacheControl = hashedCacheControl;
+        _unhashedCacheControl = unhashedCacheControl;
     }
 
     public Task InvokeAsync(HttpContext context)
@@ -47,14 +54,14 @@ internal sealed class PrecompressedFileMiddleware
             return _next(context);
         }
 
-        var file = _files.GetFileInfo(path);
-        if (!file.Exists || file.IsDirectory)
+        var file = _files.GetServedBuiltFile(path);
+        if (file == null)
         {
             return _next(context);
         }
 
-        var brotli = _files.GetCopy(path, ".br");
-        var gzip = _files.GetCopy(path, ".gz");
+        var brotli = _files.Built.GetCopy(path, ".br");
+        var gzip = _files.Built.GetCopy(path, ".gz");
         if (!brotli.Exists && !gzip.Exists)
         {
             return _next(context);
@@ -72,10 +79,11 @@ internal sealed class PrecompressedFileMiddleware
             return _next(context);
         }
 
-        return ServeAsync(context, coding == ContentCodings.Brotli ? brotli : gzip, coding, contentType);
+        var cacheControl = FrontendServing.CacheControlFor(true, file.Name, _hashedCacheControl, _unhashedCacheControl);
+        return ServeAsync(context, coding == ContentCodings.Brotli ? brotli : gzip, coding, contentType, cacheControl);
     }
 
-    private static async Task ServeAsync(HttpContext context, IFileInfo copy, string coding, string contentType)
+    private static async Task ServeAsync(HttpContext context, IFileInfo copy, string coding, string contentType, string cacheControl)
     {
         var length = copy.Length;
         var modified = copy.LastModified;
@@ -95,6 +103,11 @@ internal sealed class PrecompressedFileMiddleware
 
         headers.LastModified = lastModified;
         headers.ETag = etag;
+        if (cacheControl != null)
+        {
+            response.Headers.CacheControl = cacheControl;
+        }
+
         if (status == StatusCodes.Status304NotModified)
         {
             response.StatusCode = status;

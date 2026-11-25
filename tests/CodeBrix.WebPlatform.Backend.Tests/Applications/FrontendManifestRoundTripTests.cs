@@ -26,13 +26,13 @@ public class FrontendManifestRoundTripTests
         //Arrange
         using var root = new TempWebRoot();
         var written = FrontendApplicationSet.FromNames(names);
-        var path = FrontendManifestWriter.Write(root.Path, written);
+        var path = FrontendManifestWriter.Write(root.BuiltPath, written);
 
         //Act
-        var read = FrontendManifestReader.Read(root.Path);
+        var read = FrontendManifestReader.Read(root.BuiltPath);
 
         //Assert
-        path.Should().Be(FrontendManifestReader.GetPath(root.Path));
+        path.Should().Be(FrontendManifestReader.GetPath(root.BuiltPath));
         read.Should().Equal(written);
         read.Select(a => a.IsDefault).Should().Equal(written.Select(a => a.IsDefault));
         read.Select(a => a.Folder).Should().Equal(written.Select(a => a.Folder));
@@ -68,11 +68,11 @@ public class FrontendManifestRoundTripTests
     {
         //Arrange
         using var root = new TempWebRoot();
-        FrontendManifestWriter.Write(root.Path, FrontendApplicationSet.FromNames(new[] { null, "sales" }));
-        FrontendManifestWriter.Write(root.Path, FrontendApplicationSet.FromNames(new[] { "admin" }));
+        FrontendManifestWriter.Write(root.BuiltPath, FrontendApplicationSet.FromNames(new[] { null, "sales" }));
+        FrontendManifestWriter.Write(root.BuiltPath, FrontendApplicationSet.FromNames(new[] { "admin" }));
 
         //Act
-        var read = FrontendManifestReader.Read(root.Path);
+        var read = FrontendManifestReader.Read(root.BuiltPath);
 
         //Assert
         read.Select(a => a.Name).Should().Equal("admin");

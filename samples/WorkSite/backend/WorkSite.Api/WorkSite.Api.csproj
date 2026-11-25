@@ -5,10 +5,11 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <!--
-      wwwroot holds the built frontend, which FrontendBuilder copies in. It is served as plain
-      files from the published wwwroot folder. The SDK's static-web-assets layer is switched off
-      so that a development or test host serves exactly its own web root and nothing from this
-      project folder.
+      The built frontend is in frontend-built/ beside this file (build output: FrontendBuilder
+      writes it there, and the folder ignores itself in git). The Backend package serves it as
+      plain files and carries the folder into the build and publish output. The SDK's
+      static-web-assets layer is switched off so that a development or test host serves exactly
+      those files and nothing else from this project folder.
     -->
     <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
     <RootNamespace>WorkSite.Api</RootNamespace>

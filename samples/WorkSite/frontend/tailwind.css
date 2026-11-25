@@ -1,2 +1,18 @@
 @import "tailwindcss";
 @source "./src/**/*.rs";
+
+/* WorkSite's typeface: Roboto, the variable font (every weight from 100 to 900 in one file), from
+   assets/fonts/. That folder is copied into the site under its own name, without dx's hash
+   (main.rs declares it as a folder asset), so this address is fixed. The font comes from this
+   site, which the Content-Security-Policy allows (no font-src: default-src 'self' covers it). */
+@font-face {
+  font-family: "Roboto";
+  src: url("/assets/fonts/Roboto.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  --font-sans: "Roboto", sans-serif;
+}

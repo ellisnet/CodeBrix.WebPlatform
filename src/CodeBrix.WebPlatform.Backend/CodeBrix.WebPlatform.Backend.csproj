@@ -53,7 +53,7 @@
     <Product>CodeBrix.WebPlatform.Backend</Product>
     <Title>CodeBrix.WebPlatform.Backend</Title>
     <Authors>Jeremy Ellis</Authors>
-    <Description>The ASP.NET Core plumbing of a CodeBrix.WebPlatform backend, in one services call and one pipeline call: it serves the frontend applications the frontend build wrote into the web root (the default one at the site root, named ones below their names, with single-page-app fallbacks that never answer an API address, and the frontend build's Brotli and gzip copies to a browser that accepts them), answers unknown API addresses, framework-produced errors and model-binding failures with the platform's standard error body, demands the backend's request marker on state-changing API requests, refuses hub connections from other sites, and sends the security headers. Every piece can be switched off. On request it also compresses the backend's own answers as they are sent (off by default).</Description>
+    <Description>The ASP.NET Core plumbing of a CodeBrix.WebPlatform backend, in one services call and one pipeline call: it serves the frontend applications the frontend build wrote into frontend-built/ in the backend project's folder (the default one at the site root, named ones below their names, with single-page-app fallbacks that never answer an API address, and the frontend build's Brotli and gzip copies to a browser that accepts them) and the developer's own files in wwwroot/, carries frontend-built/ into the build and publish output, answers unknown API addresses, framework-produced errors and model-binding failures with the platform's standard error body, demands the backend's request marker on state-changing API requests, refuses hub connections from other sites, and sends the security headers. Every piece can be switched off. On request it also compresses the backend's own answers as they are sent (off by default).</Description>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/ellisnet/CodeBrix.WebPlatform</PackageProjectUrl>
     <RepositoryUrl>https://github.com/ellisnet/CodeBrix.WebPlatform</RepositoryUrl>
@@ -72,6 +72,18 @@
     <None Include="..\..\README.md" Pack="true" PackagePath="" />
     <None Include="..\..\AGENT-README.txt" Pack="true" PackagePath="" />
     <None Include="..\..\THIRD-PARTY-NOTICES.txt" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+  <!--
+    buildTransitive/CodeBrix.WebPlatform.Backend.ApacheLicenseForever.targets (named after the
+    package id, so NuGet imports it into every project that references the package, directly or
+    through another package) copies the backend project's frontend-built/ folder - the built
+    frontend the backend serves - into the build output and the publish output, without the
+    folder's .gitignore. The same pattern as the FrontendBuilder packages' targets.
+  -->
+  <ItemGroup>
+    <None Include="buildTransitive\CodeBrix.WebPlatform.Backend.ApacheLicenseForever.targets"
+          Pack="true" PackagePath="buildTransitive" />
   </ItemGroup>
 
   <ItemGroup>

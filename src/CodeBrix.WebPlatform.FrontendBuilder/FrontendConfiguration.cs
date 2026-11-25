@@ -1,6 +1,6 @@
 namespace CodeBrix.WebPlatform.FrontendBuilder;
 
-/// <summary>Which kind of frontend build <see cref="PlatformFrontend.BuildAsync"/> makes.</summary>
+/// <summary>Which kind of frontend build <see cref="PlatformFrontend.BuildAsync(FrontendConfiguration, string, System.Threading.CancellationToken)"/> makes.</summary>
 public enum FrontendConfiguration
 {
     /// <summary>

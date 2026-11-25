@@ -34,8 +34,8 @@ public class ManifestHidingFileProviderTests
         //Arrange
         using var root = new TempWebRoot();
         root.WriteBuiltFrontend(FrontendApplicationSet.SingleDefault);
-        using var physical = new PhysicalFileProvider(root.Path);
-        var provider = new ManifestHidingFileProvider(physical, root.Path);
+        using var physical = new PhysicalFileProvider(root.BuiltPath);
+        var provider = new ManifestHidingFileProvider(physical, root.BuiltPath);
 
         //Act
         var manifest = provider.GetFileInfo("/" + FrontendManifest.FileName);
@@ -55,8 +55,8 @@ public class ManifestHidingFileProviderTests
         //Arrange
         using var root = new TempWebRoot();
         root.WriteBuiltFrontend(FrontendApplicationSet.SingleDefault);
-        using var physical = new PhysicalFileProvider(root.Path);
-        var provider = new ManifestHidingFileProvider(physical, root.Path);
+        using var physical = new PhysicalFileProvider(root.BuiltPath);
+        var provider = new ManifestHidingFileProvider(physical, root.BuiltPath);
 
         //Act
         var names = provider.GetDirectoryContents("/").Select(f => f.Name).ToArray();
@@ -85,14 +85,14 @@ public class ManifestHidingFileProviderTests
     {
         //Arrange
         using var root = new TempWebRoot();
-        root.Write("app.js", "x");
-        root.Write("app.js.br", "b");
-        root.Write("app.js.gz", "g");
-        root.Write("own.json.gz", "g");
-        root.Write("sales/index.html", "x");
-        root.Write("sales/index.html.br", "b");
-        using var physical = new PhysicalFileProvider(root.Path);
-        var provider = new ManifestHidingFileProvider(physical, root.Path);
+        root.WriteBuilt("app.js", "x");
+        root.WriteBuilt("app.js.br", "b");
+        root.WriteBuilt("app.js.gz", "g");
+        root.WriteBuilt("own.json.gz", "g");
+        root.WriteBuilt("sales/index.html", "x");
+        root.WriteBuilt("sales/index.html.br", "b");
+        using var physical = new PhysicalFileProvider(root.BuiltPath);
+        var provider = new ManifestHidingFileProvider(physical, root.BuiltPath);
 
         //Act
         var copy = provider.IsCopyAddress(subpath);
@@ -106,11 +106,11 @@ public class ManifestHidingFileProviderTests
     {
         //Arrange
         using var root = new TempWebRoot();
-        root.Write("app.js", "x");
-        root.Write("app.js.br", "b");
-        root.Write("own.json.gz", "g");
-        using var physical = new PhysicalFileProvider(root.Path);
-        var provider = new ManifestHidingFileProvider(physical, root.Path);
+        root.WriteBuilt("app.js", "x");
+        root.WriteBuilt("app.js.br", "b");
+        root.WriteBuilt("own.json.gz", "g");
+        using var physical = new PhysicalFileProvider(root.BuiltPath);
+        var provider = new ManifestHidingFileProvider(physical, root.BuiltPath);
 
         //Act
         var byName = provider.GetFileInfo("/app.js.br");
@@ -125,5 +125,31 @@ public class ManifestHidingFileProviderTests
         names.Should().Contain("app.js");
         names.Should().Contain("own.json.gz");
         names.Should().NotContain("app.js.br");
+    }
+
+    [Theory]
+    [InlineData("/.gitignore", false)]
+    [InlineData(".gitignore", false)]
+    [InlineData("/.GITIGNORE", false)]
+    [InlineData("/.gitignore. ", false)]
+    [InlineData("/.gitignore::$DATA", false)]
+    public void the_folders_gitignore_is_not_found_and_not_listed(string subpath, bool expected)
+    {
+        //Arrange
+        using var root = new TempWebRoot();
+        root.WriteBuiltFrontend(FrontendApplicationSet.SingleDefault);
+        root.WriteBuilt(".gitignore", "*");
+        using var physical = new PhysicalFileProvider(root.BuiltPath, Microsoft.Extensions.FileProviders.Physical.ExclusionFilters.None);
+        var provider = new ManifestHidingFileProvider(physical, root.BuiltPath);
+
+        //Act
+        var info = provider.GetFileInfo(subpath);
+        var names = provider.GetDirectoryContents("/").Select(f => f.Name).ToArray();
+
+        //Assert
+        physical.GetFileInfo("/.gitignore").Exists.Should().BeTrue();
+        info.Exists.Should().Be(expected);
+        names.Should().NotContain(".gitignore");
+        names.Should().Contain("index.html");
     }
 }

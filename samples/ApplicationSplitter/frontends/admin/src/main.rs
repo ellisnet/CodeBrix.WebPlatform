@@ -14,7 +14,8 @@ use dioxus::prelude::*;
 
 use crate::routes::Route;
 
-const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
+/// The stylesheet the platform generates with Tailwind (build output, in assets/generated/).
+const TAILWIND_CSS: Asset = asset!("/assets/generated/tailwind.css");
 /// The site icon (the CodeBrix icon as an .ico file). Served without a hash suffix, at the fixed
 /// path `index.html` also links, so the browser finds it before the application has started.
 const FAVICON: Asset = asset!("/assets/favicon.ico", AssetOptions::builder().with_hash_suffix(false));

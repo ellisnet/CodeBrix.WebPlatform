@@ -89,8 +89,9 @@ from it and the plumbing the Backend package gives it.
                   together with the registered crate bundles', the cargo
                   configuration and, when it is missing, the Tailwind
                   stylesheet by running the packaged Tailwind once), and
-                  builds every application into the web root (with the
-                  manifest, and bundle splitting on request) or serves one
+                  builds every application (or one) into the backend
+                  project's frontend-built/ folder (with the manifest, and
+                  bundle splitting on request) or serves one
                   with dx. It
                   hands the build program the notices for what the platform
                   compiles into a site.
@@ -172,14 +173,17 @@ REPOSITORY LAYOUT
       Problems/                              ApiProblem, ApiProblemCodes
       Applications/                          FrontendApplication,
                                              FrontendApplicationSet,
-                                             FrontendManifest (the names only)
+                                             FrontendManifest (the names
+                                             only), BuiltFrontend (the
+                                             frontend-built folder's name)
       Crates/                                CrateBundle, CrateBundles
 
     src/CodeBrix.WebPlatform.Backend/        packable
       (root)                                 AddPlatformBackend,
                                              UsePlatformBackend,
                                              PlatformBackendOptions,
-                                             PlatformBackendPaths
+                                             PlatformBackendPaths,
+                                             FrontendFilePrecedence
       Applications/                          FrontendManifestReader (strict;
                                              TOML through CodeBrix.TomlParse),
                                              FrontendManifestException
@@ -189,14 +193,30 @@ REPOSITORY LAYOUT
       Internal/                              the middleware, the status-code
                                              handler, the fallbacks and the
                                              unknown-API answer
-                                             (FrontendServing), the file
-                                             provider that hides the
-                                             manifest and the compressed
-                                             copies, the marker resolver,
-                                             the precompressed-file answer,
-                                             the Accept-Encoding reading
+                                             (FrontendServing), the
+                                             built-site file provider that
+                                             hides the manifest, its
+                                             .gitignore and the compressed
+                                             copies
+                                             (ManifestHidingFileProvider),
+                                             the provider that combines it
+                                             with wwwroot/ by precedence
+                                             (FrontendFileProvider), a
+                                             wwwroot/ created after start-up
+                                             (LateWebRootFileProvider), the
+                                             offline file (OfflineMiddleware),
+                                             the content-type table
+                                             (ContentTypeTable), dx's hashed
+                                             names (HashedFileNames), the
+                                             marker resolver, the
+                                             precompressed-file answer, the
+                                             Accept-Encoding reading
                                              (ContentCodings) and the rules
                                              of the response compression
+                                             (MediaTypePatterns)
+      buildTransitive/                       the targets file that carries
+                                             frontend-built/ into a backend's
+                                             build and publish output
 
     src/CodeBrix.WebPlatform.BackendMapper/  packable
       (root)                                 BackendMapper, BackendMapOptions,
@@ -232,13 +252,17 @@ REPOSITORY LAYOUT
       SharedCrate/                           SharedRustCrate, SharedRustFile
       Stylesheet/                            StylesheetOutcome; internal
                                              StylesheetRules (Materialize's
-                                             Tailwind-stylesheet step)
+                                             Tailwind-stylesheet step) and
+                                             DioxusTailwindSettings (refuses
+                                             a Dioxus.toml that moves the
+                                             stylesheets)
       Applications/                          FrontendApplicationOptions,
                                              FrontendManifestWriter;
                                              internal ApplicationPlan (each
                                              application's paths and
-                                             settings) and WebRootWriter
-                                             (fills the web root)
+                                             settings) and
+                                             BuiltFrontendWriter (fills
+                                             frontend-built/)
       Crates/                                PlatformCrates, CrateMode,
                                              CrateBundleOutcome,
                                              LockFileRepair; internal
@@ -250,8 +274,11 @@ REPOSITORY LAYOUT
                                              marker and stale entries)
       Internal/                              process runner, output tail,
                                              execute permission, ShrinkPlan,
-                                             OutputCompressor (the web
-                                             root's .br / .gz copies)
+                                             OutputCompressor (the .br / .gz
+                                             copies in frontend-built/),
+                                             BuildOutputFolder (the
+                                             self-ignoring folders'
+                                             .gitignore)
       buildTransitive/                       copies frontend-crates/ into a
                                              consuming build's output
       Rust/codebrix-webplatform/             the shared Rust crate's source
@@ -568,7 +595,21 @@ CodeBrix.LibGit2 API, with no git program on PATH; they are skipped on a
 machine with no adopted programs. The lock-file tests that need cargo
 (Crates/LockFileCargoTests.cs, see THE FRONTEND'S LOCK FILE) run the
 installed cargo offline on tiny made-up crates, and are skipped, with the
-reason, on a machine without cargo. No test builds a frontend with dx. The
+reason, on a machine without cargo; so are Crates/PathCrateTests.cs (a
+frontend with a local path crate beside it materializes, passes the
+lock-file checks and builds offline) and the test that the packaged Tailwind
+skips a folder that carries its own .gitignore. ONE OPT-IN CLASS builds a
+frontend with dx: PlatformFrontendDxBuildTests.cs materializes and
+Debug-builds a small Dioxus frontend with the ADOPTED dx
+(native_libraries/<rid>/), the real platform crates and the packaged
+Tailwind into a backend project folder. It runs only with
+CODEBRIX_WEBPLATFORM_DX_BUILD_TESTS=1 (otherwise its tests are skipped with
+the reason):
+
+    CODEBRIX_WEBPLATFORM_DX_BUILD_TESTS=1 dotnet tests/CodeBrix.WebPlatform.FrontendBuilder.Tests/bin/Debug/net10.0/CodeBrix.WebPlatform.FrontendBuilder.Tests.dll -class CodeBrix.WebPlatform.FrontendBuilder.Tests.PlatformFrontendDxBuildTests
+
+Its test that dx writes the stylesheet into assets/generated/ needs an
+adopted dx with dioxus-cli patch 0008. The
 LibraryChecker tests run the whole gate
 against this repository and so need cargo (offline); they do not start the
 proof build. The HostTools tests check, for the machine they run on, that the
@@ -599,8 +640,30 @@ hosts in a test server (Microsoft.AspNetCore.TestHost) over
 Backend.Tests.SampleBackend, a class library with controllers (some with
 routes outside /api, to prove that a controller wins over a fallback), a
 hub, a stand-in sign-in scheme and the backend's own pipeline lines after
-UsePlatformBackend. Temporary web roots with an index.html per application
-stand in for a built frontend. The manifest tests include a ROUND TRIP with
+UsePlatformBackend. Helpers/TempWebRoot.cs stands in for a built frontend:
+it writes the fake built frontend into <content root>/frontend-built
+(WriteBuilt) and the developer's files into wwwroot (WriteOwn). Serving/
+covers both folders and their precedence with the start-up warnings
+(BuiltFrontendAndWebRootTests.cs), a wwwroot/ created after start-up
+(LateWebRootTests.cs; Internal/LateWebRootFileProvider, tested in
+Internal/LateWebRootFileProviderTests.cs, stands in for ASP.NET Core's
+null web-root provider until the folder exists), Cache-Control and the
+content types
+(CacheControlAndContentTypeTests.cs) and the offline file (OfflineTests.cs);
+Internal/HashedFileNamesTests.cs dx's hashed names;
+Internal/HubOriginMiddlewareTests.cs and Plumbing/AdditionalHubOriginsTests.cs
+the hub Origin check with its extra origins; Plumbing/QueryBindingTests.cs
+how ASP.NET Core binds an empty query value (as null);
+PlatformBackendOptionsTests.cs the option defaults; and
+Packaging/BuildTransitiveTargetsTests.cs checks the targets file against
+BuiltFrontend.FolderName. THE PUBLISH TARGETS are proved by hand when they
+change: pack the Backend (and Core), consume it from a local feed in a
+scratch Web SDK backend with a hand-made frontend-built/ (a .gitignore, an
+index.html with its .br / .gz, hashed assets, a named application, the
+manifest), `dotnet publish`, and check that the publish folder and
+bin/<cfg>/<tfm>/ hold frontend-built/ with the same tree minus its
+.gitignore, and that the published backend serves it. The manifest tests
+include a ROUND TRIP with
 FrontendBuilder's own writer: the test project compiles
 src/CodeBrix.WebPlatform.FrontendBuilder/Applications/FrontendManifestWriter.cs
 as a LINKED SOURCE FILE (not a project reference to FrontendBuilder), so the
@@ -609,9 +672,12 @@ project referencing a build-time library. Keep FrontendManifestWriter.cs free
 of anything but Core and the base class library, or the link breaks.
 
 HOW SEVERAL FRONTEND APPLICATIONS AND THE CRATE BUNDLES ARE TESTED.
-FrontendBuilder.Tests covers the application plans, the web-root writer and
-the manifest writer (Applications/), materializing several applications and
-ServeAsync's choice of application (PlatformFrontendApplicationsTests.cs),
+FrontendBuilder.Tests covers the application plans, the built-frontend
+writer (Applications/BuiltFrontendWriterTests.cs: full and one-application
+builds) and the manifest writer (Applications/), the Dioxus.toml check
+(Stylesheet/DioxusTailwindSettingsTests.cs), materializing several
+applications and ServeAsync's choice of application
+(PlatformFrontendApplicationsTests.cs),
 and the strict rule of the crate bundles over the platform's archive
 (Crates/CrateBundleMergeTests.cs, with small bundles made by the tests).
 Core.Tests covers the name rules, the application set and the bundle
@@ -698,12 +764,17 @@ COMPRESSION: THE MECHANISM
 (consumer view: AGENT-README.txt, COMPRESSION)
 
 THE COPIES AT BUILD TIME. PlatformFrontend.BuildAsync, after
-WebRootWriter.Write has filled the web root, calls
-Internal/OutputCompressor.Compress once per application with the
-application's folder in the web root and the list of the files dx built
-(enumerated from dx's output folder, so the developer's own files in the web
-root are never in it). For each file whose extension is in
-OutputCompressor.CompressibleExtensions it compresses the bytes in memory -
+Applications/BuiltFrontendWriter.Write (a full build) or WriteOne (one
+application) has filled frontend-built/, calls
+Internal/OutputCompressor.Compress once per application built with the
+application's folder in frontend-built/ and the list of the files dx built
+(enumerated from dx's output folder). The extension set is
+PlatformFrontendOptions.CompressibleExtensions, checked first by
+OutputCompressor.RequireExtensions (one extension with its dot; .br / .gz
+refused), and the compression is the option's value, or BrotliAndGzip for
+Release and None for Debug when it is unset. A .gitignore is never
+compressed. For each file whose extension is in the set it compresses the
+bytes in memory -
 BrotliEncoder.TryCompress at quality 11, window 24; GZipStream at
 CompressionLevel.SmallestSize with the header's OS byte set to 255 so that
 the bytes do not depend on the machine - and writes <name>.br / <name>.gz
@@ -713,21 +784,29 @@ are done in parallel (Parallel.For); the result is sorted by path, so it does
 not depend on the order. Afterwards, in every folder that holds a file of
 the list, a .br / .gz that is not in the list and whose file is missing is
 deleted (stale). A .br / .gz in the list with no file beside it is an
-application's own file and is left alone. ServeAsync never calls it. Only
+application's own file and is left alone. PlatformFrontend.WriteBuiltFile
+compresses one additional file of the build program's the same way
+(PlatformFrontendBuiltFileTests.cs). ServeAsync never calls it. Only
 System.IO.Compression is used.
 
-THE COPIES AT RUN TIME. Internal/ManifestHidingFileProvider hides a copy BY
+THE COPIES AT RUN TIME. Internal/ManifestHidingFileProvider is the
+built-site provider (frontend-built/): it hides the manifest, the folder's
+.gitignore and a copy BY
 NAME (IsCopyAddress: the last segment, with the same Windows spellings as for
 the manifest, ends in .br / .gz and the address without the suffix is a
 file) and in directory listings; GetCopy reads a copy from the inner
-provider. Internal/PrecompressedFileMiddleware runs just before
+provider. Internal/FrontendFileProvider combines it with wwwroot/ by
+FilePrecedence; only the built side has copies. Internal/
+PrecompressedFileMiddleware runs just before
 UseStaticFiles, in the main pipeline and in each fallback branch
 (FrontendServing.UseFiles), only when ServePrecompressedFiles is on. For a
-GET / HEAD with no endpoint delegate, a known content type and an existing
-file, it appends Vary: Accept-Encoding when a copy exists, hands a Range
-request on to the static files (the file itself), and otherwise asks
+GET / HEAD with no endpoint delegate, a known content type and a built
+file that is the one served at the address (GetServedBuiltFile), it
+appends Vary: Accept-Encoding when a copy exists, hands a Range request on
+to the static files (the file itself), and otherwise asks
 ContentCodings.Choose; when a coding wins it answers itself: 200 with
-Content-Encoding, the file's content type, the copy's length, Last-Modified
+Content-Encoding, the file's content type, the file's Cache-Control
+(FrontendServing.CacheControlFor), the copy's length, Last-Modified
 (whole seconds) and ETag (the static files' formula on the copy's time and
 length, so it differs from the file's), the conditional headers in RFC 9110's
 order (Precondition: 412 / 304), HEAD without a body, the body by
@@ -742,21 +821,24 @@ Internal/PlatformResponseCompressionProvider - not registered in the
 services, so an application's own AddResponseCompression is untouched. The
 provider chooses the coding with ContentCodings (the same reading as for the
 copies; Brotli and gzip at CompressionLevel.Fastest) and refuses: an answer
-marked as a web-root file (FrontendServing.FrontendFileItem, set by the
-static files' OnPrepareResponse and by the precompressed answer); anything
+marked as a served file (FrontendServing.FrontendFileItem, set by the
+static files' OnPrepareResponse, by the precompressed answer and by the
+offline page); anything
 below /api/hubs or with HubMetadata; an answer IsCompressedAnswer does not
 take for the mode. That decision reads the matched endpoint's metadata per
 request: an answer of an action carrying Core's WireFileAttribute is taken
-when its type is not compressed already (JSON included; text/event-stream
-never); the JSON answers of any other action only with FileAnswersAndJson;
-nothing else. It then defers to the framework's ResponseCompressionProvider
-(EnableForHttps, MimeTypes "*/*") for the HTTPS opt-out feature,
+when its type matches CompressedFileTypes (Internal/MediaTypePatterns) or is
+JSON (text/event-stream never); the JSON answers of any other action only
+with FileAnswersAndJson; nothing else. It then defers to the framework's
+ResponseCompressionProvider (EnableForHttps, MimeTypes "*/*") for the HTTPS
+opt-out feature,
 Content-Range and an existing Content-Encoding.
 
 THE TESTS. FrontendBuilder.Tests/Internal/OutputCompressorTests.cs (made-up
 sites: which files, the four values, smaller-only, determinism, stale and dx
-copies, the numbers) and PlatformFrontendCompressionTests.cs (the default;
-BuildAsync refuses a bad value; ServeAsync does not read it). Backend.Tests:
+copies, the numbers, the extension set) and PlatformFrontendCompressionTests.cs
+(the Release / Debug default; BuildAsync refuses a bad value or extension;
+ServeAsync does not read it). Backend.Tests:
 Serving/PrecompressedFilesTests.cs and PrecompressedFilesSwitchedOffTests.cs
 (negotiation, headers, 304 / 412, HEAD, Range, the fallback index, copies
 not addressable), Plumbing/ResponseCompressionTests.cs (off by default, the
@@ -1069,8 +1151,14 @@ both:
     its own Cargo.lock; a patch removes that line.
 
 Never commit: any `target` folder, tools/dx-native-tools/output/, and what
-the samples' builds write (see their maintainer files). The .gitignore at the
-repository root covers all of them.
+the samples' builds write (see their maintainer files). Every folder the
+platform's build writes into a sample (src/generated/, platform/vendor/,
+platform/codebrix-webplatform/, .cargo/, target/, assets/generated/, the
+backend's frontend-built/) carries its own .gitignore, written by the
+library, exactly as in an application (AGENT-README.txt, GIT: WHAT IS BUILD
+OUTPUT), so the root .gitignore needs no line for them. For the samples it
+keeps only samples/WorkSite/artifacts/ (WorkSite's build program's own
+output) and samples/WorkSite/.env (the containers' secrets).
 
 
 THE HOST-TOOLS PROGRAMS
@@ -1080,7 +1168,10 @@ scripts in tools/dx-native-tools (Linux in a pinned container with the
 network off; Windows and macOS scripts written for the owner's machines),
 gated, and ADOPTED into native_libraries/<rid>/ with a provenance record.
 Start at tools/dx-native-tools/README.txt; what was built, and the
-reproducibility record, is in its BUILD-PROVENANCE.txt. The step-by-step
+reproducibility record, is in its BUILD-PROVENANCE.txt. The functional gate
+builds the repository's MATERIALIZED WorkSite frontend: materialize it first
+(the sample's `generate`) on FrontendBuilder packages of the current layout,
+for the same reason as THE NODE-FREE PROOF below. The step-by-step
 README for each operating system (what to install first is in BUILD MACHINES
 above):
     linux-x64, linux-arm64   tools/dx-native-tools/linux/README.txt
@@ -1106,6 +1197,11 @@ tools/dx-native-tools/vendoring/wasm-split-cli):
   0004 the regenerated Cargo.lock
   0005 no prebuilt OpenSSL archive
   0006 DX_SKIP_WASM_OPT: an unshrunk release build on request
+  0008 Tailwind's default output in assets/generated/tailwind.css
+  0009 the stand-in split loader (__wasm_split.js) of an unsplit build and of
+       dx serve, so split points work as ordinary loaded code
+  0010 the root application's addresses without "/./" (/assets/..., not
+       /./assets/...)
   0007 wasm-split-cli -> the patched copy in tools/dx-native-tools/sources/
        wasm-split-cli, whose patches are:
          0001 the edges recovered for wasm-bindgen's closure shims reach the
@@ -1115,6 +1211,22 @@ tools/dx-native-tools/vendoring/wasm-split-cli):
               fixed order (before, the order of a HashMap / HashSet, so the
               same source gave other split modules and other file names on
               every build)
+         0004 the main module keeps its constants that the linker stored
+              inside a split module's constant
+         0005 a data symbol of size 0 that only split modules name no
+              longer fails the build ("Failed to find data symbol" in a
+              split Debug build)
+         0006 code and data that several split modules use go into the
+              shared chunk (chunk_0_split), once, instead of into each of
+              them; the loader (__wasm_split.js) fetches the chunk once,
+              before the first module that needs it. The first build with a
+              dx that carries it gives every split application a new loader,
+              a new main script (it names the loader's hash) and so a new
+              index.html, once - even with nothing shared; an application
+              whose pieces share code also gets new piece files and a
+              filled chunk. Unsplit builds do not change.
+Which of these an ADOPTED dx carries is in BUILD-PROVENANCE.txt and
+tools/dx-native-tools/README.txt.
 Every dx command is there (`dx new`, `dx init`, `dx components` included).
 BUILD PREREQUISITE on Linux: the OpenSSL DEVELOPMENT HEADERS (the derived
 build image installs them; a bare Debian host needs `sudo apt install
@@ -1165,8 +1277,9 @@ REPRODUCIBLE APPLICATION BUILDS
 BROWSER'S CACHE)
 
 THE PROMISE, AS FAR AS IT IS PROVED: the same source, built in the same
-folder with the same tools, gives the same web root - every file name and
-every byte, the compressed copies and the manifest included - split or not.
+folder with the same tools, gives the same frontend-built/ - every file
+name and every byte, the compressed copies and the manifest included -
+split or not.
 Release file names carry a hash of the content (dx's -dxh<hash>), so an
 unchanged application keeps its names and a browser its cached copies.
 Proved on 2026-11-19 with the ApplicationSplitter sample (three applications,
@@ -1194,13 +1307,17 @@ vendored crates, which are never edited):
     the main file's data moves. A change of the same length renames only
     that page's piece, the loader, the glue file (and index.html's bytes).
   - TAILWIND SCANS THE FRONTEND FOLDER for class names, skipping what
-    .gitignore files exclude; the root .gitignore excludes target/. A copy
-    of a frontend without such a line gives a stylesheet that depends on
-    the build output (measured: 38,257 against 36,089 bytes).
+    .gitignore files exclude; target/ carries the .gitignore the library
+    writes into it (every materialize, build and serve), so no rule of the
+    application's is needed. A Tailwind run on a frontend whose target/ has
+    lost that file (after `cargo clean`, before the next materialize) reads
+    the build output and gives a stylesheet that depends on it (measured:
+    38,257 against 36,089 bytes).
 
 HOW TO CHECK after a tool change: build ApplicationSplitter twice from clean
-(delete each frontend's target/ and the web root's content) and compare the
-web roots file by file (names and SHA-256). Its maintainer file says how.
+(delete each frontend's target/ and the backend's frontend-built/) and
+compare the frontend-built/ folders file by file (names and SHA-256). Its
+maintainer file says how.
 
 
 THE NODE-FREE PROOF
@@ -1210,7 +1327,10 @@ THE NODE-FREE PROOF
 
 A maintainer test of the platform, not package functionality: it builds a
 MATERIALIZED frontend - by default the WorkSite sample's, which uses every
-part of the platform (materialize it with the sample's `generate` first) -
+part of the platform (materialize it with the sample's `generate` first, on
+FrontendBuilder packages of the current layout: the sample's main.rs names
+assets/generated/tailwind.css, which an older FrontendBuilder does not
+write) -
 in a throw-away container that has Rust but no Node.js, npm or other
 JavaScript runtime (probed: the proof fails if one is found), with the
 container's network switched off. It copies in the frontend with its crates,

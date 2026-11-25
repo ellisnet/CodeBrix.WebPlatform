@@ -179,9 +179,11 @@ impl BuildRequest {
             for (idx, chunk) in modules.chunks.iter().enumerate() {
                 let path = bindgen_outdir.join(format!("chunk_{}_{}.wasm", idx, chunk.module_name));
                 wasm_opt::write_wasm(&chunk.bytes, &path, &wasm_opt_options).await?;
+                // CodeBrix change: the address starts "/assets/" for an application at the site
+                // root (upstream: "/./assets/"); see base_path_prefix.
                 writeln!(
-                    glue, "export const __wasm_split_load_chunk_{idx} = makeLoad(\"/{base_path}/assets/{url}\", [], fusedImports);",
-                    base_path = self.base_path_or_default(),
+                    glue, "export const __wasm_split_load_chunk_{idx} = makeLoad(\"{base_path}/assets/{url}\", [], fusedImports);",
+                    base_path = self.base_path_prefix(),
                     url = assets
                         .register_asset(&path, AssetOptions::builder().into_asset_options())?.bundled_path(),
                 )?;
@@ -203,12 +205,14 @@ impl BuildRequest {
                     .as_ref()
                     .context("generated wasm-split bindgen module has no hash id?")?;
 
+                // CodeBrix change: "/assets/" at the site root, not "/./assets/"; see
+                // base_path_prefix.
                 writeln!(
                     glue,
-                    "export const __wasm_split_load_{module}_{hash_id}_{comp_name} = makeLoad(\"/{base_path}/assets/{url}\", [{deps}], fusedImports);",
+                    "export const __wasm_split_load_{module}_{hash_id}_{comp_name} = makeLoad(\"{base_path}/assets/{url}\", [{deps}], fusedImports);",
                     module = module.module_name,
 
-                    base_path = self.base_path_or_default(),
+                    base_path = self.base_path_prefix(),
 
                     // Again, register this wasm with the asset system
                     url = assets
@@ -244,6 +248,19 @@ impl BuildRequest {
             // This will overwrite the file in place
             // We will wasm-opt it in just a second...
             std::fs::write(&post_bindgen_wasm, modules.main.bytes).unwrap();
+        }
+
+        // CodeBrix change: a build WITHOUT bundle splitting (no `--wasm-split`, and every
+        // `dx serve`) of an application that has split points (`wasm_split::lazy_loader!`,
+        // `#[component(lazy)]`, `#[wasm_split]`) still imports their loader,
+        // `./__wasm_split.js`, which upstream writes only for a split build, so the page never
+        // started. dx now writes a stand-in loader for such a build: every split point reports
+        // itself as already loaded and every call into a piece goes to the same function in the
+        // main module, where all of the code is. See
+        // tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt.
+        if !should_bundle_split {
+            write_unsplit_split_loader(&post_bindgen_wasm, &bindgen_outdir)
+                .context("Failed to write the stand-in loader for the split points of an unsplit build")?;
         }
 
         if matches!(ctx.mode, BuildMode::Fat) {
@@ -310,13 +327,15 @@ impl BuildRequest {
             .append(true)
             .open(self.wasm_bindgen_js_output_file())?;
         let mut buf_writer = std::io::BufWriter::new(&mut js);
+        // CodeBrix change: the .wasm address has no "/./" for an application at the site root;
+        // see base_path_prefix.
         writeln!(
             buf_writer,
             r#"
 globalThis.__wasm_split_main_initSync = initSync;
 
 // Actually perform the load
-__wbg_init({{module_or_path: "/{}/{wasm_path}"}}).then((wasm) => {{
+__wbg_init({{module_or_path: "{}/{wasm_path}"}}).then((wasm) => {{
     // assign this module to be accessible globally
     globalThis.__dx_mainWasm = wasm;
     globalThis.__dx_mainInit = __wbg_init;
@@ -328,7 +347,7 @@ __wbg_init({{module_or_path: "/{}/{wasm_path}"}}).then((wasm) => {{
     }}
 }});
 "#,
-            self.base_path_or_default(),
+            self.base_path_prefix(),
         )?;
 
         Ok(())
@@ -543,12 +562,15 @@ __wbg_init({{module_or_path: "/{}/{wasm_path}"}}).then((wasm) => {{
         }
 
         // If not, insert the script
+        //
+        // CodeBrix change: src="/wasm/..." or "/assets/..." for an application at the site root
+        // (upstream: "/./..."); see base_path_prefix.
         *html = html.replace(
             "</body",
             &format!(
-                r#"<script type="module" async src="/{}/{}"></script>
+                r#"<script type="module" async src="{}/{}"></script>
             </body"#,
-                self.base_path_or_default(),
+                self.base_path_prefix(),
                 self.bundled_js_path(assets)
             ),
         );
@@ -556,6 +578,11 @@ __wbg_init({{module_or_path: "/{}/{wasm_path}"}}).then((wasm) => {{
 
     /// Replace any special placeholders in the HTML with resolved values
     fn replace_template_placeholders(&self, html: &mut String, wasm_path: &str, js_path: &str) {
+        // CodeBrix change: an address written "/{base_path}/..." (the form dx's own head
+        // resources and the documented index.html use) becomes "/..." for an application at the
+        // site root instead of "/./..."; a {base_path} anywhere else is replaced as upstream
+        // does. See base_path_prefix.
+        *html = html.replace("/{base_path}/", &format!("{}/", self.base_path_prefix()));
         let base_path = self.base_path_or_default();
         *html = html.replace("{base_path}", base_path);
 
@@ -599,6 +626,16 @@ __wbg_init({{module_or_path: "/{}/{wasm_path}"}}).then((wasm) => {{
         self.release && self.bundle == BundleFormat::Web
     }
 
+    /// CodeBrix change: what an absolute address of the application's files starts with before
+    /// "/assets/..." or "/wasm/...": "" for an application at the site root, "/<base path>"
+    /// otherwise. Upstream writes "/{base_path_or_default}/", which is "/./" at the site root.
+    /// See tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt.
+    fn base_path_prefix(&self) -> String {
+        self.trimmed_base_path()
+            .map(|path| format!("/{path}"))
+            .unwrap_or_default()
+    }
+
     /// Get the path to the wasm bindgen temporary output folder
     pub fn wasm_bindgen_out_dir(&self) -> PathBuf {
         self.root_dir().join("wasm")
@@ -630,4 +667,201 @@ __wbg_init({{module_or_path: "/{}/{wasm_path}"}}).then((wasm) => {{
 
         canonical_path.starts_with(&canonical_static)
     }
+}
+
+// CodeBrix change: the stand-in split loader of a build without bundle splitting (see the call
+// in `bundle_web` and tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt).
+
+/// The module name under which the `wasm_split` macros import a split point's loader.
+const SPLIT_LOADER_MODULE: &str = "./__wasm_split.js";
+
+/// The name under which the stand-in loader finds the module's function table.
+const FUNCTION_TABLE_EXPORT: &str = "__indirect_function_table";
+
+/// Write `__wasm_split.js` beside the wasm-bindgen output of a build without bundle splitting
+/// when the module imports from it (CodeBrix change). Nothing is written for a module without
+/// split points.
+///
+/// The macros import two kinds of function from it for every split point:
+/// `__wasm_split_load_<module>_<hash>_<name>(callback, data)`, which must call the function
+/// whose table index is `callback` with `(data, true)` once the piece is loaded, and
+/// `__wasm_split_00___<module>___00_import_<hash>_<name>(...)`, the piece's entry point, which
+/// the main module also EXPORTS (as `..._export_...`) when the build is not split. The stand-in
+/// answers every load at once (in a microtask, as the real loader does after its fetch) and
+/// forwards every entry point to that export. The callback needs the function table, which an
+/// unsplit module does not export, so it is exported here under `__indirect_function_table`
+/// (the name a split main module and a hot-patch build export it under).
+fn write_unsplit_split_loader(wasm_path: &Path, out_dir: &Path) -> Result<()> {
+    use wasmparser::{ExternalKind, Payload, TypeRef};
+
+    let bytes = std::fs::read(wasm_path)?;
+    let mut loads = Vec::new();
+    let mut entry_points = Vec::new();
+    let mut unknown = Vec::new();
+    let mut table_export = None;
+    let mut tables = 0u32;
+    for payload in wasmparser::Parser::new(0).parse_all(&bytes) {
+        match payload? {
+            Payload::ImportSection(reader) => {
+                for import in reader {
+                    let import = import?;
+                    if matches!(import.ty, TypeRef::Table(_)) {
+                        tables += 1;
+                    }
+                    if import.module != SPLIT_LOADER_MODULE {
+                        continue;
+                    }
+                    let name = import.name.to_string();
+                    if !matches!(import.ty, TypeRef::Func(_)) {
+                        unknown.push(name);
+                    } else if name.starts_with("__wasm_split_load_") {
+                        loads.push(name);
+                    } else if name.starts_with("__wasm_split_00") && name.contains("___00_import_") {
+                        entry_points.push(name);
+                    } else {
+                        unknown.push(name);
+                    }
+                }
+            }
+            Payload::TableSection(reader) => tables += reader.count(),
+            Payload::ExportSection(reader) => {
+                for export in reader {
+                    let export = export?;
+                    if export.kind == ExternalKind::Table && export.index == 0 {
+                        table_export = Some(export.name.to_string());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if loads.is_empty() && entry_points.is_empty() && unknown.is_empty() {
+        return Ok(());
+    }
+
+    let table_export = match table_export {
+        Some(name) => name,
+        None if !loads.is_empty() => {
+            anyhow::ensure!(
+                tables > 0,
+                "the module imports split loaders but has no function table"
+            );
+            let exported = add_table_export(&bytes, FUNCTION_TABLE_EXPORT)?;
+            std::fs::write(wasm_path, exported)?;
+            FUNCTION_TABLE_EXPORT.to_string()
+        }
+        None => FUNCTION_TABLE_EXPORT.to_string(),
+    };
+
+    let mut js = String::new();
+    js.push_str(
+        "// The split-point loader of a build WITHOUT bundle splitting, written by dx: all of the\n\
+         // application's code is in the main module, so every split point is already loaded and\n\
+         // every call into a piece goes to the same function of the main module.\n",
+    );
+    js.push_str(
+        "const main = () => globalThis.__wasm_split_main_initSync(undefined, undefined);\n",
+    );
+    js.push_str(&format!(
+        "const loaded = (callbackIndex, callbackData) => {{\n  Promise.resolve().then(() => main()[{table}].get(callbackIndex)(callbackData, true));\n}};\n",
+        table = js_string(&table_export),
+    ));
+    for name in &loads {
+        js.push_str(&format!("export const {name} = loaded;\n"));
+    }
+    for name in &entry_points {
+        let export = name.replacen("___00_import_", "___00_export_", 1);
+        js.push_str(&format!(
+            "export const {name} = (...args) => main()[{export}](...args);\n",
+            export = js_string(&export),
+        ));
+    }
+    for name in &unknown {
+        js.push_str(&format!(
+            "export const {name} = () => {{ throw new Error({message}); }};\n",
+            message = js_string(&format!(
+                "{name} is not a split-point function dx knows; build with --wasm-split"
+            )),
+        ));
+    }
+
+    std::fs::write(out_dir.join("__wasm_split.js"), js)?;
+    tracing::debug!(
+        "Wrote the stand-in split loader for {} split point(s) of an unsplit build",
+        loads.len()
+    );
+    Ok(())
+}
+
+/// Return a copy of a WebAssembly module with one more export: table 0 under `name`
+/// (CodeBrix change). Only the export section changes; every other section is copied byte for
+/// byte, so offsets inside the code section (DWARF) stay valid.
+fn add_table_export(bytes: &[u8], name: &str) -> Result<Vec<u8>> {
+    fn read_leb(bytes: &[u8], at: &mut usize) -> Result<u32> {
+        let mut value = 0u32;
+        let mut shift = 0;
+        loop {
+            let byte = *bytes.get(*at).context("truncated WebAssembly module")?;
+            *at += 1;
+            value |= u32::from(byte & 0x7f) << shift;
+            if byte & 0x80 == 0 {
+                return Ok(value);
+            }
+            shift += 7;
+            anyhow::ensure!(shift < 35, "bad LEB128 number in WebAssembly module");
+        }
+    }
+    fn write_leb(out: &mut Vec<u8>, mut value: u32) {
+        loop {
+            let byte = (value & 0x7f) as u8;
+            value >>= 7;
+            if value == 0 {
+                out.push(byte);
+                return;
+            }
+            out.push(byte | 0x80);
+        }
+    }
+
+    anyhow::ensure!(
+        bytes.len() >= 8 && bytes[..4] == *b"\0asm",
+        "not a WebAssembly module"
+    );
+    let mut at = 8;
+    while at < bytes.len() {
+        let section_start = at;
+        let id = bytes[at];
+        at += 1;
+        let size = read_leb(bytes, &mut at)? as usize;
+        let content_start = at;
+        let content_end = content_start + size;
+        anyhow::ensure!(content_end <= bytes.len(), "truncated WebAssembly module");
+        if id == 7 {
+            let mut entries_start = content_start;
+            let count = read_leb(bytes, &mut entries_start)?;
+            let mut content = Vec::with_capacity(size + name.len() + 8);
+            write_leb(&mut content, count + 1);
+            content.extend_from_slice(&bytes[entries_start..content_end]);
+            write_leb(&mut content, name.len() as u32);
+            content.extend_from_slice(name.as_bytes());
+            content.push(0x01); // a table
+            write_leb(&mut content, 0); // table 0, the one function pointers index
+
+            let mut out = Vec::with_capacity(bytes.len() + name.len() + 16);
+            out.extend_from_slice(&bytes[..section_start]);
+            out.push(7);
+            write_leb(&mut out, content.len() as u32);
+            out.extend_from_slice(&content);
+            out.extend_from_slice(&bytes[content_end..]);
+            return Ok(out);
+        }
+        at = content_end;
+    }
+    anyhow::bail!("the WebAssembly module has no export section")
+}
+
+/// A JavaScript string literal for an export name (CodeBrix change).
+fn js_string(value: &str) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| format!("\"{value}\""))
 }

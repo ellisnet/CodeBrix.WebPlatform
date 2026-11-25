@@ -26,8 +26,15 @@ pub struct PlatformConfig {
     /// Called with the body of a successful refresh answer (for example to update the stored
     /// user); see [`json_hook`] for one that is handed the decoded answer.
     pub on_session_refreshed: Option<Rc<dyn Fn(&str)>>,
-    /// Called when a request that needs sign-in is still refused after one refresh: the session
-    /// is gone.
+    /// Called when the server refuses the refresh (a 4xx other than 408 and 429), or a request
+    /// that needs sign-in is still refused after one refresh: the session is gone. Not called when
+    /// the refresh request gets no answer (or cannot be sent), or the server cannot deal with it
+    /// now (a 5xx such as 503 while the site is offline, 408 or 429): the request then fails with
+    /// that error -
+    /// [`ApiError::Network`](crate::api::ApiError::Network),
+    /// [`ApiError::NotSent`](crate::api::ApiError::NotSent) or the
+    /// [`ApiError::Problem`](crate::api::ApiError::Problem) of the answer - and the session is
+    /// left alone.
     pub on_session_ended: Option<Rc<dyn Fn()>>,
 }
 

@@ -3,7 +3,7 @@ using System;
 namespace CodeBrix.WebPlatform.Backend.Applications;
 
 /// <summary>
-/// The frontend manifest in the web root cannot be used. The message names the file, says what
+/// The frontend manifest in the built frontend (<c>frontend-built/</c>) cannot be used. The message names the file, says what
 /// is wrong with it, and says that the file is build output that building the frontend writes
 /// anew.
 /// </summary>
@@ -28,6 +28,6 @@ public sealed class FrontendManifestException : Exception
 
     private static string Describe(string filePath, string problem)
         => $"The frontend manifest {filePath} cannot be used: {problem} "
-           + "This file is build output that the frontend build writes into the web root beside the frontend applications: "
+           + "This file is build output that the frontend build writes into frontend-built/ beside the frontend applications: "
            + "build the frontend again (with the same release of the platform as this backend) to write it anew.";
 }

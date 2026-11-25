@@ -30,18 +30,15 @@ public sealed class BuilderPaths
     /// <summary>The backend assembly the client code is generated from (the Release build).</summary>
     public string ApiAssembly => Path.Combine(ApiProjectDirectory, "bin", "Release", "net10.0", "WorkSite.Api.dll");
 
-    /// <summary>The backend's static-file folder, which receives the built frontend.</summary>
-    public string WebRoot => Path.Combine(ApiProjectDirectory, "wwwroot");
+    /// <summary>
+    /// The folder the frontend build writes the built site into: frontend-built in the backend
+    /// project folder (build output; the folder ignores itself in git). The backend serves it,
+    /// and publishing the backend carries it along.
+    /// </summary>
+    public string BuiltFrontend => Path.Combine(ApiProjectDirectory, CodeBrix.WebPlatform.Core.Applications.BuiltFrontend.FolderName);
 
     /// <summary>The folder the build program writes build artifacts to (git ignores it).</summary>
     public string Artifacts => Path.Combine(Layout.Root, "artifacts");
-
-    /// <summary>
-    /// The folder <c>dx</c> is told to keep its own data in (its <c>DX_HOME</c>). It is inside the
-    /// build artifacts, so dx never looks in the user's own dx folder - where a copy of a tool
-    /// that some other dx once downloaded would be used in place of ours.
-    /// </summary>
-    public string DxHome => Path.Combine(Artifacts, "dx-home");
 
     /// <summary>The published backend, which is the web image's build context.</summary>
     public string PublishDirectory => Path.Combine(Artifacts, "publish");
@@ -55,8 +52,14 @@ public sealed class BuilderPaths
     /// <summary>The committed example of the settings file.</summary>
     public string EnvExampleFile => Path.Combine(Layout.Root, ".env.example");
 
-    /// <summary>The notices file the site serves: WorkSite's own notices, then the platform's.</summary>
-    public string WebRootNoticesFile => Path.Combine(WebRoot, "THIRD-PARTY-NOTICES.txt");
+    /// <summary>
+    /// The notices file the site serves: WorkSite's own notices, then the platform's. It is
+    /// written beside the built site after each build (build output, like the site).
+    /// </summary>
+    public string BuiltNoticesFile => Path.Combine(BuiltFrontend, BuiltNoticesFileName);
+
+    /// <summary>The notices file's name, at the top of the built frontend (its address: /THIRD-PARTY-NOTICES.txt).</summary>
+    public const string BuiltNoticesFileName = "THIRD-PARTY-NOTICES.txt";
 
     /// <summary>The default place the development certificate is exported to: a folder in the
     /// user's home directory, outside the repository.</summary>

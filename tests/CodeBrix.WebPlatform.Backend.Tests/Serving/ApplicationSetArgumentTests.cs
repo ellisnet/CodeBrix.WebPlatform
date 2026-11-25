@@ -57,7 +57,7 @@ public class ApplicationSetArgumentTests
         await using var host = await BackendHost.StartAsync(root =>
             {
                 root.WriteBuiltFrontend(FrontendApplicationSet.SingleDefault, writeManifest: false);
-                root.Write(FrontendManifest.FileName, "this is not a manifest");
+                root.WriteBuilt(FrontendManifest.FileName, "this is not a manifest");
             },
             applications: FrontendApplicationSet.SingleDefault);
         using var client = host.CreateClient();
@@ -82,7 +82,7 @@ public class ApplicationSetArgumentTests
         //Assert
         await response.ShouldBePlainNotFoundAsync();
         host.Logs.Messages(LogLevel.Warning).Should().ContainSingle()
-            .Which.Should().Be("The frontend application sales has no sales/index.html in the web root, so its addresses answer 404; build the frontend into the web root.");
+            .Which.Should().Be("The frontend application sales has no sales/index.html in frontend-built/, so its addresses answer 404; build the frontend.");
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public class ApplicationSetArgumentTests
     {
         //Arrange
         using var root = new TempWebRoot();
-        root.Write(FrontendManifest.FileName, "written-by = \"someone else\"\nformat = 1\n");
+        root.WriteBuilt(FrontendManifest.FileName, "written-by = \"someone else\"\nformat = 1\n");
         using var app = BackendHost.Build(root);
 
         //Act
@@ -112,7 +112,7 @@ public class ApplicationSetArgumentTests
 
         //Assert
         act.Should().Throw<FrontendManifestException>()
-            .Which.FilePath.Should().Be(FrontendManifestReader.GetPath(root.Path));
+            .Which.FilePath.Should().Be(FrontendManifestReader.GetPath(root.BuiltPath));
     }
 
     [Fact]
@@ -120,7 +120,7 @@ public class ApplicationSetArgumentTests
     {
         //Arrange
         using var root = new TempWebRoot();
-        root.Write(FrontendManifest.FileName, "nonsense");
+        root.WriteBuilt(FrontendManifest.FileName, "nonsense");
         using var app = BackendHost.Build(root, options => options.ServeFrontendApplications = false);
 
         //Act

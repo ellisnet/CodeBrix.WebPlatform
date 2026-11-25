@@ -11,7 +11,8 @@ namespace CodeBrix.WebPlatform.Backend.Applications;
 
 /// <summary>
 /// Reads the frontend manifest (<see cref="FrontendManifest.FileName"/>), the file the frontend
-/// build writes into the web root to say which frontend applications it built there. The reader
+/// build writes into the built frontend's folder (<c>frontend-built/</c> in the backend's content
+/// root, <see cref="BuiltFrontend.FolderName"/>) to say which frontend applications it built there. The reader
 /// is strict: the file is build output, so anything in it that the frontend build of this
 /// release would not have written makes it refuse the file with a
 /// <see cref="FrontendManifestException"/>.
@@ -28,28 +29,28 @@ public static class FrontendManifestReader
         FrontendManifest.NameKey, FrontendManifest.DefaultKey, FrontendManifest.FolderKey,
     };
 
-    /// <summary>The manifest's path in a web root.</summary>
-    /// <param name="webRootDirectory">The web root.</param>
+    /// <summary>The manifest's path in a built frontend's folder.</summary>
+    /// <param name="builtFrontendDirectory">The built frontend's folder (<c>frontend-built/</c>).</param>
     /// <returns>The full path of <see cref="FrontendManifest.FileName"/> in it.</returns>
-    /// <exception cref="ArgumentException"><paramref name="webRootDirectory"/> is null or blank.</exception>
-    public static string GetPath(string webRootDirectory)
+    /// <exception cref="ArgumentException"><paramref name="builtFrontendDirectory"/> is null or blank.</exception>
+    public static string GetPath(string builtFrontendDirectory)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(webRootDirectory);
-        return Path.Combine(Path.GetFullPath(webRootDirectory), FrontendManifest.FileName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(builtFrontendDirectory);
+        return Path.Combine(Path.GetFullPath(builtFrontendDirectory), FrontendManifest.FileName);
     }
 
     /// <summary>
-    /// Reads the manifest in a web root. A missing manifest (or web root) is not an error: it
-    /// means that no frontend has been built there yet, and the answer is null.
+    /// Reads the manifest in a built frontend's folder. A missing manifest (or folder) is not an
+    /// error: it means that no frontend has been built there yet, and the answer is null.
     /// </summary>
-    /// <param name="webRootDirectory">The web root.</param>
+    /// <param name="builtFrontendDirectory">The built frontend's folder (<c>frontend-built/</c>).</param>
     /// <returns>The applications the manifest names, or null when there is no manifest.</returns>
-    /// <exception cref="ArgumentException"><paramref name="webRootDirectory"/> is null or blank.</exception>
+    /// <exception cref="ArgumentException"><paramref name="builtFrontendDirectory"/> is null or blank.</exception>
     /// <exception cref="FrontendManifestException">The file cannot be read, or is not a manifest
     /// the frontend build of this release writes.</exception>
-    public static FrontendApplicationSet Read(string webRootDirectory)
+    public static FrontendApplicationSet Read(string builtFrontendDirectory)
     {
-        var path = GetPath(webRootDirectory);
+        var path = GetPath(builtFrontendDirectory);
         if (!File.Exists(path))
         {
             return null;
@@ -187,7 +188,7 @@ public static class FrontendManifestReader
 
         if (!string.Equals(folder, application.Folder, StringComparison.Ordinal))
         {
-            var expected = application.Folder.Length == 0 ? "\"\" (the web root itself)" : $"\"{application.Folder}\"";
+            var expected = application.Folder.Length == 0 ? "\"\" (the built frontend's folder itself)" : $"\"{application.Folder}\"";
             throw new FrontendManifestException(name, $"{where} ('{application.Name}') has the folder \"{folder}\", but its folder is {expected}.");
         }
 

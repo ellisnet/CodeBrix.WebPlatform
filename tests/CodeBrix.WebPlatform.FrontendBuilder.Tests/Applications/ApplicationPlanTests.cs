@@ -31,11 +31,14 @@ public class ApplicationPlanTests
         plan.SharedCrateDirectory.Should().Be(Path.Combine(Folder("frontend"), "platform", "codebrix-webplatform"));
         plan.CargoConfigurationFile.Should().Be(Path.Combine(Folder("frontend"), ".cargo", "config.toml"));
         plan.TailwindInputFile.Should().Be(Path.Combine(Folder("frontend"), "tailwind.css"));
-        plan.TailwindOutputFile.Should().Be(Path.Combine(Folder("frontend"), "assets", "tailwind.css"));
+        plan.TailwindOutputFile.Should().Be(Path.Combine(Folder("frontend"), "assets", "generated", "tailwind.css"));
+        plan.GeneratedAssetsDirectory.Should().Be(Path.Combine(Folder("frontend"), "assets", "generated"));
+        plan.TargetDirectory.Should().Be(Path.Combine(Folder("frontend"), "target"));
         plan.DxHomeDirectory.Should().Be(Path.Combine(Folder("frontend"), "target", "dx-home"));
         plan.WasmSplit.Should().BeFalse();
         plan.ServeFeatures.Should().Equal("devtools");
-        plan.Label.Should().BeEmpty();
+        plan.IsOneOfSeveral.Should().BeFalse();
+        plan.Subject.Should().Be("the frontend");
     }
 
     [Fact]
@@ -58,10 +61,10 @@ public class ApplicationPlanTests
     public void Create_makes_one_plan_per_entry_of_the_list_in_order()
     {
         //Arrange
-        var options = new PlatformFrontendOptions { DxHomeDirectory = Folder("dx-home") };
+        var options = new PlatformFrontendOptions();
         options.ServeFeatures.Add("shared-feature");
         options.Applications.Add(new FrontendApplicationOptions { FrontendDirectory = Folder("home") });
-        options.Applications.Add(new FrontendApplicationOptions { Name = "sales", FrontendDirectory = Folder("sales"), TailwindInputFile = "styles/in.css", TailwindOutputFile = "public/out.css" });
+        options.Applications.Add(new FrontendApplicationOptions { Name = "sales", FrontendDirectory = Folder("sales") });
         options.Applications[1].ServeFeatures.Add("own-feature");
 
         //Act
@@ -69,15 +72,15 @@ public class ApplicationPlanTests
 
         //Assert
         plans.Select(p => p.Application.Name).Should().Equal("app", "sales");
-        plans[0].Label.Should().Be(" 'app'");
-        plans[1].Label.Should().Be(" 'sales'");
-        plans[0].DxHomeDirectory.Should().Be(Path.Combine(Folder("dx-home"), "app"));
-        plans[1].DxHomeDirectory.Should().Be(Path.Combine(Folder("dx-home"), "sales"));
-        plans[1].TailwindInputFile.Should().Be(Path.Combine(Folder("sales"), "styles", "in.css"));
-        plans[1].TailwindOutputFile.Should().Be(Path.Combine(Folder("sales"), "public", "out.css"));
+        plans[0].Subject.Should().Be("the root application");
+        plans[1].Subject.Should().Be("the frontend application 'sales'");
+        plans[0].DxHomeDirectory.Should().Be(Path.Combine(Folder("home"), "target", "dx-home"));
+        plans[1].DxHomeDirectory.Should().Be(Path.Combine(Folder("sales"), "target", "dx-home"));
+        plans[1].TailwindInputFile.Should().Be(Path.Combine(Folder("sales"), "tailwind.css"));
+        plans[1].TailwindOutputFile.Should().Be(Path.Combine(Folder("sales"), "assets", "generated", "tailwind.css"));
         plans[0].ServeFeatures.Should().Equal("shared-feature");
         plans[1].ServeFeatures.Should().Equal("own-feature");
-        options.ResolvedVendorDirectory.Should().Be(Path.Combine(Folder("home"), "platform", "vendor"), "the applications share the first one's vendor folder");
+        options.VendorDirectory.Should().Be(Path.Combine(Folder("home"), "platform", "vendor"), "the applications share the first one's vendor folder");
     }
 
     [Theory]
@@ -197,8 +200,27 @@ public class ApplicationPlanTests
 
         //Assert
         actTwice.Should().Throw<ArgumentException>().WithMessage("*'sales' is used more than once*");
-        actShared.Should().Throw<ArgumentException>().WithMessage("*'sales' and 'admin' name the same frontend folder*");
+        actShared.Should().Throw<ArgumentException>().WithMessage("The application 'sales' and the application 'admin' name the same frontend folder*");
         actMissing.Should().Throw<ArgumentException>().WithMessage("*'sales'*names no FrontendDirectory*");
         actHole.Should().Throw<ArgumentException>().WithMessage("*is null*");
+    }
+
+    [Fact]
+    public void Create_calls_the_unnamed_application_the_root_application_in_its_messages()
+    {
+        //Arrange
+        var shared = new PlatformFrontendOptions();
+        shared.Applications.Add(new FrontendApplicationOptions { FrontendDirectory = Folder("a") });
+        shared.Applications.Add(new FrontendApplicationOptions { Name = "sales", FrontendDirectory = Folder("a") });
+        var missing = new PlatformFrontendOptions();
+        missing.Applications.Add(new FrontendApplicationOptions());
+
+        //Act
+        Action actShared = () => ApplicationPlan.Create(shared);
+        Action actMissing = () => ApplicationPlan.Create(missing);
+
+        //Assert
+        actShared.Should().Throw<ArgumentException>().WithMessage("The root application and the application 'sales' name the same frontend folder*");
+        actMissing.Should().Throw<ArgumentException>().WithMessage("The root application in PlatformFrontendOptions.Applications names no FrontendDirectory*");
     }
 }

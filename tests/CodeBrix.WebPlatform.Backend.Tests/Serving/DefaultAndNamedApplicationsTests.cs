@@ -261,7 +261,7 @@ public class DefaultAndNamedApplicationsTests : IClassFixture<DefaultAndNamedApp
         var messages = _host.Logs.Messages(LogLevel.Information);
 
         //Assert
-        messages.Should().Contain("Serving the frontend applications app at /, sales at /sales, admin at /admin.");
+        messages.Should().Contain("Serving the frontend applications app at /, sales at /sales, admin at /admin from frontend-built/.");
         _host.Logs.Messages(LogLevel.Warning).Should().BeEmpty();
     }
 }

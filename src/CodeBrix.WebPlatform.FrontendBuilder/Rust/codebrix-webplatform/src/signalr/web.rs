@@ -11,9 +11,10 @@ use wasm_bindgen::JsCast;
 use web_sys::{CloseEvent, Event, MessageEvent, VisibilityState, WebSocket};
 
 use super::protocol;
+use crate::api::ApiError;
 use crate::browser::origin;
 use super::transport::{
-    EventQueue, LocalFuture, NegotiateReply, OpenFailed, SendFailed, Socket, Transport, TransportEvent,
+    EventQueue, Failure, LocalFuture, NegotiateReply, OpenFailed, SendFailed, Socket, Transport, TransportEvent,
 };
 
 thread_local! {
@@ -34,26 +35,30 @@ impl Transport for WebTransport {
             request = request.header(name.as_str(), value.as_str());
         }
         Box::pin(async move {
-            let Ok(response) = request.send().await else {
-                return NegotiateReply::Failed;
+            // reqwest's errors are read as the REST client reads them, so a request that could
+            // not be built is told apart from one that was sent and failed, with the same cause.
+            let response = match request.send().await {
+                Ok(response) => response,
+                Err(error) => return NegotiateReply::Failed(Failure::from_api(&ApiError::from_transport(&error))),
             };
             let status = response.status().as_u16();
             if status == 401 {
                 return NegotiateReply::Unauthorized;
             }
             if !(200..300).contains(&status) {
-                return NegotiateReply::Failed;
+                return NegotiateReply::Failed(Failure::sent(format!("negotiate answered {status}")));
             }
             match response.text().await {
                 Ok(body) => NegotiateReply::Ok(body),
-                Err(_) => NegotiateReply::Failed,
+                Err(error) => NegotiateReply::Failed(Failure::from_api(&ApiError::from_transport(&error))),
             }
         })
     }
 
     fn open(&self, url: &str, events: Rc<EventQueue>) -> Result<Box<dyn Socket>, OpenFailed> {
         let socket_url = format!("{}{}", protocol::websocket_origin(&origin()), url);
-        let ws = WebSocket::new(&socket_url).map_err(|_| OpenFailed)?;
+        // The constructor throws only for an address it cannot use (a SyntaxError): nothing is sent.
+        let ws = WebSocket::new(&socket_url).map_err(|error| OpenFailed(format!("{error:?}")))?;
 
         let queue = events.clone();
         let on_open = Closure::<dyn FnMut()>::new(move || queue.push(TransportEvent::Opened));

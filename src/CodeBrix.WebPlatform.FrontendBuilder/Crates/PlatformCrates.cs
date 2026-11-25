@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
+using CodeBrix.WebPlatform.FrontendBuilder.Internal;
 
 namespace CodeBrix.WebPlatform.FrontendBuilder.Crates;
 
@@ -119,6 +120,9 @@ public static class PlatformCrates
     /// Makes a folder hold exactly the platform's crates and the crates the registered bundles
     /// add. Nothing is done when the folder's stamp says it was written from the same archives;
     /// otherwise everything is unpacked next to it and swapped in, and the stamp is written last.
+    /// Either way the folder's own <c>.gitignore</c> (the rule <c>*</c>) is written when it is
+    /// missing or differs, so that git ignores the folder; cargo's directory source skips
+    /// dot-files, as it does the stamp.
     /// </summary>
     /// <param name="merge">The platform's archive and the checked bundles.</param>
     /// <param name="directory">The vendor folder; it belongs to this method.</param>
@@ -133,6 +137,7 @@ public static class PlatformCrates
         var hash = merge.Stamp;
         if (File.Exists(stamp) && string.Equals(File.ReadAllText(stamp).Trim(), hash, StringComparison.Ordinal))
         {
+            BuildOutputFolder.EnsureIgnoreFile(root);
             return false;
         }
 
@@ -149,6 +154,7 @@ public static class PlatformCrates
             throw new FrontendBuildException($"The crates could not be unpacked into '{root}' (from '{merge.PlatformArchive}' and the registered crate bundles): {exception.Message}", exception);
         }
 
+        BuildOutputFolder.EnsureIgnoreFile(staging);
         File.WriteAllText(Path.Combine(staging, StampFileName), hash + "\n");
         if (Directory.Exists(root))
         {
@@ -233,10 +239,10 @@ public static class PlatformCrates
 
     private static void RequireOwned(string root)
     {
-        if (Directory.Exists(root) && Directory.EnumerateFileSystemEntries(root).Any() && !File.Exists(Path.Combine(root, StampFileName)))
+        if (Directory.Exists(root) && Directory.EnumerateFileSystemEntries(root).Any(e => !BuildOutputFolder.IsIgnoreFile(e)) && !File.Exists(Path.Combine(root, StampFileName)))
         {
             throw new FrontendBuildException(
-                $"The vendor folder '{root}' holds files that CodeBrix.WebPlatform.FrontendBuilder did not write (it has no {StampFileName} file). Nothing was written. Give the platform's crates a folder of their own (PlatformFrontendOptions.VendorDirectory), or remove that folder.");
+                $"The vendor folder '{root}' holds files that CodeBrix.WebPlatform.FrontendBuilder did not write (it has no {StampFileName} file). Nothing was written. The folder belongs to the platform's crates: move what is yours out of it, or remove the folder.");
         }
     }
 

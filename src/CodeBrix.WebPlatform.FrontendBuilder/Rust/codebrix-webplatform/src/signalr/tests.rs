@@ -9,6 +9,7 @@ use serde_json::{json, Value};
 
 use super::testing::{advance, block_on, settle, FakeHub};
 use super::*;
+use crate::api::ApiError;
 
 /// Puts module-wide settings back when a test ends.
 struct Reset;
@@ -33,10 +34,11 @@ fn count_reconnects(connection: &HubConnection) -> (Rc<Cell<usize>>, Subscriptio
     (count, subscription)
 }
 
-fn refresh_hook(result: bool, calls: Rc<Cell<usize>>) -> SignalRConfig {
+fn refresh_hook(result: RefreshOutcome, calls: Rc<Cell<usize>>) -> SignalRConfig {
     SignalRConfig {
         refresh: Some(Rc::new(move || {
             calls.set(calls.get() + 1);
+            let result = result.clone();
             Box::pin(async move { result }) as RefreshFuture
         })),
     }
@@ -143,7 +145,10 @@ fn invoke_fails_with_not_connected_when_the_server_cannot_be_reached() {
     let connection = connect(&HUB);
     settle();
     // Waiting in backoff: the call makes the connection try again at once, and fails with it.
-    assert_eq!(block_on(connection.invoke::<i32>("Any", vec![])), Err(HubError::NotConnected));
+    assert_eq!(
+        block_on(connection.invoke::<i32>("Any", vec![])),
+        Err(HubError::NotConnected { cause: Some(testing::FAKE_REFUSES.to_string()) })
+    );
     assert_eq!(fake.negotiations(), 2);
 }
 
@@ -172,7 +177,7 @@ fn send_is_fire_and_forget() {
     static HUB: HubDescriptor = HubDescriptor { name: "Chat", path: "/hubs/chat", requires_sign_in: false };
     let fake = FakeHub::install(&HUB);
     let connection = connect(&HUB);
-    assert_eq!(connection.send("Say", vec![json!("early")]), Err(HubError::NotConnected));
+    assert_eq!(connection.send("Say", vec![json!("early")]), Err(HubError::NotConnected { cause: None }));
     settle();
     assert_eq!(connection.send("Say", vec![json!("hello")]), Ok(()));
     assert_eq!(fake.sent(), vec![("Say".to_string(), vec![json!("hello")])]);
@@ -398,7 +403,7 @@ fn unauthorized_negotiate_refreshes_the_session_and_retries() {
     static HUB: HubDescriptor = HubDescriptor { name: "Secure", path: "/hubs/secure", requires_sign_in: true };
     let _reset = Reset;
     let calls = Rc::new(Cell::new(0));
-    configure(refresh_hook(true, calls.clone()));
+    configure(refresh_hook(RefreshOutcome::Refreshed, calls.clone()));
     let fake = FakeHub::install(&HUB);
     fake.require_sign_in_failure(true);
     let connection = connect(&HUB);
@@ -413,7 +418,7 @@ fn a_refused_refresh_leaves_the_connection_disconnected() {
     static HUB: HubDescriptor = HubDescriptor { name: "Refused", path: "/hubs/refused", requires_sign_in: true };
     let _reset = Reset;
     let calls = Rc::new(Cell::new(0));
-    configure(refresh_hook(false, calls.clone()));
+    configure(refresh_hook(RefreshOutcome::Refused, calls.clone()));
     let fake = FakeHub::install(&HUB);
     fake.require_sign_in_failure(true);
     let connection = connect(&HUB);
@@ -425,6 +430,159 @@ fn a_refused_refresh_leaves_the_connection_disconnected() {
     assert_eq!(connection.send("Any", vec![]), Err(HubError::Unauthorized));
     advance(120_000);
     assert_eq!(fake.negotiations(), 1);
+}
+
+/// A refresh hook whose outcome the test can change between attempts.
+fn switchable_refresh(outcome: Rc<RefCell<RefreshOutcome>>, calls: Rc<Cell<usize>>) -> SignalRConfig {
+    SignalRConfig {
+        refresh: Some(Rc::new(move || {
+            calls.set(calls.get() + 1);
+            let result = outcome.borrow().clone();
+            Box::pin(async move { result }) as RefreshFuture
+        })),
+    }
+}
+
+#[test]
+fn a_refresh_that_cannot_reach_the_server_is_a_failed_attempt_not_a_sign_out() {
+    static HUB: HubDescriptor = HubDescriptor { name: "Patchy", path: "/hubs/patchy", requires_sign_in: true };
+    let _reset = Reset;
+    let calls = Rc::new(Cell::new(0));
+    let cause = "error sending request for url (http://localhost/api/auth/refresh): TypeError: Failed to fetch";
+    let outcome = Rc::new(RefCell::new(RefreshOutcome::Failed(ApiError::Network { cause: cause.to_string() })));
+    configure(switchable_refresh(outcome.clone(), calls.clone()));
+    let fake = FakeHub::install(&HUB);
+    fake.require_sign_in_failure(true);
+    let connection = connect(&HUB);
+    settle();
+    // Still trying, not Disconnected: nothing says the session is gone.
+    assert_eq!(connection.state(), ConnectionState::Connecting);
+    assert_eq!(calls.get(), 1);
+    // The call makes the connection try again (refreshing again) and fails with the refresh's cause.
+    let error = block_on(connection.invoke::<i32>("Any", vec![])).unwrap_err();
+    assert_eq!(error, HubError::NotConnected { cause: Some(cause.to_string()) });
+    assert_eq!(error.cause(), Some(cause));
+    assert_eq!(error.message(), "Could not connect to the server. Check your connection and try again.");
+    assert_eq!(calls.get(), 2);
+    assert_eq!(connection.send("Any", vec![]), Err(HubError::NotConnected { cause: Some(cause.to_string()) }));
+    // Once the refresh gets through, the next attempt connects.
+    *outcome.borrow_mut() = RefreshOutcome::Refreshed;
+    advance(120_000);
+    assert_eq!(connection.state(), ConnectionState::Connected);
+    assert_eq!(calls.get(), 3);
+    assert_eq!(connection.send("Any", vec![]), Ok(()));
+}
+
+#[test]
+fn a_refresh_that_could_not_be_sent_fails_calls_with_not_sent() {
+    static HUB: HubDescriptor = HubDescriptor { name: "Unbuilt", path: "/hubs/unbuilt", requires_sign_in: true };
+    let _reset = Reset;
+    let calls = Rc::new(Cell::new(0));
+    let cause = "builder error: relative URL without a base";
+    configure(refresh_hook(RefreshOutcome::Failed(ApiError::NotSent { cause: cause.to_string() }), calls.clone()));
+    let fake = FakeHub::install(&HUB);
+    fake.require_sign_in_failure(true);
+    let connection = connect(&HUB);
+    settle();
+    assert_eq!(connection.state(), ConnectionState::Connecting);
+    let error = block_on(connection.invoke::<i32>("Any", vec![])).unwrap_err();
+    assert_eq!(error, HubError::NotSent { cause: cause.to_string() });
+    assert_eq!(error.cause(), Some(cause));
+    assert_eq!(error.message(), "This page could not connect to the server. Reload the page and try again.");
+}
+
+#[test]
+fn a_refresh_the_server_could_not_deal_with_is_a_failed_attempt_not_a_sign_out() {
+    static HUB: HubDescriptor = HubDescriptor { name: "Maintenance", path: "/hubs/maintenance", requires_sign_in: true };
+    let _reset = Reset;
+    let calls = Rc::new(Cell::new(0));
+    let body = r#"{"title":"The site is offline for maintenance.","status":503,"code":"offline"}"#;
+    configure(refresh_hook(RefreshOutcome::Failed(ApiError::from_response(503, body)), calls.clone()));
+    let fake = FakeHub::install(&HUB);
+    fake.require_sign_in_failure(true);
+    let connection = connect(&HUB);
+    settle();
+    assert_eq!(connection.state(), ConnectionState::Connecting);
+    let error = block_on(connection.invoke::<i32>("Any", vec![])).unwrap_err();
+    assert_eq!(
+        error,
+        HubError::NotConnected { cause: Some("the server answered 503 (offline): The site is offline for maintenance.".to_string()) }
+    );
+    assert_eq!(calls.get(), 2);
+}
+
+#[test]
+fn a_rate_limited_refresh_is_a_failed_attempt_not_a_sign_out() {
+    static HUB: HubDescriptor = HubDescriptor { name: "Limited", path: "/hubs/limited", requires_sign_in: true };
+    let _reset = Reset;
+    let calls = Rc::new(Cell::new(0));
+    configure(refresh_hook(RefreshOutcome::Failed(ApiError::from_response(429, "")), calls));
+    let fake = FakeHub::install(&HUB);
+    fake.require_sign_in_failure(true);
+    let connection = connect(&HUB);
+    settle();
+    assert_eq!(connection.state(), ConnectionState::Connecting);
+    let error = block_on(connection.invoke::<i32>("Any", vec![])).unwrap_err();
+    assert_eq!(
+        error,
+        HubError::NotConnected {
+            cause: Some("the server answered 429 (rate_limited): Too many attempts. Wait a moment and try again.".to_string())
+        }
+    );
+}
+
+#[test]
+fn the_cause_is_that_of_the_last_failed_attempt() {
+    static HUB: HubDescriptor = HubDescriptor { name: "Shifting", path: "/hubs/shifting", requires_sign_in: true };
+    let _reset = Reset;
+    let calls = Rc::new(Cell::new(0));
+    let refresh_cause = "error sending request for url (http://localhost/api/auth/refresh)";
+    configure(refresh_hook(RefreshOutcome::Failed(ApiError::Network { cause: refresh_cause.to_string() }), calls));
+    let fake = FakeHub::install(&HUB);
+    fake.require_sign_in_failure(true);
+    let connection = connect(&HUB);
+    settle();
+    assert_eq!(connection.send("Any", vec![]), Err(HubError::NotConnected { cause: Some(refresh_cause.to_string()) }));
+    // The next attempt fails differently: negotiate itself gets no answer.
+    fake.refuse_connections(true);
+    let error = block_on(connection.invoke::<i32>("Any", vec![])).unwrap_err();
+    assert_eq!(error, HubError::NotConnected { cause: Some(testing::FAKE_REFUSES.to_string()) });
+}
+
+#[test]
+fn a_negotiate_request_that_cannot_be_built_is_not_sent_and_keeps_the_reason() {
+    // What the browser transport does with reqwest's error when the page's origin is empty.
+    let error = reqwest::Client::new().post("/hubs/x/negotiate?negotiateVersion=1").build().unwrap_err();
+    let failure = transport::Failure::from_api(&ApiError::from_transport(&error));
+    assert!(!failure.sent);
+    let hub_error = failure.error();
+    assert!(matches!(hub_error, HubError::NotSent { .. }), "{hub_error:?}");
+    assert!(hub_error.cause().expect("a cause").contains("relative URL without a base"));
+}
+
+#[test]
+fn a_failure_reached_the_network_unless_its_request_was_not_sent() {
+    let network = transport::Failure::from_api(&ApiError::Network { cause: "connection reset".to_string() });
+    assert_eq!(network.error(), HubError::NotConnected { cause: Some("connection reset".to_string()) });
+    let not_sent = transport::Failure::from_api(&ApiError::NotSent { cause: "builder error".to_string() });
+    assert_eq!(not_sent.error(), HubError::NotSent { cause: "builder error".to_string() });
+}
+
+#[test]
+fn only_connection_failures_have_a_cause() {
+    assert_eq!(HubError::NotConnected { cause: None }.cause(), None);
+    assert_eq!(HubError::NotConnected { cause: Some("x".to_string()) }.cause(), Some("x"));
+    assert_eq!(HubError::NotSent { cause: "y".to_string() }.cause(), Some("y"));
+    for error in [
+        HubError::Unauthorized,
+        HubError::Network,
+        HubError::Server("z".to_string()),
+        HubError::Decode,
+        HubError::Cancelled,
+        HubError::Closed,
+    ] {
+        assert_eq!(error.cause(), None, "{error:?}");
+    }
 }
 
 #[test]
@@ -716,7 +874,7 @@ fn the_refresh_hook_is_called_and_polled_inside_the_runtime() {
                 *REFRESHES.write() += 1;
                 Box::pin(async {
                     *REFRESHES.write() += 10;
-                    true
+                    RefreshOutcome::Refreshed
                 }) as RefreshFuture
             })),
         })
@@ -814,7 +972,9 @@ fn errors_read_as_sentences() {
     assert_eq!(HubError::Server("The name is taken.".to_string()).message(), "The name is taken.");
     assert_eq!(HubError::Unauthorized.to_string(), HubError::Unauthorized.message());
     for error in [
-        HubError::NotConnected,
+        HubError::NotConnected { cause: None },
+        HubError::NotConnected { cause: Some("error sending request".to_string()) },
+        HubError::NotSent { cause: "builder error".to_string() },
         HubError::Unauthorized,
         HubError::Network,
         HubError::Server(String::new()),

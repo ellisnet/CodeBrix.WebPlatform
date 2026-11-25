@@ -14,7 +14,9 @@ namespace WorkSite.Api.Tests.Infrastructure;
 
 /// <summary>
 /// The real WorkSite pipeline over a fresh database on the test PostgreSQL server. Each test
-/// class that uses a factory as its class fixture gets its own database and web root.
+/// class that uses a factory as its class fixture gets its own database and its own content
+/// root: a temporary folder holding the backend's appsettings.json and, as the frontend build
+/// leaves it, the built frontend in frontend-built/.
 /// </summary>
 public class WorkSiteApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
@@ -22,7 +24,7 @@ public class WorkSiteApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     public static readonly Uri BaseAddress = new("https://localhost");
 
     /// <summary>
-    /// The frontend manifest the frontend build writes into wwwroot for WorkSite's one application
+    /// The frontend manifest the frontend build writes into frontend-built/ for WorkSite's one application
     /// (the default one, at the site root): exactly the text of the platform's
     /// FrontendManifestWriter.Create(FrontendApplicationSet.SingleDefault). It is kept as written
     /// text on purpose: the backend reads the manifest strictly, so if the build ever writes
@@ -42,8 +44,11 @@ public class WorkSiteApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     private readonly Dictionary<string, string> _settings = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>The directory served as wwwroot.</summary>
-    public string WebRoot { get; private set; }
+    /// <summary>The host's content root (a temporary folder).</summary>
+    public string ContentRoot { get; private set; }
+
+    /// <summary>The built frontend the backend serves: frontend-built/ in the content root.</summary>
+    public string BuiltFrontendDirectory => Path.Combine(ContentRoot, BuiltFrontend.FolderName);
 
     /// <summary>The connection string of this factory's database.</summary>
     public string ConnectionString { get; private set; }
@@ -52,8 +57,8 @@ public class WorkSiteApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     protected virtual string EnvironmentName => "Development";
 
     /// <summary>
-    /// Whether wwwroot holds a small fake built frontend (index.html, a .wasm file, a stylesheet
-    /// and the frontend manifest, as the frontend build leaves them).
+    /// Whether frontend-built/ holds a small fake built frontend (index.html, a .wasm file, a
+    /// stylesheet and the frontend manifest, as the frontend build leaves them).
     /// </summary>
     protected virtual bool WithFrontendFiles => true;
 
@@ -78,17 +83,20 @@ public class WorkSiteApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     /// <inheritdoc />
     public virtual async ValueTask InitializeAsync()
     {
-        WebRoot = Directory.CreateTempSubdirectory("worksite-webroot-").FullName;
+        ContentRoot = Directory.CreateTempSubdirectory("worksite-contentroot-").FullName;
+        // The backend's settings come from the content root, as in the project folder.
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "appsettings.json"), Path.Combine(ContentRoot, "appsettings.json"));
         if (WithFrontendFiles)
         {
-            await File.WriteAllTextAsync(Path.Combine(WebRoot, "index.html"),
+            Directory.CreateDirectory(BuiltFrontendDirectory);
+            await File.WriteAllTextAsync(Path.Combine(BuiltFrontendDirectory, "index.html"),
                 "<!doctype html><html><head><title>WorkSite</title></head><body><div id=\"main\"></div></body></html>",
                 TestContext.Current.CancellationToken);
-            await File.WriteAllBytesAsync(Path.Combine(WebRoot, "app.wasm"), [0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00],
+            await File.WriteAllBytesAsync(Path.Combine(BuiltFrontendDirectory, "app.wasm"), [0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00],
                 TestContext.Current.CancellationToken);
-            await File.WriteAllTextAsync(Path.Combine(WebRoot, "styles.css"), "body { margin: 0; }",
+            await File.WriteAllTextAsync(Path.Combine(BuiltFrontendDirectory, "styles.css"), "body { margin: 0; }",
                 TestContext.Current.CancellationToken);
-            await File.WriteAllTextAsync(Path.Combine(WebRoot, FrontendManifest.FileName), BuiltManifest,
+            await File.WriteAllTextAsync(Path.Combine(BuiltFrontendDirectory, FrontendManifest.FileName), BuiltManifest,
                 TestContext.Current.CancellationToken);
         }
 
@@ -107,9 +115,9 @@ public class WorkSiteApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     public override async ValueTask DisposeAsync()
     {
         await base.DisposeAsync();
-        if (WebRoot != null && Directory.Exists(WebRoot))
+        if (ContentRoot != null && Directory.Exists(ContentRoot))
         {
-            Directory.Delete(WebRoot, recursive: true);
+            Directory.Delete(ContentRoot, recursive: true);
         }
 
         GC.SuppressFinalize(this);
@@ -124,7 +132,7 @@ public class WorkSiteApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment(EnvironmentName);
-        builder.UseWebRoot(WebRoot);
+        builder.UseContentRoot(ContentRoot);
         foreach (var (key, value) in _settings)
         {
             builder.UseSetting(key, value);

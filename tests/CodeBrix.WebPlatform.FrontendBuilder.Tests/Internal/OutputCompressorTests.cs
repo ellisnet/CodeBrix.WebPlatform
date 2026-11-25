@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -14,6 +15,8 @@ namespace CodeBrix.WebPlatform.FrontendBuilder.Tests.Internal;
 
 public class OutputCompressorTests
 {
+    private static readonly IReadOnlyCollection<string> Defaults = OutputCompressor.RequireExtensions(PlatformFrontendOptions.DefaultCompressibleExtensions);
+
     private static readonly string Text = string.Concat(Enumerable.Repeat("function hello() { return 'hello, world'; }\n", 300));
 
     /// <summary>A made-up built site: compressible files, files of compressed types, and a tiny file.</summary>
@@ -63,6 +66,12 @@ public class OutputCompressorTests
     [InlineData("logo.svg", true)]
     [InlineData("THIRD-PARTY-NOTICES.txt", true)]
     [InlineData("shader.wgsl", true)]
+    [InlineData("model.gltf", true)]
+    [InlineData("model.glb", true)]
+    [InlineData("buffers.bin", true)]
+    [InlineData("sky.hdr", true)]
+    [InlineData("font.ttf", true)]
+    [InlineData(".gitignore", false)]
     [InlineData("INDEX.HTML", true)]
     [InlineData("photo.png", false)]
     [InlineData("photo.jpg", false)]
@@ -77,7 +86,7 @@ public class OutputCompressorTests
     [InlineData("README", false)]
     [InlineData("", false)]
     public void IsCompressible_takes_text_and_webassembly_and_never_what_is_compressed_already(string name, bool expected)
-        => OutputCompressor.IsCompressible(name).Should().Be(expected);
+        => OutputCompressor.IsCompressible(name, Defaults).Should().Be(expected);
 
     [Fact]
     public void Compress_writes_both_copies_beside_each_compressible_file_and_none_beside_the_others()
@@ -87,7 +96,7 @@ public class OutputCompressorTests
         var files = WriteSite(folder);
 
         //Act
-        var result = OutputCompressor.Compress(folder.Combine("site"), files, FrontendCompression.BrotliAndGzip, TestContext.Current.CancellationToken);
+        var result = OutputCompressor.Compress(folder.Combine("site"), files, FrontendCompression.BrotliAndGzip, Defaults, TestContext.Current.CancellationToken);
 
         //Assert
         foreach (var file in new[] { "index.html", "wasm/app_bg.wasm", "wasm/app.js", "assets/tailwind-dxh12.css", "assets/data.json", "assets/logo.svg", "notes.txt" })
@@ -120,7 +129,7 @@ public class OutputCompressorTests
         File.WriteAllBytes(folder.Combine("site/noise.wasm"), random);
 
         //Act
-        var result = OutputCompressor.Compress(folder.Combine("site"), new[] { "tiny.js", "noise.wasm" }, FrontendCompression.BrotliAndGzip, TestContext.Current.CancellationToken);
+        var result = OutputCompressor.Compress(folder.Combine("site"), new[] { "tiny.js", "noise.wasm" }, FrontendCompression.BrotliAndGzip, Defaults, TestContext.Current.CancellationToken);
 
         //Assert
         Directory.GetFiles(folder.Combine("site")).Select(Path.GetFileName).Should().BeEquivalentTo(new[] { "tiny.js", "noise.wasm" });
@@ -141,7 +150,7 @@ public class OutputCompressorTests
         var files = WriteSite(folder);
 
         //Act
-        var result = OutputCompressor.Compress(folder.Combine("site"), files, compression, TestContext.Current.CancellationToken);
+        var result = OutputCompressor.Compress(folder.Combine("site"), files, compression, Defaults, TestContext.Current.CancellationToken);
 
         //Assert
         File.Exists(folder.Combine("site/wasm/app_bg.wasm.br")).Should().Be(brotli);
@@ -160,7 +169,7 @@ public class OutputCompressorTests
         var files = WriteSite(folder);
 
         //Act
-        var result = OutputCompressor.Compress(folder.Combine("site"), files, FrontendCompression.BrotliAndGzip, TestContext.Current.CancellationToken);
+        var result = OutputCompressor.Compress(folder.Combine("site"), files, FrontendCompression.BrotliAndGzip, Defaults, TestContext.Current.CancellationToken);
 
         //Assert
         var wasm = result.Files.Single(f => f.Path == "wasm/app_bg.wasm");
@@ -187,11 +196,11 @@ public class OutputCompressorTests
         WriteSite(folder, "two");
 
         //Act
-        OutputCompressor.Compress(folder.Combine("one"), files, FrontendCompression.BrotliAndGzip, TestContext.Current.CancellationToken);
-        OutputCompressor.Compress(folder.Combine("two"), files, FrontendCompression.BrotliAndGzip, TestContext.Current.CancellationToken);
+        OutputCompressor.Compress(folder.Combine("one"), files, FrontendCompression.BrotliAndGzip, Defaults, TestContext.Current.CancellationToken);
+        OutputCompressor.Compress(folder.Combine("two"), files, FrontendCompression.BrotliAndGzip, Defaults, TestContext.Current.CancellationToken);
 
         //Assert
-        foreach (var file in files.Where(OutputCompressor.IsCompressible).Where(f => f != "tiny.js"))
+        foreach (var file in files.Where(f => OutputCompressor.IsCompressible(f, Defaults)).Where(f => f != "tiny.js"))
         {
             Read(folder, "two/" + file + ".br").Should().Equal(Read(folder, "one/" + file + ".br"));
             Read(folder, "two/" + file + ".gz").Should().Equal(Read(folder, "one/" + file + ".gz"));
@@ -211,7 +220,7 @@ public class OutputCompressorTests
         folder.Write("site/own.json.gz", "a file of the application's own");
 
         //Act
-        var result = OutputCompressor.Compress(folder.Combine("site"), new[] { "app.js", "app.js.br", "app.js.gz", "own.json.gz" }, FrontendCompression.Brotli, TestContext.Current.CancellationToken);
+        var result = OutputCompressor.Compress(folder.Combine("site"), new[] { "app.js", "app.js.br", "app.js.gz", "own.json.gz" }, FrontendCompression.Brotli, Defaults, TestContext.Current.CancellationToken);
 
         //Assert
         Unbrotli(Read(folder, "site/app.js.br")).Should().Equal(Encoding.UTF8.GetBytes(Text));
@@ -230,7 +239,7 @@ public class OutputCompressorTests
         folder.Write("site/app.js.br", "dx's copy");
 
         //Act
-        var result = OutputCompressor.Compress(folder.Combine("site"), new[] { "app.js", "app.js.br" }, FrontendCompression.None, TestContext.Current.CancellationToken);
+        var result = OutputCompressor.Compress(folder.Combine("site"), new[] { "app.js", "app.js.br" }, FrontendCompression.None, Defaults, TestContext.Current.CancellationToken);
 
         //Assert
         File.ReadAllText(folder.Combine("site/app.js.br")).Should().Be("dx's copy");
@@ -253,7 +262,7 @@ public class OutputCompressorTests
         folder.Write("site/other-folder/kept.js.br", "not a folder of the application's files");
 
         //Act
-        var result = OutputCompressor.Compress(folder.Combine("site"), new[] { "app.js", "wasm/new.wasm" }, compression, TestContext.Current.CancellationToken);
+        var result = OutputCompressor.Compress(folder.Combine("site"), new[] { "app.js", "wasm/new.wasm" }, compression, Defaults, TestContext.Current.CancellationToken);
 
         //Assert
         File.Exists(folder.Combine("site/wasm/old.wasm.br")).Should().BeFalse();
@@ -264,45 +273,82 @@ public class OutputCompressorTests
     }
 
     [Fact]
-    public void a_second_build_into_the_web_root_leaves_no_copy_of_a_file_it_no_longer_has()
+    public void a_second_build_leaves_no_copy_of_a_file_it_no_longer_has()
     {
         //Arrange
         using var folder = new TempFolder();
-        var webRoot = folder.Combine("wwwroot");
+        var built = folder.Combine("frontend-built");
         folder.Write("first/index.html", Text);
         folder.Write("first/assets/old-dxh1.js", Text);
         folder.Write("second/index.html", Text + "changed");
         folder.Write("second/assets/new-dxh2.js", Text);
-        WebRootWriter.Write(webRoot, new[] { (FrontendApplication.Named("sales"), folder.Combine("first")) });
-        OutputCompressor.Compress(Path.Combine(webRoot, "sales"), new[] { "index.html", "assets/old-dxh1.js" }, FrontendCompression.BrotliAndGzip, TestContext.Current.CancellationToken);
+        BuiltFrontendWriter.Write(built, new[] { (FrontendApplication.Named("sales"), folder.Combine("first")) });
+        OutputCompressor.Compress(Path.Combine(built, "sales"), new[] { "index.html", "assets/old-dxh1.js" }, FrontendCompression.BrotliAndGzip, Defaults, TestContext.Current.CancellationToken);
 
         //Act
-        WebRootWriter.Write(webRoot, new[] { (FrontendApplication.Named("sales"), folder.Combine("second")) });
-        OutputCompressor.Compress(Path.Combine(webRoot, "sales"), new[] { "index.html", "assets/new-dxh2.js" }, FrontendCompression.BrotliAndGzip, TestContext.Current.CancellationToken);
+        BuiltFrontendWriter.Write(built, new[] { (FrontendApplication.Named("sales"), folder.Combine("second")) });
+        OutputCompressor.Compress(Path.Combine(built, "sales"), new[] { "index.html", "assets/new-dxh2.js" }, FrontendCompression.BrotliAndGzip, Defaults, TestContext.Current.CancellationToken);
 
         //Assert
-        Directory.GetFiles(Path.Combine(webRoot, "sales"), "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(Path.Combine(webRoot, "sales"), f).Replace('\\', '/'))
+        Directory.GetFiles(Path.Combine(built, "sales"), "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(Path.Combine(built, "sales"), f).Replace('\\', '/'))
             .Should().BeEquivalentTo(new[] { "index.html", "index.html.br", "index.html.gz", "assets/new-dxh2.js", "assets/new-dxh2.js.br", "assets/new-dxh2.js.gz" });
-        Ungzip(Read(folder, "wwwroot/sales/index.html.gz")).Should().Equal(Encoding.UTF8.GetBytes(Text + "changed"));
+        Ungzip(Read(folder, "frontend-built/sales/index.html.gz")).Should().Equal(Encoding.UTF8.GetBytes(Text + "changed"));
     }
 
     [Fact]
-    public void Compress_leaves_the_developers_own_files_in_the_web_root_alone()
+    public void Compress_of_the_root_application_leaves_the_named_applications_and_the_gitignore_alone()
     {
         //Arrange
         using var folder = new TempFolder();
-        var webRoot = folder.Combine("wwwroot");
-        folder.Write("wwwroot/index.html", Text);
-        folder.Write("wwwroot/own.css", Text);
-        folder.Write("site/index.html", Text);
-        WebRootWriter.Write(webRoot, new[] { (FrontendApplication.Named("sales"), folder.Combine("site")) });
+        var built = folder.Combine("frontend-built");
+        folder.Write("root/index.html", Text);
+        folder.Write("sales/index.html", Text);
+        BuiltFrontendWriter.Write(built, new[] { (FrontendApplication.Default, folder.Combine("root")), (FrontendApplication.Named("sales"), folder.Combine("sales")) });
+        var everything = OutputCompressor.RequireExtensions(new[] { ".html", ".gitignore" });
 
         //Act
-        OutputCompressor.Compress(Path.Combine(webRoot, "sales"), new[] { "index.html" }, FrontendCompression.BrotliAndGzip, TestContext.Current.CancellationToken);
+        var result = OutputCompressor.Compress(built, new[] { "index.html", ".gitignore" }, FrontendCompression.BrotliAndGzip, everything, TestContext.Current.CancellationToken);
 
         //Assert
-        File.Exists(folder.Combine("wwwroot/sales/index.html.br")).Should().BeTrue();
-        File.Exists(folder.Combine("wwwroot/index.html.br")).Should().BeFalse();
-        File.Exists(folder.Combine("wwwroot/own.css.gz")).Should().BeFalse();
+        result.Files.Select(f => f.Path).Should().Equal("index.html");
+        File.Exists(folder.Combine("frontend-built/index.html.br")).Should().BeTrue();
+        File.Exists(folder.Combine("frontend-built/.gitignore.br")).Should().BeFalse();
+        File.Exists(folder.Combine("frontend-built/.gitignore.gz")).Should().BeFalse();
+        File.Exists(folder.Combine("frontend-built/sales/index.html.br")).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Compress_takes_the_extensions_it_is_given()
+    {
+        //Arrange
+        using var folder = new TempFolder();
+        var files = WriteSite(folder);
+        var onlyWasm = OutputCompressor.RequireExtensions(new[] { ".WASM" });
+
+        //Act
+        var result = OutputCompressor.Compress(folder.Combine("site"), files, FrontendCompression.Brotli, onlyWasm, TestContext.Current.CancellationToken);
+
+        //Assert
+        result.Files.Select(f => f.Path).Should().Equal("wasm/app_bg.wasm");
+        File.Exists(folder.Combine("site/wasm/app.js.br")).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("wasm")]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData(null)]
+    [InlineData(".")]
+    [InlineData(".tar.gz")]
+    [InlineData("./x")]
+    [InlineData(".br")]
+    [InlineData(".GZ")]
+    public void RequireExtensions_refuses_what_is_not_an_extension_or_is_a_copy(string extension)
+    {
+        //Act
+        Action act = () => OutputCompressor.RequireExtensions(new[] { ".js", extension });
+
+        //Assert
+        act.Should().Throw<FrontendBuildException>().WithMessage("*CompressibleExtensions*");
     }
 }

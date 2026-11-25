@@ -19,8 +19,8 @@ public sealed class NamedApplicationsWithRootPageFixture : IAsyncLifetime
         => Host = await BackendHost.StartAsync(root =>
         {
             root.WriteBuiltFrontend(Applications);
-            root.Write("index.html", TempWebRoot.OwnRootIndex);
-            root.Write("robots.txt", "User-agent: *");
+            root.WriteOwn("index.html", TempWebRoot.OwnRootIndex);
+            root.WriteOwn("robots.txt", "User-agent: *");
         });
 
     public async ValueTask DisposeAsync() => await Host.DisposeAsync();
@@ -214,6 +214,6 @@ public class NamedApplicationsWithoutRootPageTests : IClassFixture<NamedApplicat
         var messages = _host.Logs.Messages(LogLevel.Information);
 
         //Assert
-        messages.Should().Contain("Serving the frontend applications sales at /sales, admin at /admin.");
+        messages.Should().Contain("Serving the frontend applications sales at /sales, admin at /admin from frontend-built/.");
     }
 }

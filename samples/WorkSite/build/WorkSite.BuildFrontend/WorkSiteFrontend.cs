@@ -8,7 +8,8 @@ namespace WorkSite.BuildFrontend;
 /// WorkSite's settings for CodeBrix.WebPlatform.FrontendBuilder, which does the generic work:
 /// the prerequisite check, materializing the generated client code and the shared crate into the
 /// frontend, and running dx. What is particular to WorkSite is here: its paths and its type
-/// mapping. (What the generated client code says about the backend itself - its request marker
+/// mapping. (The folder layout of the frontend - where dx keeps its data, where the generated
+/// Tailwind stylesheet goes - is the platform's and fixed. What the generated client code says about the backend itself - its request marker
 /// and session refresh - the backend declares; nothing about it is set here.) dx and
 /// wasm-bindgen come from the host-tools package for the machine the build program
 /// runs on (WorkSite.BuildFrontend.csproj references all five, each for its own platform), and the
@@ -42,7 +43,6 @@ public static class WorkSiteFrontend
             BackendProjectPath = paths.ApiProject,
             BackendAssemblyPath = paths.ApiAssembly,
             Types = CreateTypeMap(),
-            DxHomeDirectory = paths.DxHome,
             ServeFeatures = { DevToolsFeature },
             Output = output,
         };

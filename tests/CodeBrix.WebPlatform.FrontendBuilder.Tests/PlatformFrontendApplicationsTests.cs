@@ -161,7 +161,7 @@ public class PlatformFrontendApplicationsTests
         first.VendorChanged.Should().BeTrue();
         second.VendorChanged.Should().BeFalse();
         second.WasUpToDate.Should().BeTrue();
-        Directory.GetDirectories(options.ResolvedVendorDirectory).Select(Path.GetFileName).OrderBy(n => n, StringComparer.Ordinal)
+        Directory.GetDirectories(options.VendorDirectory).Select(Path.GetFileName).OrderBy(n => n, StringComparer.Ordinal)
             .Should().Equal("fake-sys-0.3.1", "wgpu-30.0.2");
         var outcome = second.CrateBundles.Single();
         outcome.Name.Should().Be("graphics");
@@ -183,8 +183,8 @@ public class PlatformFrontendApplicationsTests
         //Assert
         without.VendorChanged.Should().BeTrue();
         without.CrateBundles.Should().BeEmpty();
-        Directory.Exists(Path.Combine(options.ResolvedVendorDirectory, "wgpu-30.0.2")).Should().BeFalse();
-        Directory.Exists(Path.Combine(options.ResolvedVendorDirectory, "fake-sys-0.3.1")).Should().BeTrue();
+        Directory.Exists(Path.Combine(options.VendorDirectory, "wgpu-30.0.2")).Should().BeFalse();
+        Directory.Exists(Path.Combine(options.VendorDirectory, "fake-sys-0.3.1")).Should().BeTrue();
     }
 
     [Fact]
@@ -201,7 +201,7 @@ public class PlatformFrontendApplicationsTests
 
         //Assert
         (await act.Should().ThrowAsync<FrontendBuildException>()).WithMessage("*fake-sys: the crate bundle 'graphics' of My.Graphics 1.0 carries version 0.3.2*carries version 0.3.1*");
-        Directory.Exists(options.ResolvedVendorDirectory).Should().BeFalse();
+        Directory.Exists(options.VendorDirectory).Should().BeFalse();
     }
 
     [Fact]
@@ -220,7 +220,7 @@ public class PlatformFrontendApplicationsTests
 
         //Assert
         result.CrateBundles.Single().AddedCrates.Should().Equal("wgpu 30.0.2");
-        Directory.Exists(options.ResolvedVendorDirectory).Should().BeFalse();
+        Directory.Exists(options.VendorDirectory).Should().BeFalse();
         await act.Should().ThrowAsync<FrontendBuildException>();
     }
 
@@ -240,7 +240,7 @@ public class PlatformFrontendApplicationsTests
 
         //Assert
         result.CrateBundles.Should().Contain(b => b.Name == name);
-        Directory.Exists(Path.Combine(options.ResolvedVendorDirectory, name + "-1.0.0")).Should().BeTrue();
+        Directory.Exists(Path.Combine(options.VendorDirectory, name + "-1.0.0")).Should().BeTrue();
     }
 
     [Fact]

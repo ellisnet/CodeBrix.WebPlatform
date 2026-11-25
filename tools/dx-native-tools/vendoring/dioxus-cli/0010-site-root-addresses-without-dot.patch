@@ -1,0 +1,107 @@
+diff -ruN a/src/build/web.rs b/src/build/web.rs
+--- a/src/build/web.rs
++++ b/src/build/web.rs
+@@ -179,9 +179,11 @@
+             for (idx, chunk) in modules.chunks.iter().enumerate() {
+                 let path = bindgen_outdir.join(format!("chunk_{}_{}.wasm", idx, chunk.module_name));
+                 wasm_opt::write_wasm(&chunk.bytes, &path, &wasm_opt_options).await?;
++                // CodeBrix change: the address starts "/assets/" for an application at the site
++                // root (upstream: "/./assets/"); see base_path_prefix.
+                 writeln!(
+-                    glue, "export const __wasm_split_load_chunk_{idx} = makeLoad(\"/{base_path}/assets/{url}\", [], fusedImports);",
+-                    base_path = self.base_path_or_default(),
++                    glue, "export const __wasm_split_load_chunk_{idx} = makeLoad(\"{base_path}/assets/{url}\", [], fusedImports);",
++                    base_path = self.base_path_prefix(),
+                     url = assets
+                         .register_asset(&path, AssetOptions::builder().into_asset_options())?.bundled_path(),
+                 )?;
+@@ -203,12 +205,14 @@
+                     .as_ref()
+                     .context("generated wasm-split bindgen module has no hash id?")?;
+ 
++                // CodeBrix change: "/assets/" at the site root, not "/./assets/"; see
++                // base_path_prefix.
+                 writeln!(
+                     glue,
+-                    "export const __wasm_split_load_{module}_{hash_id}_{comp_name} = makeLoad(\"/{base_path}/assets/{url}\", [{deps}], fusedImports);",
++                    "export const __wasm_split_load_{module}_{hash_id}_{comp_name} = makeLoad(\"{base_path}/assets/{url}\", [{deps}], fusedImports);",
+                     module = module.module_name,
+ 
+-                    base_path = self.base_path_or_default(),
++                    base_path = self.base_path_prefix(),
+ 
+                     // Again, register this wasm with the asset system
+                     url = assets
+@@ -323,13 +327,15 @@
+             .append(true)
+             .open(self.wasm_bindgen_js_output_file())?;
+         let mut buf_writer = std::io::BufWriter::new(&mut js);
++        // CodeBrix change: the .wasm address has no "/./" for an application at the site root;
++        // see base_path_prefix.
+         writeln!(
+             buf_writer,
+             r#"
+ globalThis.__wasm_split_main_initSync = initSync;
+ 
+ // Actually perform the load
+-__wbg_init({{module_or_path: "/{}/{wasm_path}"}}).then((wasm) => {{
++__wbg_init({{module_or_path: "{}/{wasm_path}"}}).then((wasm) => {{
+     // assign this module to be accessible globally
+     globalThis.__dx_mainWasm = wasm;
+     globalThis.__dx_mainInit = __wbg_init;
+@@ -341,7 +347,7 @@
+     }}
+ }});
+ "#,
+-            self.base_path_or_default(),
++            self.base_path_prefix(),
+         )?;
+ 
+         Ok(())
+@@ -556,12 +562,15 @@
+         }
+ 
+         // If not, insert the script
++        //
++        // CodeBrix change: src="/wasm/..." or "/assets/..." for an application at the site root
++        // (upstream: "/./..."); see base_path_prefix.
+         *html = html.replace(
+             "</body",
+             &format!(
+-                r#"<script type="module" async src="/{}/{}"></script>
++                r#"<script type="module" async src="{}/{}"></script>
+             </body"#,
+-                self.base_path_or_default(),
++                self.base_path_prefix(),
+                 self.bundled_js_path(assets)
+             ),
+         );
+@@ -569,6 +578,11 @@
+ 
+     /// Replace any special placeholders in the HTML with resolved values
+     fn replace_template_placeholders(&self, html: &mut String, wasm_path: &str, js_path: &str) {
++        // CodeBrix change: an address written "/{base_path}/..." (the form dx's own head
++        // resources and the documented index.html use) becomes "/..." for an application at the
++        // site root instead of "/./..."; a {base_path} anywhere else is replaced as upstream
++        // does. See base_path_prefix.
++        *html = html.replace("/{base_path}/", &format!("{}/", self.base_path_prefix()));
+         let base_path = self.base_path_or_default();
+         *html = html.replace("{base_path}", base_path);
+ 
+@@ -612,6 +626,16 @@
+         self.release && self.bundle == BundleFormat::Web
+     }
+ 
++    /// CodeBrix change: what an absolute address of the application's files starts with before
++    /// "/assets/..." or "/wasm/...": "" for an application at the site root, "/<base path>"
++    /// otherwise. Upstream writes "/{base_path_or_default}/", which is "/./" at the site root.
++    /// See tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt.
++    fn base_path_prefix(&self) -> String {
++        self.trimmed_base_path()
++            .map(|path| format!("/{path}"))
++            .unwrap_or_default()
++    }
++
+     /// Get the path to the wasm bindgen temporary output folder
+     pub fn wasm_bindgen_out_dir(&self) -> PathBuf {
+         self.root_dir().join("wasm")

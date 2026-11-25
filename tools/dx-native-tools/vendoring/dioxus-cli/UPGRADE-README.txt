@@ -49,8 +49,8 @@ HOW TO UPGRADE
     its .sha256.
  2. Replace tools/dx-native-tools/sources/dioxus-cli with the unpacked
     archive (keep nothing of the old folder except by re-applying patches).
- 3. Re-apply patches 0001 to 0003, 0005 and 0006 to the new source, in
-    order (0002 only adds the [patch] section; keep it). A
+ 3. Re-apply patches 0001 to 0003 and 0005 to 0010 to the new source, in
+    order (0002 and 0007 only add [patch] sections; keep them). A
     patch that no longer applies must be re-made by hand against the new
     code; read its
     entry in PATCH-NOTES.txt for what it has to achieve, and check whether

@@ -121,8 +121,16 @@ impl TailwindCli {
         let binary_path = self.get_binary_path()?;
 
         let input_path = input_path.unwrap_or_else(|| manifest_dir.join("tailwind.css"));
-        let output_path =
-            output_path.unwrap_or_else(|| manifest_dir.join("assets").join("tailwind.css"));
+        // CodeBrix change: the default output is assets/generated/tailwind.css (upstream:
+        // assets/tailwind.css), the fixed path of the platform's generated stylesheet, so build
+        // output stays out of the developer's own assets folder. See
+        // tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt.
+        let output_path = output_path.unwrap_or_else(|| {
+            manifest_dir
+                .join("assets")
+                .join("generated")
+                .join("tailwind.css")
+        });
 
         if !output_path.exists() {
             std::fs::create_dir_all(output_path.parent().unwrap())

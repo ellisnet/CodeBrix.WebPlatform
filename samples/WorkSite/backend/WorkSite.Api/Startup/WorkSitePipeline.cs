@@ -10,8 +10,9 @@ public static class WorkSitePipeline
 {
     /// <summary>
     /// HSTS outside Development, the platform backend (security headers, contract error bodies,
-    /// cross-site request protection for the API and for the hubs, the web root's files and the
-    /// frontend served as the frontend manifest says), rate limiting, authentication, the
+    /// cross-site request protection for the API and for the hubs, the built frontend in
+    /// frontend-built/ served as its manifest says, and any files of WorkSite's own in wwwroot/),
+    /// rate limiting, authentication, the
     /// controllers and the hubs.
     /// </summary>
     /// <param name="app">The application.</param>

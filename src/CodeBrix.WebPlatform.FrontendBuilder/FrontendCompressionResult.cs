@@ -5,8 +5,8 @@ using System.Linq;
 namespace CodeBrix.WebPlatform.FrontendBuilder;
 
 /// <summary>
-/// What <see cref="PlatformFrontend.BuildAsync"/> compressed for one frontend application in the
-/// web root (<see cref="FrontendBuildResult.Compression"/>; see
+/// What <see cref="PlatformFrontend.BuildAsync(FrontendConfiguration, string, System.Threading.CancellationToken)"/> compressed for one frontend application in the
+/// built frontend folder (<see cref="FrontendBuildResult.Compression"/>; see
 /// <see cref="PlatformFrontendOptions.CompressOutput"/>).
 /// </summary>
 public sealed class FrontendCompressionResult

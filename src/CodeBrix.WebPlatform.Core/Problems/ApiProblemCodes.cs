@@ -30,6 +30,9 @@ public static class ApiProblemCodes
     /// <summary>429: too many requests.</summary>
     public const string RateLimited = "rate_limited";
 
+    /// <summary>503: the backend is offline (for maintenance) while its offline file is in place.</summary>
+    public const string Offline = "offline";
+
     /// <summary>Any 5xx answer that carries no code of its own.</summary>
     public const string ServerError = "server_error";
 }

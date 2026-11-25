@@ -81,7 +81,13 @@ All paths are inside samples/WorkSite.
   .env.example                  the settings the containers need (no values)
   backend/
     WorkSite.Api/               the REST backend and the hubs; also serves
-                                the built frontend from its wwwroot
+                                the built frontend
+      frontend-built/           BUILD OUTPUT: the built frontend, the
+                                manifest and the notices the site serves
+                                (written by `build`). There is no wwwroot/:
+                                WorkSite has no files of its own to serve
+                                (wwwroot/ would hold only files written by
+                                hand)
       Controllers/, Hubs/       the contract BackendMapper reads
     libs/WorkSite.Core/         everything that crosses the wire: the model,
                                 request and response classes, the hubs'
@@ -92,6 +98,8 @@ All paths are inside samples/WorkSite.
     tests/                      the three backend test projects
   frontend/                     the Dioxus crate (Rust): Cargo.toml, its own
                                 Cargo.lock, Dioxus.toml, tailwind.css, assets
+    assets/fonts/               the site's typeface, Roboto.ttf, with its
+                                licence file OFL.txt (see THE TYPEFACE)
     src/main.rs                 the app root: the one set-up call
                                 (generated::configure_platform, with
                                 WorkSite's session hooks), the stylesheet,
@@ -111,8 +119,15 @@ All paths are inside samples/WorkSite.
                                 platform's crates (vendor/)
     .cargo/config.toml          BUILD OUTPUT: tells cargo to build from
                                 platform/vendor, offline
-                                (all three are written by `generate`; never
-                                edited, not committed)
+    assets/generated/           BUILD OUTPUT: the stylesheet Tailwind
+                                generates (tailwind.css), which main.rs
+                                names
+    target/                     BUILD OUTPUT: cargo's and dx's (dx keeps
+                                its data in target/dx-home)
+                                (all of these are written by `generate` or
+                                `build`; never edited, not committed; each
+                                folder holds a .gitignore of the platform's,
+                                so it ignores itself)
   docker/                       Dockerfile and compose.yaml
   build/
     WorkSite.BuildFrontend/     the sample's build program, a thin caller of
@@ -259,8 +274,9 @@ missing, exports the development certificate for the web container if that
 has not been done, checks the prerequisites, materializes the frontend
 (builds the backend, generates the frontend's client code from it, writes
 the platform's shared crate and crates and the cargo configuration), builds
-the frontend into the backend's wwwroot with the notices, publishes the
-backend, builds the web image, starts the two containers, waits for the site
+the frontend into the backend project's frontend-built/ with the notices,
+publishes the backend (which carries frontend-built/ along), builds the web
+image, starts the two containers, waits for the site
 to answer and prints its address. `stop` removes the containers and keeps the
 database volume. Nothing ever deletes the database volume by itself; to start
 from an empty database, remove the `worksite_worksite-db` volume with Docker
@@ -288,7 +304,7 @@ its command line (Program, Builder), its paths and settings (WorkSiteLayout,
 BuilderPaths, WorkSiteFrontend - the type mapping is in CreateTypeMap), the
 containers (ContainerStep), .env
 (EnvFile), the development certificate (DevCertificateStep) and the notices
-file in wwwroot, with the small process runner those steps use.
+file beside the built site, with the small process runner those steps use.
 
 The backend alone builds and tests with plain dotnet:
 
@@ -305,14 +321,68 @@ repository root (see the root MAINTAINER-README.txt).
 
 A FRESH CLONE: the frontend does not compile, with cargo or with dx, until
 `generate` has written src/generated, platform/ and .cargo/ - and the
-Tailwind stylesheet main.rs names (assets/tailwind.css), which the platform's
-Materialize writes with the packaged Tailwind when it is missing. So: clone,
-`generate`, `cargo check`. (Should the packaged Tailwind be missing, `generate`
-says the stylesheet was not generated, and cargo fails on the asset!() until a
-build has run.)
-The repository's maintainer tests that use the sample as their subject (the
-Node-free proof build, the dx native build's functional gate) need it
-materialized too.
+Tailwind stylesheet main.rs names (assets/generated/tailwind.css), which the
+platform's Materialize writes with the packaged Tailwind when it is missing.
+So: clone, `generate`, `cargo check`. (Should the packaged Tailwind be
+missing, `generate` says the stylesheet was not generated, and cargo fails
+on the asset!() until a build has run.) The repository's maintainer tests
+that use the sample as their subject (the Node-free proof build, the dx
+native build's functional gate) need it materialized too.
+
+
+THE TYPEFACE
+============
+The site's text is set in Roboto, the variable font (every weight from 100 to
+900 in one file). The font and its licence file are copied, unchanged, from
+the owner's CodeBrix.Platform.Fonts.Roboto repository
+(src/CodeBrix.Platform.Fonts.Roboto/Fonts/Roboto.ttf and OFL.txt there);
+never take them from anywhere else, and never "correct" the licence text.
+
+  - A FIXED ADDRESS. frontend/src/main.rs declares the folder as a folder
+    asset, `#[used] static FONTS: Asset = asset!("/assets/fonts",
+    AssetOptions::folder());`: dx copies it into the site as assets/fonts/
+    and adds no hash to the names in it, so the stylesheet can name
+    /assets/fonts/Roboto.ttf. (An asset!() of the .ttf file itself would get
+    dx's -dxh<hash> name, which the stylesheet cannot know.) `#[used]` keeps
+    the static in the build although no code reads it.
+  - THE STYLESHEET. frontend/tailwind.css has the @font-face rule (src
+    url("/assets/fonts/Roboto.ttf") format("truetype"), font-weight 100 900,
+    font-display swap) and sets Tailwind's --font-sans to "Roboto",
+    sans-serif, so every font-sans text (Tailwind's default) uses it.
+  - THE CONTENT-SECURITY-POLICY needs nothing: the font comes from the site
+    itself, which default-src 'self' allows (there is no font-src).
+  - HOW IT IS SERVED: font/ttf; Brotli and gzip copies are made at build (the
+    platform compresses .ttf); Cache-Control no-cache, because the name
+    carries no hash - the browser asks again on each visit and gets a 304.
+
+
+CHECKING IN A BROWSER
+=====================
+No screenshots: drive headless Chrome over its debugging protocol from a
+small client kept outside the repository, as the ApplicationSplitter
+maintainer file describes, against the containers (`run`) or a backend
+started from a published folder. Check:
+  - the public pages, the sign-in page and the app's pages load, also as deep
+    links (/features, /app/clients); an unknown address shows the not-found
+    page; signing in with the demo account opens the dashboard; the hubs
+    connect (their negotiate calls answer 200);
+  - the console shows no exceptions and no Content-Security-Policy
+    violations (the 401 answers of /api/auth/me and /api/auth/refresh before
+    signing in are expected);
+  - THE TYPEFACE: document.fonts.check('16px Roboto') is true, the body's
+    computed font-family is "Roboto, sans-serif", and /assets/fonts/Roboto.ttf
+    answers font/ttf (THE TYPEFACE above);
+  - the headers: dx-hashed files Cache-Control "public, max-age=31536000,
+    immutable", index.html and the pages no-cache; Content-Encoding br, or
+    gzip when only gzip is asked for - /THIRD-PARTY-NOTICES.txt (text/plain;
+    charset=utf-8) included;
+  - THE OFFLINE FILE: with the app open on the sign-in page, put an
+    app-offline.html into wwwroot/ of a backend started from a publish
+    folder (create the folder): every page answers 503 with that file, and
+    signing in shows "WorkSite is down for maintenance..." (the sign-in
+    page's err.is_offline()); delete the file and signing in works again,
+    with no restart;
+  - no horizontal overflow at 360 px.
 
 
 NOTICES
@@ -326,9 +396,17 @@ shared crate and crates - is recorded by the platform, in the generated file
 the FrontendBuilder package carries.
 
 The compiled application contains third-party code, so `build` writes the
-notices the site serves into the backend's wwwroot: this file, followed by
-the platform's notices (PlatformCrates.ReadNotices). It is shipped in the
+notices the site serves beside the built site, into the backend project's
+frontend-built/: this file, followed by the platform's notices
+(PlatformCrates.ReadNotices). It is written with
+PlatformFrontend.WriteBuiltFile after every build (a build removes what it
+did not write itself), which gives it Brotli and gzip copies as the build
+gives its own files. It is build output like the site, shipped in the
 container image and served at /THIRD-PARTY-NOTICES.txt.
+
+The site's typeface (frontend/assets/fonts/Roboto.ttf) is third-party too: it
+has its own entry in this file, and its licence file (OFL.txt) sits beside it
+and is served beside it.
 
 The root LICENSE covers the code written here. Everything third-party keeps
 its own license.
@@ -336,10 +414,12 @@ its own license.
 
 GIT
 ===
-Never commit: samples/WorkSite/.env, any `target` folder, the backend's
-wwwroot content (it is build output), samples/WorkSite/artifacts, and the
-build output written into the frontend: frontend/src/generated, frontend/platform and
-frontend/.cargo. The .gitignore at the repository root covers all of them.
+Never commit: samples/WorkSite/.env and samples/WorkSite/artifacts (the
+root .gitignore names both), and what the build writes: the backend
+project's frontend-built/, and in the frontend target/, src/generated/,
+platform/codebrix-webplatform/, platform/vendor/, .cargo/ and
+assets/generated/. Each of those folders holds a .gitignore of the
+platform's (it ignores itself), so no rule for them is needed anywhere.
 frontend/Cargo.lock IS committed: it is the application's own. Its third
 line is the platform's marker line, so the build keeps it in step when a
 platform crate moves (AGENT-README.txt, THE FRONTEND'S Cargo.lock): commit
@@ -373,17 +453,16 @@ The release build of the frontend is shrunk by wasm-opt. NOTHING IS INSTALLED
 FOR THAT: the program comes from the CodeBrix.WebPlatform.WasmShrink package,
 which the platform's FrontendBuilder library depends on; everything about it
 is the platform library's behaviour (see the root AGENT-README.txt,
-SHRINKING). WorkSite only chooses where DX_HOME is (artifacts/dx-home) and
-how hard wasm-opt works ([web.wasm_opt] in frontend/Dioxus.toml; level "z",
-the smallest file, when nothing is set). The platform's Shrink option can
-also leave a release build unshrunk (dx then skips wasm-opt); WorkSite does
-not use it.
+SHRINKING). WorkSite only chooses how hard wasm-opt works ([web.wasm_opt] in
+frontend/Dioxus.toml; level "z", the smallest file, when nothing is set). The
+platform's Shrink option can also leave a release build unshrunk (dx then
+skips wasm-opt); WorkSite does not use it.
 
 dx AND libgit2. dx does not start without the libgit2 library; the platform
 library supplies it from the CodeBrix.LibGit2 package (a dependency of
-FrontendBuilder) on every start, from artifacts/dx-home/libgit2 (inside
-WorkSite's DX_HOME). To start dx yourself, see DX NEEDS libgit2 in the root
-AGENT-README.txt.
+FrontendBuilder) on every start, from frontend/target/dx-home/libgit2
+(inside DX_HOME, which is the platform's fixed frontend/target/dx-home). To
+start dx yourself, see DX NEEDS libgit2 in the root AGENT-README.txt.
 
 
 CODING CONVENTIONS (.NET)

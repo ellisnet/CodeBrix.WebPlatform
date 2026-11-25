@@ -34,18 +34,38 @@ The patches, in the order they apply:
                                                    constants that the linker
                                                    stored inside a split
                                                    module's constant
+  0005-skip-data-symbols-without-bytes.patch       a data symbol of size 0
+                                                   that only split modules
+                                                   name no longer fails the
+                                                   build
+  0006-shared-code-into-the-chunk.patch            code and data that several
+                                                   split modules use go into
+                                                   the shared chunk, once,
+                                                   instead of into each of
+                                                   them
 
-All four patches change src/lib.rs only. 0001 and 0002 belong together: 0001
+Patches 0001 to 0005 change src/lib.rs only; 0006 changes src/lib.rs and the
+loader, src/__wasm_split.js. 0001 and 0002 belong together: 0001
 is the fix of the panic, and 0002 keeps 0001 from pinning most of a split
 route's code into the main module (see the Effect of each). 0003 is a separate
-fix (reproducible output) and has its own section below, and so is 0004 (the
-main module's data).
+fix (reproducible output) and has its own section below, and so are 0004 (the
+main module's data), 0005 (data symbols without bytes) and 0006 (the shared
+chunk).
 
 Status of 0001 and 0002: approved by the repository owner 2026-11-19
 ("diagnose and fix"). Status of 0003: made under the repository owner's GO of
 2026-11-19 for the investigation of the changing file names of a split
 application and "fixing whatever you need to fix". Status of 0004: made under
-the repository owner's GO of 2026-11-23 ("GO on the fix").
+the repository owner's GO of 2026-11-23 ("GO on the fix"). Status of 0005: made
+under the repository owner's GO of 2026-11-24 (B2: "find the cause and fix it as
+a further recorded patch"). Status of 0006: made under the repository owner's
+GO of 2026-11-24 for one bounded attempt at the shared-chunk path, applied
+only after the gate recorded in its section had passed on a scratch copy.
+
+Which adopted programs carry them (BUILD-PROVENANCE.txt; dx links this
+splitter): linux-x64 and linux-arm64 carry all six (adopted 2026-11-24);
+win-x64, osx-arm64 and osx-x64 carry 0001 to 0003 only (adopted 2026-11-22,
+NOT YET REBUILT) - a split build made there still lacks 0004, 0005 and 0006.
 
 
 THE BUG 0001 AND 0002 FIX
@@ -253,18 +273,247 @@ How it is checked: the ApplicationSplitter sample's sales application has a
 Drop when: upstream merges #5772 or an equivalent fix and the repository
         takes a stable release that has it.
 
+0005-skip-data-symbols-without-bytes.patch
+-------------------------------------------
+The bug: a split build failed inside dx, after "Emitting main bundle split
+module", with
+
+    Failed to emit wasm split modules
+    Caused by: Failed to find data symbol
+
+and wrote nothing. It was seen in a split DEBUG build of another application;
+the ApplicationSplitter sample built fine in debug and release.
+
+How it happens, proved on a scratch copy of the sample's sales application:
+
+  - The splitter's call graph takes its data nodes from the relocations of
+    the linked module: every relocation that names a DATA symbol gives a
+    node, whatever the symbol's size (get_symbol_dep_node).
+  - Its table of data symbols (parse_bytes_to_data_segment) leaves out the
+    symbols of size 0 (and has no undefined ones), because they have no
+    bytes.
+  - prune_main_symbols looks up every data node that only split modules
+    reach, to zero its bytes in the main module, and failed the build when a
+    node was not in the table. A data symbol of size 0 that only a split
+    module names is exactly that: a zero-sized static, such as
+    tracing_core's NO_SUBSCRIBER, used only by code in a piece.
+  - The sample has three such symbols in its debug build (__heap_base,
+    __heap_end and NO_SUBSCRIBER), all named from the main module too, so it
+    was not hit. Adding one zero-sized static named only by its diagnostics
+    page (`static SPLIT_ONLY_MARKER: Marker = Marker;`, its address shown on
+    the page) gave exactly the error above in a split debug build.
+  - clear_data_segments, which writes a split module's own data, already
+    skips a symbol that is not in the table.
+
+What:   src/lib.rs, prune_main_symbols - a data node that is not in the table
+        is skipped instead of failing the build. Nothing else.
+Why:    such a symbol has no bytes in the main module, so there is nothing to
+        zero; the other place that uses the table already treats it so.
+Effect: the build no longer fails there; the output is otherwise unchanged
+        (nothing was zeroed for such a symbol before either - the build
+        stopped). With the reproduction, the split debug build succeeds and
+        the page (its zero-sized static's address included), the sample's
+        formatting self-check and every piece work in headless Chrome.
+Upstream (checked 2026-11-24): the lookup is unchanged on upstream's main
+        branch (packages/wasm-split/wasm-split-cli/src/lib.rs); the issue
+        tracker was not searched.
+How it is checked: the reproduction above (a scratch copy only; the sample
+        itself is unchanged): with the patch, a split debug build of it
+        succeeds; without it, it fails with the message above.
+Drop when: upstream skips (or records) data symbols without bytes and the
+        repository takes a stable release that has it.
+
+
+0006-shared-code-into-the-chunk.patch
+-------------------------------------
+The defect: in every split build the one shared chunk (chunk_0_split) was
+empty (283 bytes), and the code and data that several split modules use were
+written into EACH of them. Measured on a scratch copy of the
+ApplicationSplitter sample's sales application (eleven split modules), release:
+108 function-table slots were filled by two to eight modules each, every one
+with its own copy of the function, and 140,727 data addresses were written by
+more than one module.
+
+How it happens:
+
+  - build_split_chunks is meant to put every symbol that more than one split
+    module reaches, and the main module does not hold, into one chunk. The
+    loop that should record which modules reach a symbol had NO BODY after
+    its `continue`, so the table stayed empty and so did the chunk.
+  - The rest of the path was unfinished too, which the empty table hid:
+    - emit_split_chunk imported nothing and deleted every function of the
+      main module from the chunk, also the ones the chunk's functions call:
+      with the loop filled in, walrus panicked at once ("assertion failed:
+      !self.dead.contains(&id)");
+    - the functions of a chunk had no slots in the function table, so a
+      split module had no way to call them: emit_split_module took them off
+      the module's own list (so the module no longer filled their original
+      table slots or wrote their data) but left their code in the module;
+    - the loader (__wasm_split.js) marked a file as loaded only after it had
+      been instantiated, so every module that asked for the chunk while it
+      was still loading fetched and instantiated it again (measured with
+      upstream's loader: four calls at once for two modules with one chunk
+      fetched the chunk four times), and a module was instantiated even when
+      a chunk it needs had failed to load, with the chunk's functions and
+      data missing.
+
+What:   src/lib.rs
+        - build_split_chunks records, for each symbol the main module does
+          not hold, the split modules that reach it (the missing line). A
+          split point's own entry function is left out: its module exports
+          it and puts it into the function table itself.
+        - The function table gets one more slot for each function of the
+          chunk, after upstream's added slots (one per split point, one per
+          symbol the split modules share with the main module). One number
+          (ifunc_table_growth) and one order of the chunk's functions
+          (chunk_functions: the order of their ids in the source module)
+          serve the main module, the chunk and every split module, so that
+          all of them declare the same table and agree on every slot. The
+          main module leaves the new slots empty.
+        - emit_split_chunk treats the chunk like a split module: what the
+          chunk's symbols reach in the main module becomes calls through the
+          table (as in a split module), the rest of the main module's
+          functions are deleted; and it adds one element segment that puts
+          the chunk's functions into their slots. (It fills the functions'
+          ORIGINAL table slots - the "holes" of the main module - and writes
+          the chunk's data symbols back as before, through the functions a
+          split module uses for its own.)
+        - emit_split_module (add_split_imports) turns each chunk function
+          the module uses into a call through the chunk's slot, so the
+          module no longer carries the code.
+        - For an EMPTY chunk every one of these is what it was: no slot, no
+          segment, the same sets.
+        src/__wasm_split.js (makeLoad)
+        - a file is fetched and instantiated once, also when it is asked for
+          again while it is loading (every caller waits for the one load and
+          then gets its own callback, as before);
+        - the returned function answers true when the file is loaded and
+          false when it is not, and a module whose chunk did not load is
+          not fetched or instantiated: it fails the way it fails when its
+          own file does not load (the error on the console, no callback).
+Why:    a visitor downloaded the same code once per page, and code that
+        every page needs made every page's piece large. The loader change
+        belongs to it: a chunk is asked for by every module that needs it,
+        it must be there before any of them runs, and it should be
+        downloaded once.
+Effect: - The chunk file holds the shared code and data once; each module
+          that uses any of it names the chunk as its dependency in the
+          loader (the list dx writes, `makeLoad(url, [__wasm_split_load_
+          chunk_0], ...)`, was already there and is now real), and the
+          browser fetches the chunk once, before the first such module.
+        - Measured (the scratch copy above, which also has one substantial
+          function used by two pages and one hand-split piece only; release,
+          raw / Brotli bytes): all pieces together 662,508 / 263,248 before,
+          388,317 / 151,131 after (chunk 107,977 / 46,932); the Orders page
+          138,614 / 56,432 -> 50,838 / 17,118, the Reports page 82,258 /
+          38,335 -> 27,409 / 10,534, the forecast piece 42,818 / 23,776 ->
+          6,795 / 3,471. Opening Orders and then Reports downloaded 94,767
+          Brotli bytes of pieces before and 74,584 after.
+        - THE COST: there is ONE chunk, so the FIRST page a visitor opens
+          also brings everything any two modules share. In the same build a
+          first visit to the Overview page alone went from 33,781 to 58,182
+          Brotli bytes of pieces (11,250 + the chunk). An application should
+          keep large code that only some pages need behind ONE lazily loaded
+          piece of its own, so that it is not "shared" and stays out of the
+          chunk. (One chunk per group of users is not an answer here: the
+          sample's 220 shared functions have 74 different sets of users.)
+        - The main module: its code and data are unchanged; only the size of
+          its function table grows (by the number of chunk functions).
+        - Calls into the chunk go through the function table, like the calls
+          from a split module into the main module.
+        - An application without split points and every unsplit build are
+          byte for byte what they were. A split application whose modules
+          share nothing outside the main module keeps every .wasm file byte
+          for byte; its loader file has the new makeLoad, so that file, the
+          main script (which carries a hash of the loader) and index.html
+          change once, with their names.
+        - The output stays a pure function of the input (0003): the chunk's
+          functions are taken in a fixed order, and its segments are written
+          by the functions 0003 already made deterministic.
+        - 0004 holds unchanged: the chunk's symbols were already in the set
+          the main module zeroes around its kept bytes; the chunk writes
+          back the whole range of each of its symbols, as a split module
+          does.
+        NOT changed: there is still exactly one chunk, and
+        SplitModule::relies_on_chunks stays a HashSet (see 0003: with one
+        chunk its order cannot vary). A failed load still never calls the
+        Rust side back (upstream's behaviour; the page keeps waiting).
+Upstream (checked 2026-11-24): the empty loop is unchanged on upstream's main
+        branch. There is an OPEN, unmerged pull request, DioxusLabs/dioxus
+        #5738 ("fix(wasm-split): deduplicate shared residual symbols", head
+        0a66368). It was read and NOT ported, for these reasons, each from
+        its diff (it was not run here): it makes one chunk per exact set of
+        users and numbers the chunks in the iteration order of a HashMap, so
+        the output would differ from run to run (0003); it keeps the chunks'
+        functions in the main module as well (they are taken out of
+        unused_main_symbols and put into the main module's own table
+        segment), so the shared code would be downloaded with the main
+        module AND with the chunk; it changes unrelated things (it removes
+        the export of the non-funcref tables, reorders the main module's
+        steps, rewrites the element segments as expressions); and its
+        chunk-to-chunk dependencies are written only by the crate's test
+        harness, not by dx. Two things in this patch are the same idea as
+        in that pull request, written here: recording the users in
+        build_split_chunks, and loading a file once in the loader. Another
+        open pull request, #6042 ("settle the loader when a chunk fails to
+        load"), changes the wasm-split runtime crate as well, which this
+        repository uses unpatched; not taken.
+How it is checked: on a scratch copy of the ApplicationSplitter sample with
+        the shared function described above, with dx built from this source
+        and from the source before this patch:
+        - a split release build from clean, then again without cleaning, and
+          a split debug build twice: every file name and every byte the same;
+        - every .wasm file of the split site read back and checked: all
+          pieces import the table with the main module's limits; no table
+          slot is filled by two files; every call through a constant table
+          index (the stubs: module -> chunk, module -> main, chunk -> main,
+          main -> module) goes to a slot that exactly one file fills with a
+          function of the same signature; no two pieces write the same
+          address; the main module's data is byte for byte that of the
+          build before the patch; every data byte and every table slot a
+          module wrote before the patch is written by that module or by the
+          chunk;
+        - in headless Chrome, release and debug: every page as a deep link,
+          every ordered pair of pages, the three lazy forms, one session
+          through all pages both ways; the formatting self-check (0004) and
+          the diagnostics page at 0, the REST calls answered, no console
+          error; the chunk requested once per page load; the shared
+          function giving the same results from both pages and the piece;
+          and the loader called four times at once for two modules with
+          one chunk (one fetch each), and with a chunk that does not exist
+          (the module answers false and is not fetched);
+        - a dx with the recording line of build_split_chunks switched off
+          (so the chunk stays empty) and everything else of this patch in
+          place: all thirteen .wasm files of the split site byte-identical
+          to the build before the patch;
+        - the sample's two applications without split points, the sales
+          application built WITHOUT splitting (release and debug), and the
+          WorkSite frontend: byte-identical to the build with the source
+          before this patch; `dx serve` of the sales application works as
+          before.
+Drop when: upstream fills the shared chunk itself (its own fix of the empty
+        loop, #5738 or another) with a loader that loads a chunk once, and
+        the repository takes a stable release that has it. Before dropping,
+        check the three points above against upstream's version: the same
+        output on every run, the shared code NOT also in the main module,
+        and dx writing every chunk dependency.
+
 
 UPGRADING
 ---------
 When dx is upgraded, the crate's version changes with it (dx asks for the same
 release of wasm-split-cli). Take the new release's .crate from crates.io (or
 the local cargo cache) and record its checksum, check upstream for #5795,
-the type-index fix, #5992 and #5772 first, re-apply the patches that are still needed, and
+the type-index fix, #5992, #5772, the data-symbol lookup of 0005 and the
+shared chunk of 0006 (#5738) first, re-apply the patches that are still
+needed, and
 change the [patch] path and version in dx's Cargo.toml (dioxus-cli patch
 0007) to match. Then rebuild and check a split build with a field only on a
 split page, as above, and build a split application twice from clean: every
 file name and every byte must be the same (0003); and open the sample's
-sales application: its formatting self-check must pass (0004).
+sales application: its formatting self-check must pass (0004), its chunk
+file must hold the code its pieces share, and every page must open first, as
+a deep link, and after every other page (0006).
 
 ================================================================================
 END OF PATCH NOTES

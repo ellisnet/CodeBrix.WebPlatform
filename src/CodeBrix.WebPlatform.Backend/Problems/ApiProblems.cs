@@ -18,6 +18,9 @@ public static class ApiProblems
     /// <summary>The title of the answer to an API address that does not exist.</summary>
     public const string NoSuchApiRouteTitle = "There is no such API route.";
 
+    /// <summary>The title of <see cref="Offline"/>.</summary>
+    public const string OfflineTitle = "The site is offline for now. Try again later.";
+
     /// <summary>The title of <see cref="NotFound(string)"/> when no title is given.</summary>
     public const string DefaultNotFoundTitle = "That item could not be found. It may have been deleted.";
 
@@ -127,6 +130,19 @@ public static class ApiProblems
         Title = "Too many attempts. Wait a minute and try again.",
         Status = StatusCodes.Status429TooManyRequests,
         Code = ApiProblemCodes.RateLimited,
+    };
+
+    /// <summary>
+    /// 503 <c>offline</c>: the backend is offline because the offline file
+    /// (<see cref="PlatformBackendPaths.OfflineFileName"/>) is in the web root. The platform
+    /// answers every API and hub request with it while the file is there.
+    /// </summary>
+    /// <returns>The problem.</returns>
+    public static ApiProblem Offline() => new()
+    {
+        Title = OfflineTitle,
+        Status = StatusCodes.Status503ServiceUnavailable,
+        Code = ApiProblemCodes.Offline,
     };
 
     /// <summary>

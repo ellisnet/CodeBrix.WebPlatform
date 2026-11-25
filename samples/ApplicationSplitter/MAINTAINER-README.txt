@@ -56,7 +56,13 @@ WHAT IS DELIBERATELY MISSING
     the platform's crates only.
   - NO NOTICES FILE OF ITS OWN: the sample uses no third-party material
     beyond the platform's. The site serves the platform's notices
-    (PlatformCrates.ReadNotices) as wwwroot/THIRD-PARTY-NOTICES.txt.
+    (PlatformCrates.ReadNotices) at /THIRD-PARTY-NOTICES.txt: after every
+    build the build program writes them beside the built sites, into
+    frontend-built/, with PlatformFrontend.WriteBuiltFile, which gives them
+    Brotli and gzip copies in a Release build as the build gives its own
+    files (they are build output, so they never go into wwwroot/; a full
+    build, or one of the root application, removes them, so they are
+    written again after each).
   - NO TEST PROJECTS: what the sample proves is checked by building it and
     looking at it in a browser (CHECKING IN A BROWSER below). The platform's
     behaviour is tested in the libraries' own test projects.
@@ -68,9 +74,9 @@ The platform's own rules (no Node.js, almost no JavaScript, and the rest)
 are in the root maintainer file and hold here too. For this sample:
 
   - THE BACKEND NAMES NO FRONTEND APPLICATION. It serves what the frontend
-    build wrote into its wwwroot, read from the manifest
-    (codebrix-frontends.toml) by app.UsePlatformBackend(). The names exist
-    in ONE place: the build program.
+    build wrote into its project folder's frontend-built/, read from the
+    manifest (codebrix-frontends.toml) by app.UsePlatformBackend(). The
+    names exist in ONE place: the build program.
   - THE BASE PATH IS NOT IN Dioxus.toml. The build program gives dx each
     application's name (dx's --base-path), so the name is written once.
   - THE PIPELINE ORDER of AGENT-README.txt: AddPlatformBackend with the
@@ -116,10 +122,12 @@ All paths are inside samples/ApplicationSplitter.
                                 ticker that sends the server's time once a
                                 second), Contracts/ (the classes and enums
                                 that cross the wire)
-      wwwroot/                  BUILD OUTPUT: home's site at the top,
+      frontend-built/           BUILD OUTPUT: home's site at the top,
                                 sales/ and admin/ beside it, the manifest
-                                and THIRD-PARTY-NOTICES.txt (.gitkeep
-                                excepted, never committed)
+                                and THIRD-PARTY-NOTICES.txt. There is no
+                                wwwroot/: the backend has no files of its
+                                own to serve (wwwroot/ would hold only
+                                files written by hand)
   build/
     ApplicationSplitter.BuildFrontend/
                                 the build program: names the three
@@ -137,8 +145,13 @@ All paths are inside samples/ApplicationSplitter.
                                 two use from there
       .cargo/config.toml        BUILD OUTPUT: tells cargo to build from that
                                 vendor folder, offline
-      assets/tailwind.css       BUILD OUTPUT: the generated stylesheet
-      target/                   BUILD OUTPUT: cargo's and dx's
+      assets/generated/         BUILD OUTPUT: the generated stylesheet
+                                (tailwind.css); assets/ itself is the
+                                application's own
+      target/                   BUILD OUTPUT: cargo's and dx's (dx keeps
+                                its data in target/dx-home)
+  Every BUILD OUTPUT folder above holds a .gitignore that the platform's
+  FrontendBuilder writes (a marker header, then `*`): it ignores itself.
 
 At the repository root, and shared with the libraries: LICENSE, global.json,
 .gitattributes and .gitignore. There is no nuget.config: the sample takes
@@ -159,9 +172,9 @@ From samples/ApplicationSplitter:
 
     dotnet run --project build/ApplicationSplitter.BuildFrontend -- check
     dotnet run --project build/ApplicationSplitter.BuildFrontend -- generate
-    dotnet run --project build/ApplicationSplitter.BuildFrontend -- build
+    dotnet run --project build/ApplicationSplitter.BuildFrontend -- build [name]
     dotnet run --project build/ApplicationSplitter.BuildFrontend -- run
-        (each also with --debug)
+        (both also with --debug)
     dotnet run --project build/ApplicationSplitter.BuildFrontend -- serve [name]
 
   check     says what the machine has and lacks for a build (Rust, Tailwind,
@@ -172,21 +185,51 @@ From samples/ApplicationSplitter:
             into the one shared vendor folder. Afterwards plain
             `cargo check --target wasm32-unknown-unknown --offline` works in
             each frontend folder.
-  build     generate, then build all three with dx into the backend's
-            wwwroot (with the manifest) and write the notices there; it
-            prints each application's file count and folder and which one
-            was split. Release by default; --debug for a debug build (sales
-            is shrunk by wasm-opt either way: a split build always is).
+  build     generate, then build all three with dx into the backend
+            project's frontend-built/ (with the manifest) and write the
+            notices there; it prints each application's file count and
+            folder and which one was split. Release by default; --debug for
+            a debug build (sales is shrunk by wasm-opt either way: a split
+            build always is). A Release build gives every compressible file
+            Brotli and gzip copies; a Debug build gives none. With a NAME -
+            app (the platform's name for the application at the site root),
+            sales or admin - only that application is built, and only its
+            part of frontend-built/ is replaced; the others' output stays as
+            it was (the platform's one-application BuildAsync).
   run       build, then start the backend at http://localhost:5210/ (home at
             /, sales at /sales, admin at /admin). Ctrl+C stops it.
   serve     generate, then `dx serve` with hot reload for ONE application:
-            no name for home, or sales, or admin. Serving never splits the
-            bundle; use build or run to see the pieces. The frontend's API
-            calls need the backend running.
+            no name for home, or sales, or admin, at http://localhost:8080
+            (sales below /sales). Serving never splits the bundle (the
+            pieces are ordinary code that is already loaded); use build or
+            run to see the pieces. The frontend's API calls need the backend
+            running.
+
+THE DEVELOPMENT PROXY (sales). frontends/sales/Dioxus.toml has
+
+    [[web.proxy]]
+    backend = "http://localhost:5210/api"
+
+so that under `serve sales` dx passes every request below /api - the REST
+calls and the clock hub - to the backend at the port `run` uses. Start the
+backend in Development, in a second terminal, from samples/ApplicationSplitter:
+
+    dotnet run --project backend/ApplicationSplitter.Api -- --environment Development --urls http://localhost:5210
+
+(it serves the last build's sites too). The hub needs Development: through
+the proxy the browser's Origin is the dx server's (http://localhost:8080),
+which the backend's hub check refuses (403 forbidden_origin) unless it is
+listed. Program.cs lists it in PlatformBackendOptions.AdditionalHubOrigins
+in Development only (Program.DevServerOrigin); RequireHubOrigin stays on.
+home and admin have no proxy setting: their pages under `serve` show the
+REST calls failing, which is expected.
 
 The backend alone builds with plain dotnet: `dotnet build
 ApplicationSplitter.slnx`. Restart the backend after a new build of the
-frontends: it reads the manifest once, when it starts.
+frontends: it reads the manifest once, when it starts. `dotnet publish` of
+the backend carries frontend-built/ (without its .gitignore) into the
+published folder; start a published backend with that folder as the current
+directory (its content root).
 
 A FRESH CLONE: the frontends do not compile, with cargo or dx, until
 `generate` has written src/generated, platform/ and .cargo/ (and the
@@ -222,12 +265,15 @@ What to check:
   - the console shows NO errors and NO Content-Security-Policy violations,
     in all three, under the site's policy (Program.ContentSecurityPolicy);
   - in sales, the network log shows the lazy loading: the first page
-    requests the main .wasm and ITS OWN route piece (module_..._route...)
-    only; opening another page for the first time requests that page's
-    piece; a second visit requests nothing new; a deep link requests only
-    the piece of the page it opens. The parts split by hand (with the
-    lower-level forms of CODE SPLITTING) request their pieces when they are
-    first used;
+    requests the main .wasm, the shared chunk (chunk_0_split-dxh....wasm:
+    the code and data that several pieces use, held once) and ITS OWN
+    route piece (module_..._route...) only; opening another page for the
+    first time requests that page's piece and not the chunk again (it is
+    fetched once per page load); a second visit requests nothing new; a
+    deep link requests the main .wasm, the chunk and the piece of the page
+    it opens. An application whose pieces share nothing has an empty chunk,
+    which is never requested. The parts split by hand (with the lower-level
+    forms of CODE SPLITTING) request their pieces when they are first used;
   - in sales, the formatting self-check (src/selfcheck.rs): the footer's
     element with id="format-check" has data-failed="0" on every page, and on
     the Diagnostics page (/sales/diagnostics, also opened directly as a deep
@@ -247,8 +293,33 @@ What to check:
     pages work exactly as without; /sales/index.html.br answers 404;
   - the clock hub's live time shows and updates in sales (the SignalR client
     from an application served below a name);
-  - /codebrix-frontends.toml answers 404, and an unknown /api address
-    answers 404 with the platform's problem body;
+  - /codebrix-frontends.toml and /.gitignore answer 404, and an unknown
+    /api address answers 404 with the platform's problem body;
+  - the headers (Backend defaults): a file whose name carries dx's hash
+    (-dxh<hex>) has Cache-Control "public, max-age=31536000, immutable";
+    every index.html, every fallback page and /THIRD-PARTY-NOTICES.txt have
+    "no-cache"; .wasm is application/wasm, .js text/javascript;
+    charset=utf-8, .css text/css; charset=utf-8, .txt text/plain;
+    charset=utf-8; /THIRD-PARTY-NOTICES.txt arrives with Content-Encoding br
+    (or gzip) like the built files;
+  - THE OFFLINE FILE, without restarting the backend: create
+    backend/ApplicationSplitter.Api/wwwroot/app-offline.html (a small page
+    of your own); every page of all three applications then answers 503
+    with that page and Cache-Control no-store, every /api request and the
+    hub 503 with the problem body (code "offline"), and the built files
+    503; delete the file and the site answers as before. A file of your
+    own beside it in wwwroot/ is served while offline and while online
+    (the built site wins at an address both have). Remove wwwroot/ when you
+    are done: the sample has no files of its own there;
+  - THE PUBLISHED BACKEND: `dotnet publish backend/ApplicationSplitter.Api
+    -c Release -o <folder>` gives <folder>/frontend-built/ with the same
+    files as the project's (no .gitignore); started from <folder>
+    (`dotnet ApplicationSplitter.Api.dll --urls http://localhost:5210`) it
+    serves the three applications as `run` does;
+  - `serve sales` with the backend started in Development (THE
+    DEVELOPMENT PROXY above): the pages load at
+    http://localhost:8080/sales, the REST calls reach the backend through
+    the proxy, the self-check is 0 and the clock hub's live time shows;
   - the themes: sales light, admin dark whatever the browser's setting;
     no horizontal overflow at narrow (360 px) and desktop widths.
 
@@ -261,9 +332,9 @@ which is split, is the case that broke before (see REPRODUCIBLE APPLICATION
 BUILDS in the root maintainer file). After a change to the platform's tools:
 
   1. Delete each frontend's target/ and the generated files (platform/,
-     .cargo/, src/generated/, assets/tailwind.css) and the web root's content
-     (.gitkeep excepted), run `build`, and keep the list of every file of the
-     web root with its SHA-256.
+     .cargo/, src/generated/, assets/generated/) and the backend's
+     frontend-built/, run `build`, and keep the list of every file of
+     frontend-built/ with its SHA-256.
   2. Do it again, from clean, and compare: every name and every byte must be
      the same, in all three applications, the compressed copies and the
      manifest included. An incremental `build` (nothing deleted) must give
@@ -276,9 +347,9 @@ BUILDS in the root maintainer file). After a change to the platform's tools:
      in the source.)
 
 Build in the same folder each time: a copy of the sample in another folder
-gives other names (the compiled code carries absolute paths). A copy must
-keep the repository's .gitignore, whose line for the frontends' target/
-keeps Tailwind from reading the build output.
+gives other names (the compiled code carries absolute paths). Tailwind does
+not read the build output in target/: that folder ignores itself (its own
+.gitignore), which Tailwind honours with no rule above it.
 
 
 THE PLATFORM'S PACKAGES
@@ -299,11 +370,13 @@ it: THE SAMPLES' PACKAGES in the root MAINTAINER-README.txt.
 
 GIT
 ===
-Never commit: the backend's wwwroot content (.gitkeep excepted), any
-`target` folder, and what is written into each frontend: src/generated,
-platform/, .cargo/ and assets/tailwind.css. The .gitignore at the
-repository root covers all of them. Each frontend's Cargo.lock IS
-committed: it is that application's own. The third line of each is the
+Never commit what the build writes: the backend's frontend-built/, and in
+each frontend target/, src/generated/, platform/codebrix-webplatform/,
+platform/vendor/ (home), .cargo/ and assets/generated/. Each of those
+folders holds a .gitignore of the platform's (it ignores itself), so no
+rule for them is needed anywhere, and the root .gitignore has none. Each
+frontend's Cargo.lock IS committed: it is that application's own. The third
+line of each is the
 platform's marker line, so the build keeps them in step when a platform
 crate moves (AGENT-README.txt, THE FRONTEND'S Cargo.lock): commit what the
 build changed there, and never move the line.

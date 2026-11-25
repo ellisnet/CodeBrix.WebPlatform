@@ -13,9 +13,10 @@ public enum ResponseCompression
     /// <summary>
     /// The answers of actions marked <c>[WireFile]</c> are compressed, and nothing else. The
     /// matched endpoint decides, per request: an action without the attribute that answers with
-    /// a file (<c>File(...)</c>, <c>PhysicalFile(...)</c>) or with text is not compressed. Types
-    /// that are compressed already (images, archives, PDF, fonts, audio, video) are never
-    /// compressed, not even in a <c>[WireFile]</c> answer.
+    /// a file (<c>File(...)</c>, <c>PhysicalFile(...)</c>) or with text is not compressed. A
+    /// <c>[WireFile]</c> answer is compressed when its type is JSON or is in
+    /// <see cref="PlatformBackendOptions.CompressedFileTypes"/>; types that are compressed
+    /// already (images, archives, PDF, WOFF fonts, audio, video) are not in that set by default.
     /// </summary>
     FileAnswers,
 

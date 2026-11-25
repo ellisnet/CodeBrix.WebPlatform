@@ -33,7 +33,7 @@ public sealed class PrecompressedFilesFixture : IAsyncLifetime
         root.WriteWithCopies("app.js", Script);
         root.WriteWithCopies("sales/index.html", Encoding.UTF8.GetBytes(TempWebRoot.NamedIndex("sales")));
         root.WriteWithCopies("only-gzip.css", Stylesheet, brotli: false);
-        root.Write("data.json.gz", OwnGzipFile);
+        root.WriteBuilt("data.json.gz", OwnGzipFile);
     }
 
     public async ValueTask InitializeAsync() => Host = await BackendHost.StartAsync(WriteFiles);
@@ -92,7 +92,7 @@ public class PrecompressedFilesTests : IClassFixture<PrecompressedFilesFixture>
     {
         //Arrange
         using var client = _host.CreateClient();
-        var copyLength = new System.IO.FileInfo(System.IO.Path.Combine(_host.WebRoot.Path, "app.js.br")).Length;
+        var copyLength = new System.IO.FileInfo(System.IO.Path.Combine(_host.WebRoot.BuiltPath, "app.js.br")).Length;
 
         //Act
         var plain = await client.SendWithAsync("GET", "/app.js");
@@ -116,7 +116,7 @@ public class PrecompressedFilesTests : IClassFixture<PrecompressedFilesFixture>
     {
         //Arrange
         using var client = _host.CreateClient();
-        var copyLength = new System.IO.FileInfo(System.IO.Path.Combine(_host.WebRoot.Path, "app.js.gz")).Length;
+        var copyLength = new System.IO.FileInfo(System.IO.Path.Combine(_host.WebRoot.BuiltPath, "app.js.gz")).Length;
 
         //Act
         var response = await client.SendWithAsync("HEAD", "/app.js", ("Accept-Encoding", "gzip"));

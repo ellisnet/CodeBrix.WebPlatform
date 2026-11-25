@@ -1,0 +1,31 @@
+<Project>
+
+  <!--
+    Carries the built frontend into the backend's build output and publish output. The frontend
+    build writes the built frontend applications into frontend-built/ in the backend project's
+    folder (the folder name is CodeBrix.WebPlatform.Core.Applications.BuiltFrontend.FolderName and
+    must stay equal to it), and the backend serves them from frontend-built/ in its content root:
+
+      dotnet run (and an IDE)  the content root is the project folder: frontend-built/ itself;
+      from the build output    (run with bin/<Configuration>/<tfm>/ as the current folder) the
+                               copy below in the output folder;
+      from a publish folder    the copy below in the publish folder.
+
+    Every file of the folder is copied there, in the same layout, except the folder's own
+    .gitignore. The folder's files are not project items otherwise (DefaultItemExcludes), so an
+    SDK's default globs (the Web SDK's **/*.json Content, None **/*) never take them twice.
+  -->
+  <PropertyGroup>
+    <DefaultItemExcludes>$(DefaultItemExcludes);frontend-built/**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildProjectDirectory)/frontend-built/**/*"
+          Exclude="$(MSBuildProjectDirectory)/frontend-built/.gitignore"
+          Link="frontend-built/%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
+          Visible="false" />
+  </ItemGroup>
+
+</Project>

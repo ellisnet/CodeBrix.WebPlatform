@@ -37,7 +37,7 @@ To build a platform application a developer installs the .NET SDK and Rust with 
 * Declaring a backend's contract where it already lives: attributes on its controllers, hubs and contract classes say what may be null, which Rust type a value becomes, which action answers with a file and where a hub is served
 * Declaring what the backend says about itself once, in the backend: the request marker it demands on every state-changing request (read back by the backend's check) and the action that renews an expired session - written into the generated client code, so the frontend never types them by hand
 * One standard error body for every error answer, defined once and read by the frontend's shared error type
-* The backend's plumbing in one services call and one pipeline call: serving the frontend applications with their deep links (never for an API address), the standard error body for unknown API addresses, framework-produced errors and unreadable requests, the request-marker check on state-changing requests, the Origin check on hub connections and the security headers - each piece on by default and each one can be switched off; the built frontend files served from their precompressed Brotli or gzip copies, and the backend's own answers compressed as they are sent when the developer asks for it
+* The backend's plumbing in one services call and one pipeline call: serving the frontend applications with their deep links (never for an API address), the standard error body for unknown API addresses, framework-produced errors and unreadable requests, the request-marker check on state-changing requests, the Origin check on hub connections and the security headers - each piece on by default and each one can be switched off; the built frontend files served from their precompressed Brotli or gzip copies, and the backend's own answers compressed as they are sent when the developer asks for it; and the site taken offline for maintenance by an offline page put into `wwwroot/`, with no restart
 * Several frontend applications for one backend: the one without a name at the site root, each named one below its name (`/sales`, `/admin`), all sharing the backend, the API, the session cookie, the crates and the one build
 * Reading a compiled backend without running it - every attribute-routed REST controller and every typed SignalR hub, with the classes and enums they use
 * Refusing a backend whose contract is not fully declared, listing every gap in one pass with the controller, action or member it is in
@@ -53,7 +53,7 @@ To build a platform application a developer installs the .NET SDK and Rust with 
 * Materializing a frontend: one call writes the generated client code, the shared crate, the platform's crates and the cargo configuration into it, rewriting only what changed, and generates the Tailwind stylesheet when it is missing, after which plain `cargo check`, `cargo test` and `cargo build` work there - on a fresh clone too
 * Prebuilt `dx` and `wasm-bindgen` programs for the build platforms (Linux x64 and ARM64, Windows x64, macOS on Apple Silicon and Intel), one package each
 * The third-party notices for everything the platform compiles into a site, handed to the build program to serve with the site
-* Building the servable site of every frontend application into the backend's web root, or serving one with hot reload, with the Dioxus build tool - release builds shrunk by a packaged `wasm-opt` (or, on request, left unshrunk), and a build failed when shrinking fails; the built files in the web root given Brotli and gzip copies at the strongest setting, once, at build time
+* Building the servable site of every frontend application into the backend project's `frontend-built/` folder (build output, kept apart from the developer's own `wwwroot/` files), or serving one with hot reload, with the Dioxus build tool - release builds shrunk by a packaged `wasm-opt` (or, on request, left unshrunk), and a build failed when shrinking fails; the built files of a release build given Brotli and gzip copies at the strongest setting, once, at build time; every folder the build writes ignores itself in git
 * Code splitting, per application: the WebAssembly cut into a main file and pieces that the browser downloads when a page is first opened, under the same Content-Security-Policy
 * Crate bundles: a NuGet package can bring Rust crates of its own to the frontend, registered by the build program and written beside the platform's crates under one strict rule - one version of each crate, with the same content wherever it comes from
 * No Node.js: nothing here uses, needs or talks to it
@@ -98,7 +98,7 @@ builder.Services.AddPlatformBackend(options => options.ContentSecurityPolicy =
     + "connect-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'");
 var app = builder.Build();
 
-app.UsePlatformBackend(); // the frontend applications in wwwroot, error bodies, checks, headers
+app.UsePlatformBackend(); // the frontend applications in frontend-built/, wwwroot/, error bodies, checks, headers
 app.UseRouting();         // then the backend's own routing, sign-in, controllers and hubs
 app.MapControllers();
 app.Run();
@@ -120,7 +120,7 @@ var report = await frontend.CheckPrerequisitesAsync(); // what is missing, and h
 if (report.IsReady)
 {
     await frontend.MaterializeAsync(); // generated client code, shared crate, the platform's crates
-    await frontend.BuildAsync(FrontendConfiguration.Release, "backend/MyApp.Api/wwwroot");
+    await frontend.BuildAsync(FrontendConfiguration.Release, "backend/MyApp.Api");
 }
 ```
 

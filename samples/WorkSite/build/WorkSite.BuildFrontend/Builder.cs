@@ -91,8 +91,8 @@ public sealed class Builder
 
     /// <summary>
     /// <c>build</c>: generates the client code from the backend (see <c>generate</c>), builds the
-    /// frontend with the packaged dx, and copies it into the backend's wwwroot with the notices:
-    /// WorkSite's own, followed by the platform's.
+    /// frontend with the packaged dx into the backend project's frontend-built folder, and writes
+    /// the notices beside it: WorkSite's own, followed by the platform's.
     /// </summary>
     /// <param name="cancellationToken">Stops the build.</param>
     /// <exception cref="BuilderException">A prerequisite is missing, or a file is.</exception>
@@ -106,9 +106,12 @@ public sealed class Builder
             throw new BuilderException($"{_paths.Layout.NoticesFile} does not exist; it is WorkSite's own notices file and is part of the sample.");
         }
 
-        var built = await Frontend.BuildAsync(FrontendConfiguration.Release, _paths.WebRoot, cancellationToken).ConfigureAwait(false);
-        File.WriteAllText(_paths.WebRootNoticesFile, CombineNotices(File.ReadAllText(_paths.Layout.NoticesFile), PlatformCrates.ReadNotices()));
-        _runner.Say($"The frontend is built: {built.WebRootFileCount + 1} files in {_paths.WebRoot}");
+        var built = await Frontend.BuildAsync(FrontendConfiguration.Release, _paths.ApiProjectDirectory, cancellationToken).ConfigureAwait(false);
+        // After every build (a full build removes the files it did not write itself); written
+        // with its compressed copies, as the build writes its own files.
+        Frontend.WriteBuiltFile(_paths.ApiProjectDirectory, BuilderPaths.BuiltNoticesFileName,
+            CombineNotices(File.ReadAllText(_paths.Layout.NoticesFile), PlatformCrates.ReadNotices()), FrontendConfiguration.Release, cancellationToken);
+        _runner.Say($"The frontend is built: {built.BuiltFileCount + 1} files in {built.BuiltFrontendDirectory}");
     }
 
     /// <summary>
@@ -168,8 +171,8 @@ public sealed class Builder
     /// <c>run</c>: builds everything, starts the two containers, waits for the site and prints
     /// its address. Creates <c>.env</c> and exports the certificate first when they are missing.
     /// </summary>
-    /// <param name="skipBuild">Use what is already in the backend's wwwroot instead of
-    /// rebuilding the frontend.</param>
+    /// <param name="skipBuild">Use what is already in the backend project's frontend-built
+    /// folder instead of rebuilding the frontend.</param>
     /// <param name="cancellationToken">Stops the run.</param>
     /// <returns>The site's address.</returns>
     /// <exception cref="BuilderException">Something is missing or a step failed.</exception>

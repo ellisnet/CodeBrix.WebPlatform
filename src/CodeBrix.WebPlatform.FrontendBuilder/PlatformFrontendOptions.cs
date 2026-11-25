@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using CodeBrix.WebPlatform.BackendMapper.Rust;
@@ -15,6 +16,16 @@ namespace CodeBrix.WebPlatform.FrontendBuilder;
 /// <see cref="BackendAssemblyPath"/> are required. A platform application with several frontend
 /// applications lists them in <see cref="Applications"/> instead of setting
 /// <see cref="FrontendDirectory"/>; they share the backend and everything else here.
+/// <para>
+/// The folder layout of a platform frontend is fixed: the generated client code in
+/// <c>src/generated</c>, the shared crate in <c>platform/codebrix-webplatform</c>, the platform's
+/// crates in <c>platform/vendor</c> (the first application's, when there are several), the cargo
+/// configuration in <c>.cargo</c>, dx's own data in <c>target/dx-home</c>, the Tailwind input
+/// <c>tailwind.css</c> and the generated stylesheet <c>assets/generated/tailwind.css</c>; the
+/// built site goes into the backend project's <c>frontend-built</c> folder. None of these can be
+/// moved. Every folder of that list that the build owns holds a <c>.gitignore</c> the build
+/// writes, so git ignores it without a rule of the developer's.
+/// </para>
 /// </summary>
 public sealed class PlatformFrontendOptions
 {
@@ -27,9 +38,10 @@ public sealed class PlatformFrontendOptions
     /// <summary>
     /// The name of the application in <see cref="FrontendDirectory"/>: lowercase letters, digits
     /// and hyphens. A named application is served below its name (<c>https://host/sales</c> for
-    /// "sales"): dx builds it with that base path, and <see cref="PlatformFrontend.BuildAsync"/>
-    /// puts its site into the sub-folder of that name in the web root. <c>null</c> (the
-    /// default) or empty: the application has no name and is served at the site root.
+    /// "sales"): dx builds it with that base path, and <see cref="PlatformFrontend.BuildAsync(FrontendConfiguration, string, System.Threading.CancellationToken)"/>
+    /// puts its site into the sub-folder of that name in the built frontend folder. <c>null</c>
+    /// (the default) or empty: the application has no name (it is the root application) and is
+    /// served at the site root.
     /// </summary>
     public string ApplicationName { get; set; }
 
@@ -39,7 +51,7 @@ public sealed class PlatformFrontendOptions
     /// entries, <see cref="FrontendDirectory"/> and <see cref="ApplicationName"/> must be left
     /// unset. Every application has a frontend folder of its own; at most one has no name (it
     /// is served at the site root) and no name is used twice.
-    /// <see cref="PlatformFrontend.MaterializeAsync"/> and <see cref="PlatformFrontend.BuildAsync"/>
+    /// <see cref="PlatformFrontend.MaterializeAsync"/> and <see cref="PlatformFrontend.BuildAsync(FrontendConfiguration, string, System.Threading.CancellationToken)"/>
     /// work on all of them.
     /// </summary>
     public IList<FrontendApplicationOptions> Applications { get; } = new List<FrontendApplicationOptions>();
@@ -92,16 +104,6 @@ public sealed class PlatformFrontendOptions
     public CrateMode CrateMode { get; set; } = CrateMode.PlatformCratesOnly;
 
     /// <summary>
-    /// Where <see cref="PlatformFrontend.MaterializeAsync"/> writes the platform's crates for
-    /// <see cref="Crates.CrateMode.PlatformCratesOnly"/>, or <c>null</c> for the default,
-    /// <c>platform/vendor</c> inside the frontend folder (the first application's, when there
-    /// are several: they share the one folder). The folder belongs to the platform's
-    /// crates: build output, never edited, ignored by git. A relative path is taken from the
-    /// current directory.
-    /// </summary>
-    public string VendorDirectory { get; set; }
-
-    /// <summary>
     /// The <c>dx</c> program to run when the build program has no host-tools package for this
     /// machine (see <see cref="Tools.HostTools"/>). Set together with <see cref="WasmBindgenPath"/>.
     /// </summary>
@@ -114,37 +116,16 @@ public sealed class PlatformFrontendOptions
     public string WasmBindgenPath { get; set; }
 
     /// <summary>
-    /// The folder dx keeps its own data in (its <c>DX_HOME</c>). It belongs to the build, so dx
-    /// never uses a program that some other dx once downloaded into the user's own dx folder.
-    /// When it is not set, <c>target/dx-home</c> inside the frontend folder is used.
-    /// </summary>
-    public string DxHomeDirectory { get; set; }
-
-    /// <summary>
     /// Whether <see cref="PlatformFrontend.MaterializeAsync"/> writes the generated Tailwind
     /// stylesheet when it is missing, so that plain <c>cargo check/test</c> work on a fresh
     /// clone (the application's Rust names that file as an asset, and dx normally writes it during
     /// a build). <c>true</c> by default. It starts the packaged Tailwind program
-    /// (<see cref="Tools.PackagedTailwind"/>) once (<c>tailwindcss -i &lt;input&gt; -o &lt;output&gt;</c>
+    /// (<see cref="Tools.PackagedTailwind"/>) once (<c>tailwindcss -i tailwind.css -o assets/generated/tailwind.css</c>
     /// in the frontend folder), only when the input stylesheet exists and the output does not; an
     /// existing output is never touched. A missing packaged program does not fail materializing:
     /// the result says so.
     /// </summary>
     public bool GenerateMissingStylesheet { get; set; } = true;
-
-    /// <summary>
-    /// The frontend's Tailwind input stylesheet, or <c>null</c> for the default,
-    /// <c>tailwind.css</c> in the frontend folder (where dx looks for it). A relative path is
-    /// taken from the frontend folder.
-    /// </summary>
-    public string TailwindInputFile { get; set; }
-
-    /// <summary>
-    /// The generated Tailwind stylesheet, or <c>null</c> for the default,
-    /// <c>assets/tailwind.css</c> in the frontend folder (where dx writes it). A relative path is
-    /// taken from the frontend folder.
-    /// </summary>
-    public string TailwindOutputFile { get; set; }
 
     /// <summary>
     /// Whether the WebAssembly file is shrunk by wasm-opt. <c>null</c> (the default): a release
@@ -158,17 +139,42 @@ public sealed class PlatformFrontendOptions
     public bool? Shrink { get; set; }
 
     /// <summary>
-    /// The compressed copies <see cref="PlatformFrontend.BuildAsync"/> writes into the web root
-    /// once it has filled it: beside each compressible file of the built applications (the
-    /// WebAssembly, JavaScript, stylesheets, HTML, JSON, SVG, text and the like - never images,
-    /// fonts or archives that are compressed already) a <c>&lt;name&gt;.br</c> and/or
-    /// <c>&lt;name&gt;.gz</c> copy at the strongest setting, only when the copy is smaller than
-    /// the file. The platform backend serves a copy to a browser that accepts it. Default
-    /// <see cref="FrontendCompression.BrotliAndGzip"/>. Nothing is compressed without a web root,
-    /// nor by <see cref="PlatformFrontend.ServeAsync(string, System.Threading.CancellationToken)"/>.
+    /// The compressed copies <see cref="PlatformFrontend.BuildAsync(FrontendConfiguration, string, System.Threading.CancellationToken)"/>
+    /// writes into the built frontend folder (<c>frontend-built</c>) once it has filled it:
+    /// beside each file of the built applications whose extension is in
+    /// <see cref="CompressibleExtensions"/> a <c>&lt;name&gt;.br</c> and/or <c>&lt;name&gt;.gz</c>
+    /// copy at the strongest setting, only when the copy is smaller than the file. The platform
+    /// backend serves a copy to a browser that accepts it. <c>null</c> (the default): Brotli and
+    /// gzip (<see cref="FrontendCompression.BrotliAndGzip"/>) for a release build and none
+    /// (<see cref="FrontendCompression.None"/>) for a debug build; set, that value for both.
+    /// Nothing is compressed when the site is not copied into a backend project, nor by
+    /// <see cref="PlatformFrontend.ServeAsync(string, System.Threading.CancellationToken)"/>.
     /// <see cref="FrontendBuildResult.Compression"/> says what was written.
     /// </summary>
-    public FrontendCompression CompressOutput { get; set; } = FrontendCompression.BrotliAndGzip;
+    public FrontendCompression? CompressOutput { get; set; }
+
+    /// <summary>
+    /// The extensions (with the dot, any case) of the built files that get compressed copies
+    /// (see <see cref="CompressOutput"/>). Pre-filled with
+    /// <see cref="DefaultCompressibleExtensions"/>; add or remove entries to change it. Formats
+    /// that are compressed already (PNG, JPEG, WOFF, WOFF2, archives and the like) gain nothing
+    /// and are not in the defaults.
+    /// </summary>
+    public ISet<string> CompressibleExtensions { get; } = new HashSet<string>(DefaultCompressibleExtensions, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The platform's default <see cref="CompressibleExtensions"/>: what a built platform site
+    /// holds that is not compressed already - the WebAssembly, the JavaScript glue and loader,
+    /// stylesheets, pages, JSON and source maps, SVG, text, the plain-text formats, uncompressed
+    /// fonts, shaders and the 3D and image data an application may ship as assets (glTF and its
+    /// binary forms, Radiance HDR).
+    /// </summary>
+    public static IReadOnlyList<string> DefaultCompressibleExtensions { get; } = new[]
+    {
+        ".wasm", ".js", ".mjs", ".css", ".html", ".htm", ".json", ".map", ".webmanifest",
+        ".svg", ".txt", ".xml", ".csv", ".md", ".toml", ".yaml", ".yml",
+        ".wgsl", ".glsl", ".gltf", ".glb", ".bin", ".obj", ".hdr", ".ttf", ".otf",
+    };
 
     /// <summary>
     /// The frontend's cargo features to switch on for <see cref="PlatformFrontend.ServeAsync(string, System.Threading.CancellationToken)"/>,
@@ -184,8 +190,8 @@ public sealed class PlatformFrontendOptions
 
     /// <summary>
     /// Where the client code generated from the backend is written: <c>src/generated</c> inside
-    /// the frontend folder. Build output: never edited, ignored by git. <c>null</c> until
-    /// <see cref="FrontendDirectory"/> is set.
+    /// the frontend folder. Build output: never edited, ignored by git through its own
+    /// <c>.gitignore</c>. <c>null</c> until <see cref="FrontendDirectory"/> is set.
     /// </summary>
     public string GeneratedClientDirectory
         => string.IsNullOrWhiteSpace(FrontendDirectory) ? null : Path.Combine(Path.GetFullPath(FrontendDirectory), "src", "generated");
@@ -193,27 +199,23 @@ public sealed class PlatformFrontendOptions
     /// <summary>
     /// Where the platform's shared Rust crate is written: <c>platform/codebrix-webplatform</c>
     /// inside the frontend folder, which the frontend's <c>Cargo.toml</c> names as a path
-    /// dependency. Build output: never edited, ignored by git. <c>null</c> until
-    /// <see cref="FrontendDirectory"/> is set.
+    /// dependency. Build output: never edited, ignored by git through its own <c>.gitignore</c>.
+    /// <c>null</c> until <see cref="FrontendDirectory"/> is set.
     /// </summary>
     public string SharedCrateDirectory
         => string.IsNullOrWhiteSpace(FrontendDirectory) ? null : Path.Combine(Path.GetFullPath(FrontendDirectory), "platform", SharedRustCrate.CrateName);
 
     /// <summary>
-    /// The folder the platform's crates are written into: <see cref="VendorDirectory"/> when it
-    /// is set, else <c>platform/vendor</c> inside the frontend folder (of the first application
-    /// in <see cref="Applications"/>, when that list is used). <c>null</c> until a frontend
-    /// folder is set.
+    /// The folder the platform's crates are written into for
+    /// <see cref="Crates.CrateMode.PlatformCratesOnly"/>: <c>platform/vendor</c> inside the
+    /// frontend folder - of the first application in <see cref="Applications"/>, when that list
+    /// is used (the applications share the one folder). Build output: never edited, ignored by
+    /// git through its own <c>.gitignore</c>. <c>null</c> until a frontend folder is set.
     /// </summary>
-    public string ResolvedVendorDirectory
+    public string VendorDirectory
     {
         get
         {
-            if (!string.IsNullOrWhiteSpace(VendorDirectory))
-            {
-                return Path.GetFullPath(VendorDirectory);
-            }
-
             var frontend = !string.IsNullOrWhiteSpace(FrontendDirectory)
                 ? FrontendDirectory
                 : Applications.Count > 0 ? Applications[0]?.FrontendDirectory : null;
@@ -222,35 +224,37 @@ public sealed class PlatformFrontendOptions
     }
 
     /// <summary>
-    /// The Tailwind input stylesheet: <see cref="TailwindInputFile"/>, or <c>tailwind.css</c> in
-    /// the frontend folder. <c>null</c> until <see cref="FrontendDirectory"/> is set.
-    /// </summary>
-    public string ResolvedTailwindInputFile => InFrontend(TailwindInputFile, "tailwind.css");
-
-    /// <summary>
-    /// The generated Tailwind stylesheet: <see cref="TailwindOutputFile"/>, or
-    /// <c>assets/tailwind.css</c> in the frontend folder. <c>null</c> until
+    /// The folder dx keeps its own data in (its <c>DX_HOME</c>): <c>target/dx-home</c> inside
+    /// the frontend folder. It belongs to the build, so dx never uses a program that some other
+    /// dx once downloaded into the user's own dx folder. <c>null</c> until
     /// <see cref="FrontendDirectory"/> is set.
     /// </summary>
-    public string ResolvedTailwindOutputFile => InFrontend(TailwindOutputFile, Path.Combine("assets", "tailwind.css"));
+    public string DxHomeDirectory => InFrontend(Path.Combine("target", "dx-home"));
+
+    /// <summary>
+    /// The Tailwind input stylesheet: <c>tailwind.css</c> in the frontend folder, where dx looks
+    /// for it. The developer's own file. <c>null</c> until <see cref="FrontendDirectory"/> is set.
+    /// </summary>
+    public string TailwindInputFile => InFrontend("tailwind.css");
+
+    /// <summary>
+    /// The generated Tailwind stylesheet: <c>assets/generated/tailwind.css</c> in the frontend
+    /// folder, where the platform's dx writes it (the frontend names it as an asset,
+    /// <c>asset!("/assets/generated/tailwind.css")</c>). Build output: the folder
+    /// <c>assets/generated</c> holds its own <c>.gitignore</c>. <c>null</c> until
+    /// <see cref="FrontendDirectory"/> is set.
+    /// </summary>
+    public string TailwindOutputFile => InFrontend(Path.Combine("assets", "generated", "tailwind.css"));
 
     /// <summary>
     /// The cargo configuration <see cref="PlatformFrontend.MaterializeAsync"/> writes:
     /// <c>.cargo/config.toml</c> inside the frontend folder, which tells cargo where the crates
-    /// come from. Build output: never edited, ignored by git. <c>null</c> until
-    /// <see cref="FrontendDirectory"/> is set.
+    /// come from. Build output: never edited; the <c>.cargo</c> folder is ignored by git through
+    /// its own <c>.gitignore</c>. <c>null</c> until <see cref="FrontendDirectory"/> is set.
     /// </summary>
     public string CargoConfigurationFile
         => string.IsNullOrWhiteSpace(FrontendDirectory) ? null : Path.Combine(Path.GetFullPath(FrontendDirectory), ".cargo", "config.toml");
 
-    private string InFrontend(string path, string fallback)
-    {
-        if (string.IsNullOrWhiteSpace(FrontendDirectory))
-        {
-            return null;
-        }
-
-        var frontend = Path.GetFullPath(FrontendDirectory);
-        return Path.GetFullPath(Path.Combine(frontend, string.IsNullOrWhiteSpace(path) ? fallback : path));
-    }
+    private string InFrontend(string path)
+        => string.IsNullOrWhiteSpace(FrontendDirectory) ? null : Path.Combine(Path.GetFullPath(FrontendDirectory), path);
 }

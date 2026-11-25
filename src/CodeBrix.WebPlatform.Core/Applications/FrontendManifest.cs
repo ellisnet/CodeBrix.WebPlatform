@@ -2,13 +2,14 @@ namespace CodeBrix.WebPlatform.Core.Applications;
 
 /// <summary>
 /// The names used in the frontend manifest: the small file the frontend build writes into the
-/// web root, beside the built frontend applications, to tell the backend which applications
-/// were built and where they are. The build writes it anew every time and the backend only
+/// built frontend folder (<see cref="BuiltFrontend.FolderName"/> in the backend project's folder),
+/// beside the built frontend applications, to tell the backend which applications were built
+/// and where they are. The build writes it anew every time and the backend only
 /// reads it; it is build output, never edited and never committed, and it is not served.
 /// </summary>
 public static class FrontendManifest
 {
-    /// <summary>The file's name, in the web root.</summary>
+    /// <summary>The file's name, at the top of the built frontend folder (<see cref="BuiltFrontend.FolderName"/>).</summary>
     public const string FileName = "codebrix-frontends.toml";
 
     /// <summary>The value of <see cref="WrittenByKey"/> in a file the frontend build wrote.</summary>
@@ -32,6 +33,6 @@ public static class FrontendManifest
     /// <summary>The key, in an application's table, that says whether it is the default application.</summary>
     public const string DefaultKey = "default";
 
-    /// <summary>The key, in an application's table, that holds its folder below the web root (empty for the web root itself).</summary>
+    /// <summary>The key, in an application's table, that holds its folder below the built frontend folder (empty for that folder itself).</summary>
     public const string FolderKey = "folder";
 }

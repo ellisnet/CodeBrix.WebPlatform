@@ -53,7 +53,7 @@ public class PipelineOrderTests
     public async Task a_file_of_the_web_root_wins_over_a_controller_at_the_same_address()
     {
         //Arrange
-        await using var host = await BackendHost.StartAsync(root => root.Write("robots.txt", "User-agent: *"));
+        await using var host = await BackendHost.StartAsync(root => root.WriteOwn("robots.txt", "User-agent: *"));
         using var client = host.CreateClient();
 
         //Act
@@ -67,7 +67,7 @@ public class PipelineOrderTests
     public async Task without_the_backends_own_UseRouting_the_host_routes_first_and_the_controller_wins()
     {
         //Arrange
-        await using var host = await BackendHost.StartAsync(root => root.Write("robots.txt", "User-agent: *"), useRouting: false);
+        await using var host = await BackendHost.StartAsync(root => root.WriteOwn("robots.txt", "User-agent: *"), useRouting: false);
         using var client = host.CreateClient();
 
         //Act

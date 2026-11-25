@@ -35,14 +35,14 @@ pub fn HowItWorks() -> Element {
                         Icon { name: IconName::Server, class: "size-5" }
                     }
                     h2 { class: "mt-4 text-lg font-semibold text-slate-900", "One backend" }
-                    p { class: "mt-2 text-sm text-slate-700", "A small ASP.NET Core API with a public clock hub. It reads the list the build left in its web root and serves each application: the one without a name at the root, the others below their names." }
+                    p { class: "mt-2 text-sm text-slate-700", "A small ASP.NET Core API with a public clock hub. It reads the list the build left in its frontend-built folder and serves each application: the one without a name at the root, the others below their names." }
                 }
                 section { class: CARD,
                     span { class: "flex size-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700",
                         Icon { name: IconName::Layers, class: "size-5" }
                     }
                     h2 { class: "mt-4 text-lg font-semibold text-slate-900", "One build program" }
-                    p { class: "mt-2 text-sm text-slate-700", "It names the three frontends, writes the client code generated from the backend into each, and builds them all into the backend's web root." }
+                    p { class: "mt-2 text-sm text-slate-700", "It names the three frontends, writes the client code generated from the backend into each, and builds them all into the backend's frontend-built folder." }
                 }
                 section { class: CARD,
                     span { class: "flex size-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700",

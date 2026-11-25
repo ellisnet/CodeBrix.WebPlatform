@@ -47,7 +47,6 @@ public class Libgit2LaunchTests
             FrontendDirectory = Frontends.CreateFrontend(folder),
             DxPath = dx,
             WasmBindgenPath = wasmBindgen,
-            DxHomeDirectory = folder.Combine("dx-home"),
         });
     }
 

@@ -105,8 +105,10 @@ A complete application built on the platform, and the test-bed the platform is
 proved on: a time tracker with public pages and a signed-in area.
 
   - a .NET REST backend with nine SignalR hubs, PostgreSQL behind it;
-  - a frontend in Rust (Dioxus) compiled to WebAssembly, styled with Tailwind,
-    holding only application code: it sets the platform up with the one
+  - a frontend in Rust (Dioxus) compiled to WebAssembly, styled with Tailwind
+    and its own typeface (Roboto, with its licence file, served from a
+    fixed-name assets folder; see FONTS in AGENT-README.txt), holding only
+    application code: it sets the platform up with the one
     generated call and keeps its pages, components, session handling and
     what it does with the hubs;
   - a build program (build/WorkSite.BuildFrontend) that calls the
@@ -144,9 +146,10 @@ database, no containers, no sign-in) and THREE frontend applications under
 frontends/ - home, which has no name and is served at the site root; sales,
 served below /sales and built with code splitting; and admin, served below
 /admin and built as one WebAssembly file. Its build program
-(build/ApplicationSplitter.BuildFrontend: check, generate, build, run, serve
-[name]) names the three applications; the backend names none and serves what
-the build wrote, through the Backend package.
+(build/ApplicationSplitter.BuildFrontend: check, generate, build [name],
+run, serve [name]) names the three applications; the backend names none and
+serves what the build wrote into its frontend-built/ folder, through the
+Backend package.
 
 Like WorkSite it is a CONSUMING APPLICATION: it has its own solution
 (samples/ApplicationSplitter/ApplicationSplitter.slnx), is NOT referenced by

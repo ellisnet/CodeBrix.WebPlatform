@@ -249,6 +249,10 @@ impl<'a> Splitter<'a> {
             .map(|f| self.remap_id(&ids_to_fns, f))
             .collect::<Vec<_>>();
 
+        // CodeBrix change: the functions of every shared chunk, in the order of their table
+        // slots, with this module's ids (patch 0006, see chunk_functions).
+        let chunk_funcs = self.remapped_chunk_functions(&ids_to_fns);
+
         let unique_symbols = self.remap_ids(&unique_symbols, &ids_to_fns);
         let symbols_to_delete = self.remap_ids(&symbols_to_delete, &ids_to_fns);
         let symbols_to_import = self.remap_ids(&symbols_to_import, &ids_to_fns);
@@ -272,6 +276,7 @@ impl<'a> Splitter<'a> {
             split.export_name,
             &symbols_to_import,
             &shared_funcs,
+            &chunk_funcs,
         );
 
         // Delete all the functions that are not reachable from the main module
@@ -299,8 +304,20 @@ impl<'a> Splitter<'a> {
 
         let unique_symbols = &self.chunks[idx];
 
+        // CodeBrix change: everything the chunk's symbols reach. Upstream took the chunk's own
+        // symbols here, of which none is in the main module, so it imported nothing and deleted
+        // EVERY function of the main module from the chunk - also the ones the chunk's functions
+        // call, and walrus panicked ("assertion failed: !self.dead.contains(&id)") as soon as a
+        // chunk had a function. A chunk is now treated like a split module: the main module's
+        // functions it reaches become calls through the function table, the rest of the main
+        // module's functions are deleted. (What a chunk's symbol reaches is in the main module
+        // or in the chunk: every split module that reaches the symbol reaches it too.) For an
+        // empty chunk both sets are what they were. See
+        // tools/dx-native-tools/vendoring/wasm-split-cli/PATCH-NOTES.txt, patch 0006.
+        let chunk_reachable = reachable_graph(&self.call_graph, unique_symbols);
+
         // The functions we'll need to import
-        let symbols_to_import: HashSet<_> = unique_symbols
+        let symbols_to_import: HashSet<_> = chunk_reachable
             .intersection(&self.main_graph)
             .cloned()
             .collect();
@@ -308,7 +325,7 @@ impl<'a> Splitter<'a> {
         // Delete everything except the symbols that are reachable from this module
         let symbols_to_delete: HashSet<_> = self
             .main_graph
-            .difference(unique_symbols)
+            .difference(&chunk_reachable)
             .cloned()
             .collect();
 
@@ -321,6 +338,10 @@ impl<'a> Splitter<'a> {
             .iter()
             .map(|f| self.remap_id(&ids_to_fns, f))
             .collect::<Vec<_>>();
+
+        // CodeBrix change: this chunk's functions in the order of their table slots, with this
+        // module's ids (patch 0006, see chunk_functions).
+        let chunk_funcs = self.remapped_chunk_functions(&ids_to_fns);
 
         let unique_symbols = self.remap_ids(unique_symbols, &ids_to_fns);
         let symbols_to_import = self.remap_ids(&symbols_to_import, &ids_to_fns);
@@ -336,15 +357,24 @@ impl<'a> Splitter<'a> {
 
         // We have to make sure our table matches that of the other tables even though we don't call them.
         let ifunc_table_id = self.load_funcref_table(&mut out);
+        // CodeBrix change: the table also has the slots of the chunks' functions (patch 0006).
         let segment_start = self
-            .expand_ifunc_table_max(
-                &mut out,
-                ifunc_table_id,
-                self.split_points.len() + shared_funcs.len(),
-            )
+            .expand_ifunc_table_max(&mut out, ifunc_table_id, self.ifunc_table_growth())
             .unwrap();
 
         self.convert_shared_to_imports(&mut out, segment_start, &shared_funcs, &symbols_to_import);
+
+        // CodeBrix change: the chunk fills the table slots of its own functions, through which
+        // the split modules call them, and calls the functions of any other chunk through
+        // theirs (patch 0006).
+        self.create_chunk_initializers(&mut out, segment_start, idx, &chunk_funcs);
+        self.convert_chunk_funcs_to_imports(
+            &mut out,
+            segment_start,
+            &chunk_funcs,
+            &symbols_to_import,
+            Some(idx),
+        );
 
         // Make sure we haven't deleted anything important....
         self.delete_main_funcs_from_split(&mut out, &symbols_to_delete);
@@ -362,6 +392,118 @@ impl<'a> Splitter<'a> {
             relies_on_chunks: Default::default(),
             hash_id: None,
         })
+    }
+
+    /// CodeBrix change: new with patch 0006. The functions of a shared chunk, in a fixed order
+    /// (that of their ids in the source module). The position of a function in this list decides its
+    /// slot in the function table, so the main module, the chunk and every split module must
+    /// take the list from here.
+    fn chunk_functions(&self, idx: usize) -> Vec<Node> {
+        self.chunks[idx]
+            .iter()
+            .filter(|node| matches!(node, Node::Function(_)))
+            .copied()
+            .sorted_unstable()
+            .collect()
+    }
+
+    /// CodeBrix change: new with patch 0006. chunk_functions of every chunk, with the ids of
+    /// the module `ids_to_fns` belongs to.
+    fn remapped_chunk_functions(&self, ids_to_fns: &[FunctionId]) -> Vec<Vec<Node>> {
+        (0..self.chunks.len())
+            .map(|idx| {
+                self.chunk_functions(idx)
+                    .iter()
+                    .map(|node| self.remap_id(ids_to_fns, node))
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// CodeBrix change: new with patch 0006. How many slots the splitter adds at the end of the
+    /// function table: upstream's `split_points.len() + shared_symbols.len()` - one slot for
+    /// each split point's entry function and one for each function the split modules call in
+    /// the main module (the data symbols in `shared_symbols` are counted too and their slots
+    /// stay empty, as upstream has it) - and then one slot for each function of each shared
+    /// chunk. The main module, every chunk and every split module must declare the same table,
+    /// so all of them take the number from here.
+    fn ifunc_table_growth(&self) -> usize {
+        let chunk_functions: usize = (0..self.chunks.len())
+            .map(|idx| self.chunk_functions(idx).len())
+            .sum();
+        self.split_points.len() + self.shared_symbols.len() + chunk_functions
+    }
+
+    /// CodeBrix change: new with patch 0006. The first of the added table slots that belongs to
+    /// the functions of the shared chunks, counted from the first added slot.
+    fn chunk_slots_start(&self) -> usize {
+        self.split_points.len() + self.shared_symbols.len()
+    }
+
+    /// CodeBrix change: new with patch 0006. In a chunk, fill the table slots of the chunk's own
+    /// functions (one element segment; none for a chunk without functions). The slots of chunk
+    /// `idx` follow those of the chunks before it.
+    fn create_chunk_initializers(
+        &self,
+        out: &mut Module,
+        segment_start: usize,
+        idx: usize,
+        chunk_funcs: &[Vec<Node>],
+    ) {
+        let functions: Vec<FunctionId> = chunk_funcs[idx]
+            .iter()
+            .filter_map(|node| match node {
+                Node::Function(id) => Some(*id),
+                Node::DataSymbol(_) => None,
+            })
+            .collect();
+        if functions.is_empty() {
+            return;
+        }
+
+        let before: usize = chunk_funcs[..idx].iter().map(|funcs| funcs.len()).sum();
+        let offset = segment_start + self.chunk_slots_start() + before;
+        let ifunc_table_id = self.load_funcref_table(out);
+        out.tables
+            .get_mut(ifunc_table_id)
+            .elem_segments
+            .insert(out.elements.add(
+                ElementKind::Active {
+                    table: ifunc_table_id,
+                    offset: ConstExpr::Value(ir::Value::I32(offset as i32)),
+                },
+                ElementItems::Functions(functions),
+            ));
+    }
+
+    /// CodeBrix change: new with patch 0006. Turn the functions of the shared chunks that this
+    /// module uses (`symbols_to_import`) into calls through the chunks' table slots, so that the
+    /// module no longer carries their code. `own_chunk` is the chunk being written, whose functions
+    /// stay as they are; a split module passes None.
+    fn convert_chunk_funcs_to_imports(
+        &self,
+        out: &mut Module,
+        segment_start: usize,
+        chunk_funcs: &[Vec<Node>],
+        symbols_to_import: &HashSet<Node>,
+        own_chunk: Option<usize>,
+    ) {
+        let ifunc_table_id = self.load_funcref_table(out);
+
+        let mut slot = segment_start + self.chunk_slots_start();
+        for (chunk_idx, funcs) in chunk_funcs.iter().enumerate() {
+            for node in funcs {
+                if let Node::Function(func) = node {
+                    if own_chunk != Some(chunk_idx) && symbols_to_import.contains(node) {
+                        let ty_id = out.funcs.get(*func).ty();
+                        out.funcs.get_mut(*func).kind =
+                            self.make_stub_funcs(out, ifunc_table_id, ty_id, slot as _);
+                    }
+                }
+
+                slot += 1;
+            }
+        }
     }
 
     /// Convert functions coming in from outside the module to indirect calls to the ifunc table created in the main module
@@ -402,12 +544,11 @@ impl<'a> Splitter<'a> {
         out.exports.add("__indirect_function_table", ifunc_table);
 
         // Expand the ifunc table to accommodate the new ifuncs
+        //
+        // CodeBrix change: also by the slots of the shared chunks' functions, which stay empty
+        // here: a chunk fills its own when it is loaded (patch 0006, see ifunc_table_growth).
         let segment_start = self
-            .expand_ifunc_table_max(
-                out,
-                ifunc_table,
-                self.split_points.len() + self.shared_symbols.len(),
-            )
+            .expand_ifunc_table_max(out, ifunc_table, self.ifunc_table_growth())
             .expect("failed to expand ifunc table");
 
         // Delete the split import functions and replace them with local functions
@@ -526,10 +667,16 @@ impl<'a> Splitter<'a> {
 
                 // Otherwise, zero out the data segment, which should lead to elimination by wasm-opt
                 Node::DataSymbol(id) => {
-                    let symbol = self
-                        .data_symbols
-                        .get(&id)
-                        .context("Failed to find data symbol")?;
+                    // CodeBrix change: a data symbol that is not in the table has no bytes to
+                    // zero - the table (parse_bytes_to_data_segment) leaves out the symbols of
+                    // size 0, such as a zero-sized static, and the undefined ones - so it is
+                    // skipped, as clear_data_segments already skips it. Upstream failed the
+                    // whole build here ("Failed to find data symbol") when only split modules
+                    // named such a symbol. See
+                    // tools/dx-native-tools/vendoring/wasm-split-cli/PATCH-NOTES.txt, patch 0005.
+                    let Some(symbol) = self.data_symbols.get(&id) else {
+                        continue;
+                    };
 
                     // VERY IMPORTANT
                     //
@@ -660,10 +807,12 @@ impl<'a> Splitter<'a> {
         split_export_name: String,
         symbols_to_import: &HashSet<Node>,
         ifuncs: &Vec<Node>,
+        chunk_funcs: &[Vec<Node>],
     ) {
         let ifunc_table_id = self.load_funcref_table(out);
+        // CodeBrix change: the table also has the slots of the chunks' functions (patch 0006).
         let segment_start = self
-            .expand_ifunc_table_max(out, ifunc_table_id, self.split_points.len() + ifuncs.len())
+            .expand_ifunc_table_max(out, ifunc_table_id, self.ifunc_table_growth())
             .unwrap();
 
         // Make sure to re-export the split func
@@ -682,6 +831,17 @@ impl<'a> Splitter<'a> {
             ));
 
         self.convert_shared_to_imports(out, segment_start, ifuncs, symbols_to_import);
+
+        // CodeBrix change: the functions this module uses that a shared chunk holds become calls
+        // through the chunk's table slots. Upstream took them off the module's own list
+        // (emit_split_module) but left their code in the module (patch 0006).
+        self.convert_chunk_funcs_to_imports(
+            out,
+            segment_start,
+            chunk_funcs,
+            symbols_to_import,
+            None,
+        );
     }
 
     fn delete_main_funcs_from_split(&self, out: &mut Module, symbols_to_delete: &HashSet<Node>) {
@@ -924,12 +1084,33 @@ impl<'a> Splitter<'a> {
     /// Todo: we could chunk up the main module itself! Not going to now but it would enable parallel downloads of the main chunk
     fn build_split_chunks(&mut self) {
         // create a single chunk that contains all functions used by multiple modules
+        //
+        // CodeBrix change: upstream's loop had no body after the `continue`, so nothing was ever
+        // recorded, the one chunk was always empty and every split module carried its own copy
+        // of the code several of them use. The loop now records which split modules reach each
+        // symbol that the main module does not hold. A split point's own entry function is left
+        // out: its module exports it and puts it into the function table itself. See
+        // tools/dx-native-tools/vendoring/wasm-split-cli/PATCH-NOTES.txt, patch 0006.
+        let split_exports: HashSet<Node> = self
+            .split_points
+            .iter()
+            .map(|split| Node::Function(split.export_func))
+            .collect();
         let mut funcs_used_by_chunks: HashMap<Node, HashSet<usize>> = HashMap::new();
         for split in self.split_points.iter() {
             for item in split.reachable_graph.iter() {
                 if self.main_graph.contains(item) {
                     continue;
                 }
+
+                if split_exports.contains(item) {
+                    continue;
+                }
+
+                funcs_used_by_chunks
+                    .entry(*item)
+                    .or_default()
+                    .insert(split.index);
             }
         }
 

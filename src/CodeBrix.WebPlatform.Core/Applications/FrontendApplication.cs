@@ -41,8 +41,9 @@ public sealed class FrontendApplication : IEquatable<FrontendApplication>
     public string BasePath => IsDefault ? string.Empty : Name;
 
     /// <summary>
-    /// The folder that holds the application's built site, relative to the web root: empty (the
-    /// web root itself) for the default application, otherwise the name.
+    /// The folder that holds the application's built site, relative to the built frontend folder
+    /// (<see cref="BuiltFrontend.FolderName"/>): empty (that folder itself) for the default
+    /// application, otherwise the name.
     /// </summary>
     public string Folder => BasePath;
 

@@ -6,7 +6,9 @@ namespace CodeBrix.WebPlatform.FrontendBuilder.Applications;
 /// Describes one of several frontend applications to <see cref="PlatformFrontend"/>: its name,
 /// its folder, and what differs from the other applications. Add one per application to
 /// <see cref="PlatformFrontendOptions.Applications"/>. Everything else - the backend, the
-/// crates, the tools - is shared and comes from <see cref="PlatformFrontendOptions"/>.
+/// crates, the tools - is shared and comes from <see cref="PlatformFrontendOptions"/>. The folder
+/// layout inside each frontend folder is the platform's fixed one (see
+/// <see cref="PlatformFrontendOptions"/>).
 /// </summary>
 /// <example>
 /// <code>
@@ -20,8 +22,9 @@ public sealed class FrontendApplicationOptions
 {
     /// <summary>
     /// The application's name: lowercase letters, digits and hyphens. The application is served
-    /// below it (<c>https://host/sales</c> for "sales"). <c>null</c> or empty for the default
-    /// application, which is served at the site root; only one application can be the default.
+    /// below it (<c>https://host/sales</c> for "sales"). <c>null</c> or empty for the root
+    /// application, which is served at the site root; only one application can be the root
+    /// application.
     /// </summary>
     public string Name { get; set; }
 
@@ -37,19 +40,6 @@ public sealed class FrontendApplicationOptions
     /// application's setting; when the first application has none either, it is off.
     /// </summary>
     public bool? WasmSplit { get; set; }
-
-    /// <summary>
-    /// The application's Tailwind input stylesheet, or <c>null</c> for <c>tailwind.css</c> in
-    /// its frontend folder. A relative path is taken from the frontend folder.
-    /// </summary>
-    public string TailwindInputFile { get; set; }
-
-    /// <summary>
-    /// The application's generated Tailwind stylesheet, or <c>null</c> for
-    /// <c>assets/tailwind.css</c> in its frontend folder. A relative path is taken from the
-    /// frontend folder.
-    /// </summary>
-    public string TailwindOutputFile { get; set; }
 
     /// <summary>
     /// The application's cargo features to switch on for <see cref="PlatformFrontend.ServeAsync(string, System.Threading.CancellationToken)"/>.

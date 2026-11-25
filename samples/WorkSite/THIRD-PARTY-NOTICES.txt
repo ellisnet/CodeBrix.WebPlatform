@@ -11,9 +11,9 @@ the code written for CodeBrix.WebPlatform itself, the WorkSite sample
 included.
 
 The sample is built with, and its built application contains, software
-written by other people; none of it is kept in the sample's folder. That
-software is NOT relicensed: every component listed below stays under its own
-license.
+written by other people; apart from one font (below), none of it is kept in
+the sample's folder. That software is NOT relicensed: every component listed
+below stays under its own license.
 
 Where a component offers a choice of licenses ("MIT OR Apache-2.0"), the
 entry says which one this project uses it under.
@@ -28,9 +28,10 @@ crate of its own, so this file records only what is WorkSite's beyond the
 platform. It is written by hand.
 
 The site serves this file followed by the platform's notices, as one file at
-/THIRD-PARTY-NOTICES.txt (WorkSite's build program writes it into the
-backend's wwwroot), because the compiled application contains third-party
-code. It is shipped inside the WorkSite container image.
+/THIRD-PARTY-NOTICES.txt (WorkSite's build program writes it beside the
+built site, in the backend project's frontend-built folder), because the
+compiled application contains third-party code. It is shipped inside the
+WorkSite container image.
 
 
 --------------------------------------------------------------------------------
@@ -65,6 +66,25 @@ Tailwind CSS
               OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
               OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
               SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Roboto (the typeface of the site's text)
+  Where:    samples/WorkSite/frontend/assets/fonts/Roboto.ttf, with its
+            licence file beside it (samples/WorkSite/frontend/assets/fonts/
+            OFL.txt). Both are copied unchanged from the
+            CodeBrix.Platform.Fonts.Roboto repository
+            (src/CodeBrix.Platform.Fonts.Roboto/Fonts/Roboto.ttf and OFL.txt
+            there). The site serves both, unchanged, at
+            /assets/fonts/Roboto.ttf and /assets/fonts/OFL.txt.
+  Origin:   the Roboto variable font (weights 100 to 900 and the width axis),
+            https://github.com/googlefonts/roboto-classic; the file name
+            Roboto.ttf is the font repository's (upstream:
+            Roboto-VariableFont_wdth,wght.ttf); the font's bytes are as
+            published.
+  License:  SIL Open Font License, Version 1.1 (OFL.txt, beside the font):
+              Copyright 2011 The Roboto Project Authors
+              (https://github.com/googlefonts/roboto-classic)
+            The copyright statement declares no Reserved Font Name.
+  Use:      the font of all the site's text (the stylesheet's @font-face).
 
 NuGet packages
   Where:    not in this repository. They are referenced by the .NET projects

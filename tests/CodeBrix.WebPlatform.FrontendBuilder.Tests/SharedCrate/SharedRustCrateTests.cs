@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text;
+using CodeBrix.WebPlatform.FrontendBuilder.Internal;
 using CodeBrix.WebPlatform.FrontendBuilder.SharedCrate;
 using CodeBrix.WebPlatform.FrontendBuilder.Tests.Helpers;
 using SilverAssertions;
@@ -126,6 +127,26 @@ public class SharedRustCrateTests
         changed.Should().BeEmpty();
         File.Exists(Path.Combine(folder.Path, "Cargo.lock")).Should().BeTrue();
         File.Exists(Path.Combine(folder.Path, "target", "debug", "build.log")).Should().BeTrue();
+    }
+
+    [Fact]
+    public void ExtractTo_keeps_the_folders_own_gitignore_and_writes_it_again_when_it_is_missing()
+    {
+        //Arrange
+        using var folder = new TempFolder();
+        var ignoreFile = folder.Combine(BuildOutputFolder.IgnoreFileName);
+
+        //Act
+        var first = SharedRustCrate.ExtractTo(folder.Path);
+        var written = File.ReadAllText(ignoreFile);
+        File.Delete(ignoreFile);
+        var afterDelete = SharedRustCrate.ExtractTo(folder.Path);
+
+        //Assert
+        written.Should().Be(BuildOutputFolder.IgnoreFileText);
+        first.Should().NotContain(BuildOutputFolder.IgnoreFileName);
+        afterDelete.Should().BeEmpty();
+        File.ReadAllText(ignoreFile).Should().Be(BuildOutputFolder.IgnoreFileText);
     }
 
     [Fact]

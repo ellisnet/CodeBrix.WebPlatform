@@ -19,10 +19,10 @@ public static class Program
 
         Everyday:
           run            check, build everything, start the two containers, print the site's address
-                         (--skip-build reuses the frontend already in the backend's wwwroot)
+                         (--skip-build reuses the frontend already built into the backend)
           stop           stop and remove the containers (the database is kept)
-          build          generate, build the frontend and copy it, with the notices, into the
-                         backend's wwwroot
+          build          generate, then build the frontend, with the notices, into the backend
+                         project's frontend-built folder
           generate       build the backend, generate the Rust client code for its endpoints and hubs,
                          and write the platform's shared crate, crates and cargo configuration into
                          the frontend (after this, plain cargo works there, offline)

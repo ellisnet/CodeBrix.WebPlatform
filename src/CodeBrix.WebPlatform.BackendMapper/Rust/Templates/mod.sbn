@@ -40,8 +40,11 @@ pub const SESSION_REFRESH_PATH: &str = "{{ session_refresh_path }}";
 /// request. Both hooks run inside the application's Dioxus runtime.
 ///
 /// - `on_session_refreshed` is handed the answer of a successful refresh{{ if session_refresh_answer != "" }} (`{{ session_refresh_answer }}`){{ end }}.
-/// - `on_session_ended` is called when a request that needs sign-in is still refused after one
-///   refresh: the session is gone.
+/// - `on_session_ended` is called when the server refuses the refresh (a 4xx other than 408 and
+///   429), or a request that needs sign-in is still refused after one refresh: the session is
+///   gone. It is not called when the refresh gets no answer or the server cannot deal with it now
+///   (a 5xx such as 503 while the site is offline, 408 or 429); the request then fails with that
+///   error.
 pub fn configure_platform({{ setup_parameters }}) {
     {{ shared_crate }}::configure(PlatformConfig {
         request_marker: {{ if has_request_marker }}Some(REQUEST_MARKER.to_string()){{ else }}None{{ end }},

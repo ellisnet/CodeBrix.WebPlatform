@@ -42,7 +42,8 @@ public sealed class ContainerStep
 
     /// <summary>
     /// Publishes the backend (Release) into <c>artifacts/publish</c>, replacing what was there.
-    /// The backend's wwwroot, with the built frontend, is part of the published output.
+    /// The built frontend (frontend-built in the backend project folder) is part of the
+    /// published output: the platform's Backend package carries it there.
     /// </summary>
     /// <param name="cancellationToken">Stops dotnet.</param>
     /// <exception cref="BuilderException">The publish failed.</exception>
@@ -65,9 +66,10 @@ public sealed class ContainerStep
             throw new BuilderException("Publishing the backend failed:" + Environment.NewLine + ToolRunner.Tail(result.Output, 40));
         }
 
-        if (!File.Exists(Path.Combine(_paths.PublishDirectory, "wwwroot", "index.html")))
+        var builtFolder = CodeBrix.WebPlatform.Core.Applications.BuiltFrontend.FolderName;
+        if (!File.Exists(Path.Combine(_paths.PublishDirectory, builtFolder, "index.html")))
         {
-            throw new BuilderException("The published backend has no wwwroot/index.html; the frontend was not built into it.");
+            throw new BuilderException($"The published backend has no {builtFolder}/index.html; the frontend was not built into it.");
         }
     }
 

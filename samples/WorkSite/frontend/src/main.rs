@@ -21,10 +21,18 @@ use crate::components::ui::Spinner;
 use crate::routes::Route;
 use crate::state::session::{self, Session, SESSION};
 
-const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
+/// The stylesheet the platform generates with Tailwind (build output, in assets/generated/).
+const TAILWIND_CSS: Asset = asset!("/assets/generated/tailwind.css");
 /// Served without a hash suffix, at the fixed path `/assets/favicon.svg` that `index.html` also
 /// links, so the browser finds the icon before the app has started.
 const FAVICON: Asset = asset!("/assets/favicon.svg", AssetOptions::builder().with_hash_suffix(false));
+/// WorkSite's typeface (Roboto, with its licence file beside it). A FOLDER asset: dx copies the
+/// folder into the site under its own name and never adds a hash to the names in it, so the
+/// stylesheet's `@font-face` can name the fixed address `/assets/fonts/Roboto.ttf`. Nothing in the
+/// Rust code reads it, so `#[used]` keeps it in the build (dx finds the assets it copies in the
+/// compiled program).
+#[used]
+static FONTS: Asset = asset!("/assets/fonts", AssetOptions::folder());
 
 fn main() {
     dioxus::launch(App);

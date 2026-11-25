@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text;
+using CodeBrix.WebPlatform.FrontendBuilder.Internal;
 
 namespace CodeBrix.WebPlatform.FrontendBuilder.Crates;
 
@@ -68,13 +69,22 @@ internal static class CargoConfiguration
     }
 
     /// <summary>
-    /// Writes the configuration when its content differs.
+    /// Writes the configuration when its content differs. The folder it is in (the frontend's
+    /// <c>.cargo</c>) is build output: its own <c>.gitignore</c> is written too whenever it is
+    /// missing or differs.
     /// </summary>
     /// <param name="path">The configuration file.</param>
     /// <param name="text">Its content.</param>
     /// <returns>True when the file was written.</returns>
     /// <exception cref="FrontendBuildException">The file exists and was not written by this library.</exception>
     internal static bool Write(string path, string text)
+    {
+        var written = WriteFile(path, text);
+        BuildOutputFolder.EnsureIgnoreFile(Path.GetDirectoryName(path));
+        return written;
+    }
+
+    private static bool WriteFile(string path, string text)
     {
         if (File.Exists(path))
         {

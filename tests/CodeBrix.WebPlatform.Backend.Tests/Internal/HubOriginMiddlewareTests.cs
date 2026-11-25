@@ -89,4 +89,56 @@ public class HubOriginMiddlewareTests
         //Assert
         act.Should().Throw<ArgumentNullException>();
     }
+
+    [Theory]
+    [InlineData("http://localhost:8080", "http://localhost:8080")]
+    [InlineData("HTTP://LocalHost:8080/", "http://localhost:8080")]
+    [InlineData("https://app.example:443", "https://app.example")]
+    [InlineData("http://app.example:80/", "http://app.example")]
+    [InlineData("http://app.example:443", "http://app.example:443")]
+    [InlineData(" http://[::1]:8080 ", "http://[::1]:8080")]
+    public void ParseOrigins_writes_each_entry_as_a_browser_writes_an_origin(string entry, string expected)
+    {
+        //Act
+        var origins = HubOriginMiddleware.ParseOrigins(new[] { entry });
+
+        //Assert
+        origins.Should().ContainSingle().Which.Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("http://localhost:8080", true)]
+    [InlineData("HTTP://LOCALHOST:8080", true)]
+    [InlineData("http://localhost:8080/", false)]
+    [InlineData("http://localhost:80", false)]
+    [InlineData("http://localhost", false)]
+    [InlineData("", false)]
+    public void IsAdditionalOrigin_compares_the_header_with_the_listed_origins(string origin, bool expected)
+    {
+        //Arrange
+        var listed = HubOriginMiddleware.ParseOrigins(new[] { "http://localhost:8080" });
+        var context = new DefaultHttpContext();
+        context.Request.Headers.Origin = origin;
+
+        //Act
+        var result = HubOriginMiddleware.IsAdditionalOrigin(context.Request, listed);
+
+        //Assert
+        result.Should().Be(expected);
+    }
+
+    [Fact]
+    public void IsAdditionalOrigin_refuses_two_origin_headers()
+    {
+        //Arrange
+        var listed = HubOriginMiddleware.ParseOrigins(new[] { "http://localhost:8080" });
+        var context = new DefaultHttpContext();
+        context.Request.Headers.Origin = new[] { "http://localhost:8080", "http://localhost:8080" };
+
+        //Act
+        var result = HubOriginMiddleware.IsAdditionalOrigin(context.Request, listed);
+
+        //Assert
+        result.Should().BeFalse();
+    }
 }

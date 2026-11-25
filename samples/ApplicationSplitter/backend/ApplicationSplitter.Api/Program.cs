@@ -3,6 +3,7 @@ using CodeBrix.WebPlatform.Backend;
 using CodeBrix.WebPlatform.Core.Mapping;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace ApplicationSplitter.Api;
 
@@ -19,6 +20,9 @@ public partial class Program
         "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; "
         + "connect-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 
+    /// <summary>The origin of dx's development server (<c>serve</c>), whose pages use the hub through its proxy.</summary>
+    public const string DevServerOrigin = "http://localhost:8080";
+
     /// <summary>Starts the backend.</summary>
     /// <param name="args">Command-line arguments.</param>
     public static void Main(string[] args)
@@ -29,13 +33,25 @@ public partial class Program
         builder.Services.AddHostedService<ClockTicker>();
         // The platform's backend library, first call: the standard error bodies for requests
         // that cannot be read, and the options of everything the second call sets up.
-        builder.Services.AddPlatformBackend(options => options.ContentSecurityPolicy = ContentSecurityPolicy);
+        builder.Services.AddPlatformBackend(options =>
+        {
+            options.ContentSecurityPolicy = ContentSecurityPolicy;
+            if (builder.Environment.IsDevelopment())
+            {
+                // `serve sales`: the page comes from dx's development server, whose proxy
+                // (frontends/sales/Dioxus.toml) passes /api on to this backend. The hub check
+                // accepts only this site's own origin, so the dev server's is listed here - in
+                // Development only, and with the check left on.
+                options.AdditionalHubOrigins.Add(DevServerOrigin);
+            }
+        });
         var app = builder.Build();
 
         // Second call: the security headers, the request-marker and hub-origin checks, and the
-        // frontend applications. It reads the manifest the frontend build wrote into wwwroot
-        // and serves what was built: the application without a name at the site root, "sales"
-        // below /sales and "admin" below /admin. This backend lists no application anywhere.
+        // frontend applications. It reads the manifest the frontend build wrote into
+        // frontend-built/ (in the project folder, the content root) and serves what was built:
+        // the application without a name at the site root, "sales" below /sales and "admin"
+        // below /admin. This backend lists no application anywhere.
         app.UsePlatformBackend();
 
         app.UseRouting();

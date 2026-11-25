@@ -8,7 +8,7 @@ CodeBrix.WebPlatform ships two prebuilt Rust programs, one NuGet package per
 build platform, so that a developer no longer compiles them (and needs no C
 compiler for them):
 
-  dx            the Dioxus CLI - dioxus-cli 0.7.10 with the repository's seven
+  dx            the Dioxus CLI - dioxus-cli 0.7.10 with the repository's ten
                 patches (the seventh swaps in a patched copy of the bundle
                 splitter, sources/wasm-split-cli), built with the cargo
                 features no-downloads and disable-telemetry; every dx
@@ -118,9 +118,11 @@ FOLDER MAP
                           fetch-libgit2.sh and functional-gate.sh (both
                           shared with macOS), README.txt
   windows/                win-x64: build.dx.ps1, README.txt. RUN
-                          2026-11-22 (built and adopted)
+                          2026-11-22 (built and adopted; not yet rebuilt
+                          from the current sources)
   macos/                  osx-arm64 and osx-x64: build.sh, README.txt. RUN
-                          2026-11-22 (both slices built and adopted)
+                          2026-11-22 (both slices built and adopted; not yet
+                          rebuilt from the current sources)
   output/                 build results (git-ignored). Disposable. Includes
                           output/libgit2/ (the libgit2 package and, per RID,
                           the library under its link name and loader name)
@@ -180,16 +182,27 @@ THE FIVE RUNTIME IDENTIFIERS
   osx-x64      macos/build.sh x64           dx, wasm-bindgen         BUILT
 
 BUILT = built here, gated and adopted into ../../native_libraries/<rid>/.
-The current sources hold seven dioxus-cli patches and FOUR splitter patches,
-dx linked against libgit2. The Linux programs were built from them on
-2026-11-23. The macOS and Windows programs were built BEFORE the splitter's
-fourth patch (the main module of a split build keeps its data,
-vendoring/wasm-split-cli/PATCH-NOTES.txt) and must be rebuilt and adopted
-to have it: the macOS programs on 2026-11-22 on the owner's Apple
-Silicon Mac (osx-x64's functional gate run from an x86_64 shell under Rosetta
-2; not yet run on an Intel Mac), the Windows programs on 2026-11-22 on the
-owner's Windows x64 machine (BUILD-PROVENANCE.txt). All five platforms'
-packages now carry their programs.
+The current sources hold TEN dioxus-cli patches and SIX splitter patches,
+dx linked against libgit2. Which RIDs' adopted programs carry which patches
+(BUILD-PROVENANCE.txt):
+  linux-x64, linux-arm64   ALL of them: dioxus-cli 0001 to 0010, splitter
+                           0001 to 0006 - built 2026-11-24 on the x86_64
+                           laptop, each RID twice, byte-identical
+  win-x64, osx-arm64,      NOT YET REBUILT: dioxus-cli 0001 to 0007, splitter
+  osx-x64                  0001 to 0003 only - built 2026-11-22, the macOS
+                           programs on the owner's Apple Silicon Mac
+                           (osx-x64's functional gate run from an x86_64 shell
+                           under Rosetta 2; not yet run on an Intel Mac), the
+                           Windows programs on the owner's Windows x64 machine
+So a split build made on Windows or macOS still lacks splitter 0004 to 0006
+(the main module keeps its data; a data symbol of size 0 no longer fails the
+build; the code several split modules use goes into the shared chunk once),
+and dx there still lacks dioxus-cli 0008 to 0010 (Tailwind's default output
+in assets/generated, the stand-in split loader of an unsplit build, root
+addresses without "/./"; vendoring/dioxus-cli/PATCH-NOTES.txt,
+vendoring/wasm-split-cli/PATCH-NOTES.txt) until windows/build.dx.ps1 and
+macos/build.sh are run again and their programs adopted. All five platforms'
+packages carry their programs.
 
 NOT SUPPORTED, and neither built nor scripted: linux-riscv64, win-arm64,
 android-*.

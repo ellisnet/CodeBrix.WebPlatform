@@ -421,6 +421,31 @@ public class RustClientGeneratorTests
     }
 
     [Fact]
+    public void WriteTo_keeps_an_ignore_file_in_the_folder_so_that_git_ignores_it()
+    {
+        //Arrange
+        using var folder = new TempFolder();
+        var files = RustClientGenerator.Generate(Backends.Sample);
+        var ignoreFile = Path.Combine(folder.Path, RustClientGenerator.IgnoreFileName);
+
+        //Act
+        var first = RustClientGenerator.WriteTo(folder.Path, files);
+        var written = System.IO.File.ReadAllText(ignoreFile);
+        System.IO.File.Delete(ignoreFile);
+        var afterDelete = RustClientGenerator.WriteTo(folder.Path, files);
+        folder.Write(RustClientGenerator.IgnoreFileName, "target/\n");
+        var afterEdit = RustClientGenerator.WriteTo(folder.Path, files);
+
+        //Assert
+        written.Should().Be(RustClientGenerator.IgnoreFileText);
+        RustClientGenerator.IgnoreFileText.Should().StartWith("# Written by CodeBrix.WebPlatform.BackendMapper").And.EndWith("\n*\n");
+        first.Should().NotContain(RustClientGenerator.IgnoreFileName);
+        afterDelete.Should().BeEmpty();
+        afterEdit.Should().BeEmpty();
+        System.IO.File.ReadAllText(ignoreFile).Should().Be(RustClientGenerator.IgnoreFileText);
+    }
+
+    [Fact]
     public void WriteTo_refuses_a_folder_that_holds_hand_written_code()
     {
         //Arrange

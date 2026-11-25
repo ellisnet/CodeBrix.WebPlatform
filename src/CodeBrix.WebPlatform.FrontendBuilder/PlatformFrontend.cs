@@ -34,9 +34,14 @@ namespace CodeBrix.WebPlatform.FrontendBuilder;
 /// <item><see cref="MaterializeAsync"/> - writes the client code generated from the backend, the
 /// shared Rust crate and the crates into every frontend, after which plain
 /// <c>cargo check/test/build</c> works there;</item>
-/// <item><see cref="BuildAsync"/> - the servable site of every application, or
+/// <item><see cref="BuildAsync(FrontendConfiguration, string, CancellationToken)"/> - the servable
+/// site of every application (or <see cref="BuildAsync(string, FrontendConfiguration, string, CancellationToken)"/>
+/// for one), copied into the backend project's <c>frontend-built</c> folder, or
 /// <see cref="ServeAsync(string, CancellationToken)"/> - <c>dx serve</c> with hot reload for one.</item>
 /// </list>
+/// The folder layout of a frontend is fixed (see <see cref="PlatformFrontendOptions"/>), and every
+/// folder the build owns holds a <c>.gitignore</c> the build writes, so that git ignores the
+/// build's output without a rule of the developer's.
 /// A package that brings Rust crates of its own is registered by the build program before
 /// <see cref="MaterializeAsync"/> (<see cref="CrateBundles.Register(CrateBundle)"/>, usually
 /// through a call the package offers). Nothing is ever installed. Every failure is a
@@ -97,7 +102,10 @@ public sealed class PlatformFrontend
     /// <summary>The frontend folder (the first application's), as a full path.</summary>
     public string FrontendDirectory => _plans[0].FrontendDirectory;
 
-    /// <summary>The folder dx is told to keep its own data in (its <c>DX_HOME</c>), for the first application.</summary>
+    /// <summary>
+    /// The folder dx is told to keep its own data in (its <c>DX_HOME</c>), for the first
+    /// application: <c>target/dx-home</c> in its frontend folder (every application has its own).
+    /// </summary>
     public string DxHomeDirectory => _plans[0].DxHomeDirectory;
 
     /// <summary>
@@ -114,7 +122,7 @@ public sealed class PlatformFrontend
     public string GetFrontendDirectory(string applicationName) => FindPlan(applicationName, forServe: false).FrontendDirectory;
 
     /// <summary>
-    /// The arguments <see cref="BuildAsync"/> runs <c>dx</c> with. A release build passes
+    /// The arguments <see cref="BuildAsync(FrontendConfiguration, string, CancellationToken)"/> runs <c>dx</c> with. A release build passes
     /// <c>--debug-symbols false</c>: dx keeps debug symbols by default, also in a release build,
     /// and then tells wasm-opt to keep them too, which leaves the file about a quarter larger.
     /// Use these when building the same frontend somewhere else (in a container, for example).
@@ -125,14 +133,14 @@ public sealed class PlatformFrontend
         => GetDxBuildArguments(configuration, null, false);
 
     /// <summary>
-    /// The arguments <see cref="BuildAsync"/> runs <c>dx</c> with for one application: those of
+    /// The arguments <see cref="BuildAsync(FrontendConfiguration, string, CancellationToken)"/> runs <c>dx</c> with for one application: those of
     /// <see cref="GetDxBuildArguments(FrontendConfiguration)"/>, then <c>--base-path &lt;name&gt;</c>
     /// for an application that has a name (its site is served below that name), then
     /// <c>--wasm-split</c> when the application is built with bundle splitting.
     /// </summary>
     /// <param name="configuration">The kind of build.</param>
     /// <param name="applicationName">The application's name; <c>null</c>, empty or "app" for the
-    /// application at the site root.</param>
+    /// root application (the one at the site root).</param>
     /// <param name="wasmSplit">Whether the bundle is split (<see cref="PlatformFrontendOptions.WasmSplit"/>).</param>
     /// <returns>The arguments, starting with <c>build</c>.</returns>
     /// <exception cref="ArgumentException">The name breaks a rule.</exception>
@@ -283,7 +291,7 @@ public sealed class PlatformFrontend
     /// builds the backend in Release when <see cref="PlatformFrontendOptions.BackendProjectPath"/>
     /// is set, maps it with BackendMapper, writes the generated client code into
     /// <c>src/generated</c>, the shared Rust crate into <c>platform/codebrix-webplatform</c>,
-    /// the crates into <see cref="PlatformFrontendOptions.ResolvedVendorDirectory"/> (for
+    /// the crates into <see cref="PlatformFrontendOptions.VendorDirectory"/> (<c>platform/vendor</c>, for
     /// <see cref="CrateMode.PlatformCratesOnly"/>; unpacked only when an archive changed), and
     /// the cargo configuration into <c>.cargo/config.toml</c>. A frontend without a
     /// <c>Cargo.lock</c> gets the platform's as its starting point. With several applications
@@ -291,9 +299,18 @@ public sealed class PlatformFrontend
     /// and every application's frontend folder gets the same generated code and shared crate;
     /// they share the one vendor folder. Files that already have the right content are not
     /// touched, so cargo does not rebuild for nothing. Last, when a frontend uses Tailwind and
-    /// its generated stylesheet is missing, the packaged Tailwind program (<see cref="PackagedTailwind"/>)
-    /// writes it once (see <see cref="PlatformFrontendOptions.GenerateMissingStylesheet"/>); a
-    /// missing packaged program is reported in the result, never thrown.
+    /// its generated stylesheet (<c>assets/generated/tailwind.css</c>) is missing, the packaged
+    /// Tailwind program (<see cref="PackagedTailwind"/>) writes it once (see
+    /// <see cref="PlatformFrontendOptions.GenerateMissingStylesheet"/>); a missing packaged
+    /// program is reported in the result, never thrown.
+    /// <para>
+    /// Every folder the library owns gets its own <c>.gitignore</c> (a header saying what wrote
+    /// it, then the rule <c>*</c>) whenever it is missing or differs, whatever else is up to date:
+    /// <c>src/generated</c>, <c>platform/codebrix-webplatform</c>, the vendor folder, <c>.cargo</c>,
+    /// <c>target</c> (before Tailwind runs, which then does not scan it) and <c>assets/generated</c>
+    /// (when it exists or the frontend has a <c>tailwind.css</c>). Writing one does not count as a
+    /// change in the result. Nothing is ever written into a folder the developer owns.
+    /// </para>
     /// <para>
     /// The crates are the platform's own plus those of every registered crate bundle
     /// (<see cref="CrateBundles"/>). One copy of a crate is written however many bundles carry
@@ -312,12 +329,15 @@ public sealed class PlatformFrontend
     /// the backend does not build, its contract is not fully declared (the message lists every
     /// problem; the inner exception is BackendMapper's), an output folder or the cargo
     /// configuration holds files this library did not write, the platform's crates are not
-    /// beside the build program, or the registered crate bundles break the strict rule.</exception>
+    /// beside the build program, the registered crate bundles break the strict rule, or a
+    /// frontend's <c>Dioxus.toml</c> sets <c>tailwind_input</c> / <c>tailwind_output</c> to
+    /// another path than the fixed one (checked first, before anything is written).</exception>
     public async Task<MaterializeResult> MaterializeAsync(CancellationToken cancellationToken = default)
     {
         foreach (var plan in _plans)
         {
             RequireFrontend(plan);
+            RequireFixedStylesheetPaths(plan, "Nothing was written.");
         }
 
         var assembly = await PrepareBackendAsync(cancellationToken).ConfigureAwait(false);
@@ -340,7 +360,7 @@ public sealed class PlatformFrontend
         }
 
         var (vendorChanged, bundles) = MaterializeVendor();
-        var vendored = Options.CrateMode == CrateMode.PlatformCratesOnly ? PlatformCrates.ReadVendoredCrates(Options.ResolvedVendorDirectory) : null;
+        var vendored = Options.CrateMode == CrateMode.PlatformCratesOnly ? PlatformCrates.ReadVendoredCrates(Options.VendorDirectory) : null;
         var results = new List<MaterializeResult>();
         foreach (var plan in _plans)
         {
@@ -358,6 +378,7 @@ public sealed class PlatformFrontend
 
             var (configurationWritten, lockWritten) = MaterializeCargoFiles(plan);
             var lockFile = await KeepLockFileInStepAsync(plan, lockWritten ? null : vendored, cancellationToken).ConfigureAwait(false);
+            EnsureFrontendIgnoreFiles(plan);
             var (stylesheet, stylesheetMessage) = await EnsureStylesheetAsync(plan, cancellationToken).ConfigureAwait(false);
             var result = new MaterializeResult(map, generated, shared, vendorChanged, configurationWritten, lockWritten, stylesheet, stylesheetMessage)
             {
@@ -370,7 +391,7 @@ public sealed class PlatformFrontend
                 LockFileWarning = lockFile.Warning,
             };
             results.Add(result);
-            var subject = plan.Label.Length == 0 ? string.Empty : "application" + plan.Label + ": ";
+            var subject = plan.IsOneOfSeveral ? plan.Subject + ": " : string.Empty;
             _runner.Say(result.WasUpToDate
                 ? $"  {subject}the generated client code, the shared crate and the crates were already up to date."
                 : $"  {subject}wrote {generated.Count} generated file(s) and {shared.Count} shared-crate file(s)"
@@ -427,7 +448,7 @@ public sealed class PlatformFrontend
             return (StylesheetOutcome.SkippedTailwindNotAvailable, StylesheetRules.NotGenerated(output, problem));
         }
 
-        _runner.Say($"  generating the missing Tailwind stylesheet{(plan.Label.Length == 0 ? string.Empty : " of" + plan.Label)} ...");
+        _runner.Say($"  generating the missing Tailwind stylesheet{(plan.IsOneOfSeveral ? " of " + plan.Subject : string.Empty)} ...");
         Directory.CreateDirectory(Path.GetDirectoryName(output));
         var run = await _runner.RunAsync(tailwind.Path, new[] { "-i", input, "-o", output }, plan.FrontendDirectory, echo: false, cancellationToken: cancellationToken).ConfigureAwait(false);
         if (!run.Succeeded || !File.Exists(output))
@@ -447,7 +468,7 @@ public sealed class PlatformFrontend
     /// </summary>
     private (bool VendorChanged, IReadOnlyList<CrateBundleOutcome> Bundles) MaterializeVendor()
     {
-        var vendor = Options.ResolvedVendorDirectory;
+        var vendor = Options.VendorDirectory;
         var registered = CrateBundlesOverride ?? CrateBundles.Registered;
         var archive = PlatformCrates.GetArchivePath(_toolsBaseDirectory);
         if (Options.CrateMode != CrateMode.PlatformCratesOnly)
@@ -470,7 +491,7 @@ public sealed class PlatformFrontend
     /// <summary>The cargo configuration of one frontend, and a starting Cargo.lock when it has none.</summary>
     private (bool ConfigurationWritten, bool LockWritten) MaterializeCargoFiles(ApplicationPlan plan)
     {
-        var configuration = CargoConfiguration.Create(Options.CrateMode, CargoConfiguration.VendorPath(plan.FrontendDirectory, Options.ResolvedVendorDirectory));
+        var configuration = CargoConfiguration.Create(Options.CrateMode, CargoConfiguration.VendorPath(plan.FrontendDirectory, Options.VendorDirectory));
         var configurationWritten = CargoConfiguration.Write(plan.CargoConfigurationFile, configuration);
 
         var lockFile = Path.Combine(plan.FrontendDirectory, LockFileRules.FileName);
@@ -590,9 +611,13 @@ public sealed class PlatformFrontend
     /// and this one says what to run (<see cref="CrateMode.PlatformCratesOnly"/> only).
     /// </summary>
     /// <exception cref="FrontendBuildException">A lock file has stale entries.</exception>
+    internal void RequireLockFilesInStep() => RequireLockFilesInStep(_plans);
+
+    /// <summary>The check of <see cref="RequireLockFilesInStep()"/> for some of the applications.</summary>
+    /// <exception cref="FrontendBuildException">A lock file has stale entries.</exception>
     private void RequireLockFilesInStep(IEnumerable<ApplicationPlan> plans)
     {
-        if (Options.CrateMode != CrateMode.PlatformCratesOnly || !File.Exists(Path.Combine(Options.ResolvedVendorDirectory, PlatformCrates.StampFileName)))
+        if (Options.CrateMode != CrateMode.PlatformCratesOnly || !File.Exists(Path.Combine(Options.VendorDirectory, PlatformCrates.StampFileName)))
         {
             return;
         }
@@ -606,7 +631,7 @@ public sealed class PlatformFrontend
                 continue;
             }
 
-            vendored ??= PlatformCrates.ReadVendoredCrates(Options.ResolvedVendorDirectory);
+            vendored ??= PlatformCrates.ReadVendoredCrates(Options.VendorDirectory);
             var text = File.ReadAllText(path, Encoding.UTF8);
             var locked = LockFileRules.ReadCratesIoPackages(text);
             var stale = LockFileRules.FindStale(locked, vendored);
@@ -631,23 +656,27 @@ public sealed class PlatformFrontend
     /// with the libgit2 library it needs (see <see cref="Libgit2Directory"/>). Call
     /// <see cref="MaterializeAsync"/> first.
     /// <para>
-    /// With a web root, the sites are copied into it once every application has been built: the
-    /// application at the site root into the web root itself, an application that has a name
-    /// into the sub-folder of that name, and the frontend manifest
-    /// (<see cref="FrontendManifest.FileName"/>) beside them for the backend to read. When there
-    /// is an application at the site root, everything the web root held is replaced (a
-    /// <c>.gitkeep</c> file is kept). When every application has a name, only the applications'
-    /// sub-folders and the manifest are replaced; other files in the web root are left alone.
-    /// Then, as <see cref="PlatformFrontendOptions.CompressOutput"/> asks (Brotli and gzip by
-    /// default), a <c>.br</c> and/or <c>.gz</c> copy is written beside each compressible file
-    /// of the built applications (never beside the developer's own files);
-    /// <see cref="FrontendBuildResult.Compression"/> says what was written. Nothing is
-    /// compressed without a web root.
+    /// With a backend project folder, the sites are copied, once every application has been
+    /// built, into its built frontend folder, <see cref="BuiltFrontend.FolderName"/>, which
+    /// belongs to the build entirely: afterwards it holds exactly the built applications - the
+    /// root application's site at its top, an application that has a name in the sub-folder of
+    /// that name - with the frontend manifest (<see cref="FrontendManifest.FileName"/>) beside
+    /// them for the backend to read, and the folder's own <c>.gitignore</c> (written by the
+    /// build, never removed, never compressed); an additional file a build program wrote there
+    /// (<see cref="WriteBuiltFile(string, string, byte[], FrontendConfiguration, CancellationToken)"/>)
+    /// is removed too, so write it again after the build. The backend's <c>wwwroot</c> is never touched.
+    /// Then, as <see cref="PlatformFrontendOptions.CompressOutput"/> asks (by default Brotli and
+    /// gzip for a release build and nothing for a debug build), a <c>.br</c> and/or <c>.gz</c>
+    /// copy is written beside each file of the built applications whose extension is in
+    /// <see cref="PlatformFrontendOptions.CompressibleExtensions"/>;
+    /// <see cref="FrontendBuildResult.Compression"/> says what was written. Nothing is copied or
+    /// compressed without a backend project folder.
     /// </para>
     /// </summary>
     /// <param name="configuration">Release (the build that ships) or Debug.</param>
-    /// <param name="webRootDirectory">The folder to copy the built sites into, or <c>null</c> to
-    /// leave each site where dx put it.</param>
+    /// <param name="backendProjectDirectory">The backend project's folder (the backend's content
+    /// root), which must exist; the sites go into its <see cref="BuiltFrontend.FolderName"/>
+    /// folder. <c>null</c> leaves each site where dx put it.</param>
     /// <param name="cancellationToken">Stops dx.</param>
     /// <returns>Where the first application's site is, and how it was built;
     /// <see cref="FrontendBuildResult.Applications"/> has one result per application.</returns>
@@ -657,46 +686,83 @@ public sealed class PlatformFrontend
     /// wasm-bindgen, the libgit2 library, and wasm-opt when the build shrinks (the message lists
     /// each with how to fix it); a frontend's Cargo.lock names a version of a crate the vendor
     /// folder no longer holds (the message gives the command that brings it in step; dx is not
-    /// started), dx failed,
-    /// wasm-opt failed, <see cref="PlatformFrontendOptions.CompressOutput"/> is not a
-    /// <see cref="FrontendCompression"/> value, or a compressed copy could not be written.</exception>
-    public async Task<FrontendBuildResult> BuildAsync(FrontendConfiguration configuration = FrontendConfiguration.Release, string webRootDirectory = null, CancellationToken cancellationToken = default)
-    {
-        var compression = Options.CompressOutput;
-        if (!Enum.IsDefined(compression))
-        {
-            throw new FrontendBuildException(
-                $"PlatformFrontendOptions.CompressOutput is {(int)compression}, which is not a FrontendCompression value. Set it to None, Brotli, Gzip or BrotliAndGzip (the default).");
-        }
+    /// started); a frontend's <c>Dioxus.toml</c> moves the Tailwind stylesheets; the backend
+    /// project folder does not exist; dx failed; wasm-opt failed;
+    /// <see cref="PlatformFrontendOptions.CompressOutput"/> is not a <see cref="FrontendCompression"/>
+    /// value or <see cref="PlatformFrontendOptions.CompressibleExtensions"/> holds something that
+    /// is not an extension (both checked before anything else); or a compressed copy could not
+    /// be written.</exception>
+    public Task<FrontendBuildResult> BuildAsync(FrontendConfiguration configuration = FrontendConfiguration.Release, string backendProjectDirectory = null, CancellationToken cancellationToken = default)
+        => BuildPlansAsync(_plans, single: false, configuration, backendProjectDirectory, cancellationToken);
 
-        foreach (var plan in _plans)
+    /// <summary>
+    /// Builds ONE application, as <see cref="BuildAsync(FrontendConfiguration, string, CancellationToken)"/>
+    /// builds each, and replaces only that application's part of the built frontend folder: a
+    /// named application's sub-folder; for the root application, the entries at the folder's
+    /// top that are not the sub-folder of a registered named application, the manifest or the
+    /// <c>.gitignore</c>. The other applications' output is left as it is - or missing, which is
+    /// not an error here (the backend reports what it finds). The manifest is written for every
+    /// registered application, as always. Only this application's files are compressed. An
+    /// additional file of the build program's (<see cref="WriteBuiltFile(string, string, byte[], FrontendConfiguration, CancellationToken)"/>)
+    /// is left alone by a named application's build and removed by the root application's.
+    /// </summary>
+    /// <param name="applicationName">The application to build: its name, or <c>null</c>, empty
+    /// or "app" for the root application.</param>
+    /// <param name="configuration">Release (the build that ships) or Debug.</param>
+    /// <param name="backendProjectDirectory">The backend project's folder (the backend's content
+    /// root), which must exist; <c>null</c> leaves the site where dx put it.</param>
+    /// <param name="cancellationToken">Stops dx.</param>
+    /// <returns>Where the application's site is, and how it was built;
+    /// <see cref="FrontendBuildResult.Applications"/> holds only this result.</returns>
+    /// <exception cref="FrontendBuildException">There is no application of that name (the
+    /// message lists the names), or any of the reasons of
+    /// <see cref="BuildAsync(FrontendConfiguration, string, CancellationToken)"/> for this application.</exception>
+    public async Task<FrontendBuildResult> BuildAsync(string applicationName, FrontendConfiguration configuration = FrontendConfiguration.Release, string backendProjectDirectory = null, CancellationToken cancellationToken = default)
+    {
+        var plan = FindPlan(applicationName, forServe: false);
+        return await BuildPlansAsync(new[] { plan }, single: true, configuration, backendProjectDirectory, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>The compression a build makes: the option when it is set, else Brotli and gzip for Release and none for Debug.</summary>
+    internal static FrontendCompression EffectiveCompression(FrontendCompression? option, FrontendConfiguration configuration)
+        => option ?? (configuration == FrontendConfiguration.Release ? FrontendCompression.BrotliAndGzip : FrontendCompression.None);
+
+    private async Task<FrontendBuildResult> BuildPlansAsync(IReadOnlyList<ApplicationPlan> plans, bool single, FrontendConfiguration configuration, string backendProjectDirectory, CancellationToken cancellationToken)
+    {
+        RequireCompressOutput();
+        var compression = EffectiveCompression(Options.CompressOutput, configuration);
+        var extensions = OutputCompressor.RequireExtensions(Options.CompressibleExtensions);
+        var builtDirectory = ResolveBuiltDirectory(backendProjectDirectory);
+        foreach (var plan in plans)
         {
             RequireFrontend(plan);
+            RequireFixedStylesheetPaths(plan, "dx was not started.");
         }
 
-        RequireLockFilesInStep(_plans);
-        var needsWasmOpt = _plans.Any(p => ShrinkPlan.Decide(configuration, Options.Shrink, p.WasmSplit).NeedsWasmOpt);
+        RequireLockFilesInStep(plans);
+        var needsWasmOpt = plans.Any(p => ShrinkPlan.Decide(configuration, Options.Shrink, p.WasmSplit).NeedsWasmOpt);
         await RequirePrerequisitesAsync("The build", needsWasmOpt, cancellationToken).ConfigureAwait(false);
         var tools = FindHostTools();
         var built = new List<(ApplicationPlan Plan, string Output, bool Shrunk, WasmOptSource Source)>();
-        foreach (var plan in _plans)
+        foreach (var plan in plans)
         {
             var (output, shrunk, source) = await BuildOneAsync(plan, configuration, tools, cancellationToken).ConfigureAwait(false);
+            EnsureFrontendIgnoreFiles(plan);
             built.Add((plan, output, shrunk, source));
         }
 
-        string webRoot = null;
         string manifest = null;
         IReadOnlyList<int> copied = null;
         var compressed = new FrontendCompressionResult[built.Count];
-        if (webRootDirectory != null)
+        if (builtDirectory != null)
         {
-            webRoot = Path.GetFullPath(webRootDirectory);
-            copied = WebRootWriter.Write(webRoot, built.Select(b => (b.Plan.Application, b.Output)).ToList());
-            manifest = FrontendManifestWriter.GetPath(webRoot);
+            copied = single
+                ? new[] { BuiltFrontendWriter.WriteOne(builtDirectory, Applications, built[0].Plan.Application, built[0].Output) }
+                : BuiltFrontendWriter.Write(builtDirectory, built.Select(b => (b.Plan.Application, b.Output)).ToList());
+            manifest = FrontendManifestWriter.GetPath(builtDirectory);
             for (var i = 0; i < built.Count; i++)
             {
-                compressed[i] = CompressWebRootFiles(built[i].Plan, built[i].Output, ApplicationWebRoot(webRoot, built[i].Plan), compression, cancellationToken);
+                compressed[i] = CompressBuiltFiles(built[i].Plan, built[i].Output, ApplicationDirectory(builtDirectory, built[i].Plan), compression, extensions, cancellationToken);
             }
         }
 
@@ -704,11 +770,11 @@ public sealed class PlatformFrontend
         for (var i = 0; i < built.Count; i++)
         {
             var (plan, output, shrunk, source) = built[i];
-            results.Add(new FrontendBuildResult(configuration, output, shrunk, shrunk ? source : WasmOptSource.Missing, tools, webRoot, copied == null ? 0 : copied[i])
+            results.Add(new FrontendBuildResult(configuration, output, shrunk, shrunk ? source : WasmOptSource.Missing, tools, builtDirectory, copied == null ? 0 : copied[i])
             {
                 ApplicationName = plan.Application.Name,
                 WasmSplit = plan.WasmSplit,
-                WebRootApplicationDirectory = webRoot == null ? null : ApplicationWebRoot(webRoot, plan),
+                BuiltApplicationDirectory = builtDirectory == null ? null : ApplicationDirectory(builtDirectory, plan),
                 ManifestFile = manifest,
                 Compression = compressed[i],
             });
@@ -722,26 +788,227 @@ public sealed class PlatformFrontend
         return results[0];
     }
 
-    private static string ApplicationWebRoot(string webRoot, ApplicationPlan plan)
-        => plan.Application.IsDefault ? webRoot : Path.Combine(webRoot, plan.Application.Folder);
+    /// <summary>The built frontend folder of a backend project folder, or <c>null</c> for none.</summary>
+    /// <exception cref="FrontendBuildException">The folder is blank or does not exist.</exception>
+    private static string ResolveBuiltDirectory(string backendProjectDirectory)
+    {
+        if (backendProjectDirectory == null)
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(backendProjectDirectory))
+        {
+            throw new FrontendBuildException("The backend project folder given to BuildAsync is blank. Name the backend project's folder (its content root), or pass null to leave the built sites where dx put them.");
+        }
+
+        var backend = Path.GetFullPath(backendProjectDirectory);
+        if (!Directory.Exists(backend))
+        {
+            throw new FrontendBuildException(
+                $"The backend project folder '{backend}' does not exist. BuildAsync takes the backend project's folder (its content root) and writes the built sites into its {BuiltFrontend.FolderName} folder.");
+        }
+
+        return BuiltFrontendWriter.GetDirectory(backend);
+    }
+
+    private static string ApplicationDirectory(string builtDirectory, ApplicationPlan plan)
+        => plan.Application.IsDefault ? builtDirectory : Path.Combine(builtDirectory, plan.Application.Folder);
 
     /// <summary>
-    /// Writes the compressed copies of one application's files in the web root (the files dx
-    /// built, nothing else) and says what it did.
+    /// Writes the compressed copies of one application's files in the built frontend folder (the
+    /// files dx built, nothing else) and says what it did.
     /// </summary>
-    private FrontendCompressionResult CompressWebRootFiles(ApplicationPlan plan, string site, string applicationWebRoot, FrontendCompression compression, CancellationToken cancellationToken)
+    private FrontendCompressionResult CompressBuiltFiles(ApplicationPlan plan, string site, string applicationDirectory, FrontendCompression compression, IReadOnlyCollection<string> extensions, CancellationToken cancellationToken)
     {
         var files = Directory.EnumerateFiles(site, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(site, f)).ToList();
-        var result = OutputCompressor.Compress(applicationWebRoot, files, compression, cancellationToken);
-        var what = "the frontend" + (plan.Label.Length == 0 ? string.Empty : " application" + plan.Label);
+        var result = OutputCompressor.Compress(applicationDirectory, files, compression, extensions, cancellationToken);
         if (compression != FrontendCompression.None)
         {
-            _runner.Say($"Compressed {result.Files.Count} files of {what} in the web root ({compression}) in {result.Elapsed.TotalSeconds:0.0} s: {result.OriginalBytes} bytes"
+            _runner.Say($"Compressed {result.Files.Count} files of {plan.Subject} in {BuiltFrontend.FolderName} ({compression}) in {result.Elapsed.TotalSeconds:0.0} s: {result.OriginalBytes} bytes"
                 + (result.BrotliFileCount > 0 ? $", {result.BrotliBytes} with Brotli" : string.Empty)
                 + (result.GzipFileCount > 0 ? $", {result.GzipBytes} with gzip" : string.Empty) + ".");
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Writes an ADDITIONAL file of the build program's own - generated notices, for example -
+    /// into the built frontend folder (<see cref="BuiltFrontend.FolderName"/> in the backend
+    /// project folder), with the compressed copies <see cref="BuildAsync(FrontendConfiguration, string, CancellationToken)"/>
+    /// would write for a file of its extension: <see cref="PlatformFrontendOptions.CompressOutput"/>
+    /// for <paramref name="configuration"/> (by default Brotli and gzip for Release, none for
+    /// Debug) and <see cref="PlatformFrontendOptions.CompressibleExtensions"/>, each copy only
+    /// when it is smaller. Copies of an earlier version of the file that are not written again
+    /// are removed, so no stale copy is ever served. The platform backend serves the file like
+    /// the sites' files (at the address of its path in the folder).
+    /// <para>
+    /// THE FILE DOES NOT SURVIVE A BUILD THAT REPLACES ITS PLACE: a full build
+    /// (<see cref="BuildAsync(FrontendConfiguration, string, CancellationToken)"/>) and a build
+    /// of the root application remove it, like everything else in the folder that the build did
+    /// not write; a build of a named application leaves it alone. Write it after every build,
+    /// with the build's configuration.
+    /// </para>
+    /// </summary>
+    /// <param name="backendProjectDirectory">The backend project's folder (the backend's content
+    /// root), as for <see cref="BuildAsync(FrontendConfiguration, string, CancellationToken)"/>;
+    /// it must exist. The built frontend folder is created when missing.</param>
+    /// <param name="relativePath">Where the file goes, relative to the built frontend folder,
+    /// with <c>/</c> (or <c>\</c>) separators: <c>THIRD-PARTY-NOTICES.txt</c>, or
+    /// <c>legal/NOTICES.txt</c>.</param>
+    /// <param name="content">The file's bytes.</param>
+    /// <param name="configuration">The kind of build the file belongs to (it decides the
+    /// compression when <see cref="PlatformFrontendOptions.CompressOutput"/> is not set).</param>
+    /// <param name="cancellationToken">Stops the compression.</param>
+    /// <returns>What was compressed, in the result form of a build: <see cref="FrontendCompressionResult.Files"/>
+    /// holds the file (path relative to the built frontend folder) when its extension is
+    /// compressible and copies were asked for, and is empty otherwise;
+    /// <see cref="FrontendCompressionResult.RemovedCopyCount"/> counts the earlier copies that
+    /// were removed and not written again.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="content"/> is null.</exception>
+    /// <exception cref="FrontendBuildException">The backend project folder is blank or missing;
+    /// the path is blank, rooted, has a <c>.</c> or <c>..</c> segment, is the manifest
+    /// (<see cref="FrontendManifest.FileName"/> at the top), a <c>.gitignore</c>, a <c>.br</c> /
+    /// <c>.gz</c> name, a folder, inside a registered named application's folder, or a file of
+    /// the root application's built site (in dx's output folder of either configuration);
+    /// <see cref="PlatformFrontendOptions.CompressOutput"/> or
+    /// <see cref="PlatformFrontendOptions.CompressibleExtensions"/> is wrong as for a build; or
+    /// the file or a copy could not be written.</exception>
+    public FrontendCompressionResult WriteBuiltFile(string backendProjectDirectory, string relativePath, byte[] content, FrontendConfiguration configuration = FrontendConfiguration.Release, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        RequireCompressOutput();
+        var compression = EffectiveCompression(Options.CompressOutput, configuration);
+        var extensions = OutputCompressor.RequireExtensions(Options.CompressibleExtensions);
+        var builtDirectory = ResolveBuiltDirectory(backendProjectDirectory)
+            ?? throw new FrontendBuildException("WriteBuiltFile needs the backend project folder (its content root); it was null.");
+        var relative = RequireAdditionalFilePath(relativePath);
+        var path = Path.Combine(builtDirectory, relative.Replace('/', Path.DirectorySeparatorChar));
+        if (Directory.Exists(path))
+        {
+            throw new FrontendBuildException($"'{relative}' is a folder in {BuiltFrontend.FolderName}, not a file. Name a file.");
+        }
+
+        var root = _plans.FirstOrDefault(p => p.Application.IsDefault);
+        if (root != null)
+        {
+            foreach (var kind in new[] { FrontendConfiguration.Release, FrontendConfiguration.Debug })
+            {
+                if (File.Exists(Path.Combine(GetOutputDirectory(root, kind), relative.Replace('/', Path.DirectorySeparatorChar))))
+                {
+                    throw new FrontendBuildException(
+                        $"'{relative}' is a file of the root application's built site (dx's output holds it); the built sites belong to the build. Give the additional file another name.");
+                }
+            }
+        }
+
+        var copies = new[] { path + OutputCompressor.BrotliSuffix, path + OutputCompressor.GzipSuffix };
+        var before = copies.Where(File.Exists).ToList();
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            BuildOutputFolder.EnsureIgnoreFile(builtDirectory);
+            foreach (var copy in before)
+            {
+                File.Delete(copy);
+            }
+
+            File.WriteAllBytes(path, content);
+        }
+        catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+        {
+            throw new FrontendBuildException($"'{path}' could not be written: {e.Message}", e);
+        }
+
+        var result = OutputCompressor.Compress(builtDirectory, new[] { relative }, compression, extensions, cancellationToken);
+        var removed = before.Count(c => !File.Exists(c));
+        return new FrontendCompressionResult(result.Compression, result.Files, result.RemovedCopyCount + removed, result.Elapsed);
+    }
+
+    /// <summary>
+    /// Writes an additional text file into the built frontend folder, as UTF-8 without a byte
+    /// order mark, exactly as <see cref="WriteBuiltFile(string, string, byte[], FrontendConfiguration, CancellationToken)"/>
+    /// writes bytes (same rules, same copies, same lifetime).
+    /// </summary>
+    /// <param name="backendProjectDirectory">The backend project's folder (the backend's content root).</param>
+    /// <param name="relativePath">Where the file goes, relative to the built frontend folder.</param>
+    /// <param name="text">The file's text, written as it is (line endings included).</param>
+    /// <param name="configuration">The kind of build the file belongs to.</param>
+    /// <param name="cancellationToken">Stops the compression.</param>
+    /// <returns>What was compressed (see the byte form).</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="text"/> is null.</exception>
+    /// <exception cref="FrontendBuildException">As for the byte form.</exception>
+    public FrontendCompressionResult WriteBuiltFile(string backendProjectDirectory, string relativePath, string text, FrontendConfiguration configuration = FrontendConfiguration.Release, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        return WriteBuiltFile(backendProjectDirectory, relativePath, new UTF8Encoding(false).GetBytes(text), configuration, cancellationToken);
+    }
+
+    /// <summary>
+    /// Checks the path of an additional file and returns it relative to the built frontend
+    /// folder with <c>/</c> separators.
+    /// </summary>
+    /// <exception cref="FrontendBuildException">It is not a path the build program may write.</exception>
+    private string RequireAdditionalFilePath(string relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath))
+        {
+            throw new FrontendBuildException("The path of the additional file is blank. Name the file relative to " + BuiltFrontend.FolderName + ", such as \"THIRD-PARTY-NOTICES.txt\".");
+        }
+
+        var normal = relativePath.Replace('\\', '/');
+        if (Path.IsPathRooted(relativePath) || normal.StartsWith('/') || (normal.Length >= 2 && normal[1] == ':'))
+        {
+            throw new FrontendBuildException($"The path of the additional file, '{relativePath}', is rooted. Name it relative to {BuiltFrontend.FolderName}.");
+        }
+
+        var segments = normal.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0 || segments.Any(s => s == "." || s == ".."))
+        {
+            throw new FrontendBuildException($"The path of the additional file, '{relativePath}', has a '.' or '..' segment; an additional file stays inside {BuiltFrontend.FolderName}. Name it relative to that folder without them.");
+        }
+
+        var relative = string.Join('/', segments);
+        var name = segments[^1];
+        if (segments.Length == 1 && string.Equals(name, FrontendManifest.FileName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new FrontendBuildException($"'{relative}' is the frontend manifest, which the build writes. Give the additional file another name.");
+        }
+
+        if (string.Equals(name, BuildOutputFolder.IgnoreFileName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new FrontendBuildException($"'{relative}' is a .gitignore; the build keeps {BuiltFrontend.FolderName}'s own and writes no other. Give the additional file another name.");
+        }
+
+        if (OutputCompressor.IsCopyName(name))
+        {
+            throw new FrontendBuildException($"'{relative}' is the name of a compressed copy (.br / .gz); the copies are written beside the file. Write the file itself.");
+        }
+
+        var named = Applications.Named.FirstOrDefault(a => segments.Length > 1 && string.Equals(a.Folder, segments[0], StringComparison.OrdinalIgnoreCase));
+        if (named != null)
+        {
+            throw new FrontendBuildException($"'{relative}' is inside the folder of the application '{named.Name}', which belongs to its build. Put the additional file outside the applications' folders.");
+        }
+
+        if (segments.Length == 1 && Applications.Named.Any(a => string.Equals(a.Folder, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new FrontendBuildException($"'{relative}' is the name of the application '{name}''s folder. Give the additional file another name.");
+        }
+
+        return relative;
+    }
+
+    /// <summary>Refuses a <see cref="PlatformFrontendOptions.CompressOutput"/> that is not a <see cref="FrontendCompression"/> value.</summary>
+    /// <exception cref="FrontendBuildException">It is not one.</exception>
+    private void RequireCompressOutput()
+    {
+        if (Options.CompressOutput.HasValue && !Enum.IsDefined(Options.CompressOutput.Value))
+        {
+            throw new FrontendBuildException(
+                $"PlatformFrontendOptions.CompressOutput is {(int)Options.CompressOutput.Value}, which is not a FrontendCompression value. Set it to None, Brotli, Gzip or BrotliAndGzip, or leave it unset (null: Brotli and gzip for a release build, none for a debug build).");
+        }
     }
 
     /// <summary>Builds one application's site with dx and returns where dx left it.</summary>
@@ -763,7 +1030,7 @@ public sealed class PlatformFrontend
             Directory.Delete(dxOutput, recursive: true);
         }
 
-        var what = "the frontend" + (plan.Label.Length == 0 ? string.Empty : " application" + plan.Label);
+        var what = plan.Subject;
         var splitting = plan.WasmSplit ? ", bundle splitting" : string.Empty;
         _runner.Say(configuration == FrontendConfiguration.Release
             ? (shrinkPlan.SkipRequested ? $"Building {what}, unshrunk (cargo, wasm-bindgen, Tailwind; Shrink is false) ..." : $"Building {what} (cargo, wasm-bindgen{splitting}, wasm-opt, Tailwind) ...")
@@ -803,11 +1070,14 @@ public sealed class PlatformFrontend
 
     /// <summary>
     /// Runs <c>dx serve</c> with hot reload in one application's frontend folder, with the same
-    /// environment as <see cref="BuildAsync"/> (the libgit2 library included), the application's
+    /// environment as <see cref="BuildAsync(FrontendConfiguration, string, CancellationToken)"/> (the libgit2 library included), the application's
     /// base path when it has a name, and its serve features, until it ends or is cancelled. Its
-    /// output goes to <see cref="PlatformFrontendOptions.Output"/>. Nothing is compressed
-    /// (<see cref="PlatformFrontendOptions.CompressOutput"/> is for <see cref="BuildAsync"/>
-    /// into a web root only). Call <see cref="MaterializeAsync"/> first.
+    /// output goes to <see cref="PlatformFrontendOptions.Output"/>. Nothing is compressed and
+    /// nothing is written into the backend project's <c>frontend-built</c> folder
+    /// (<see cref="PlatformFrontendOptions.CompressOutput"/> is for
+    /// <see cref="BuildAsync(FrontendConfiguration, string, CancellationToken)"/> only). The
+    /// <c>.gitignore</c> files of <c>target</c> and <c>assets/generated</c> are written first,
+    /// as materializing writes them. Call <see cref="MaterializeAsync"/> first.
     /// </summary>
     /// <param name="applicationName">The application to run. <c>null</c> or empty: the
     /// application that has no name; when there is none and there is exactly one application,
@@ -819,12 +1089,13 @@ public sealed class PlatformFrontend
     /// frontend folder is missing; something dx serve needs is missing on this machine - checked
     /// before dx is started, with <see cref="CheckPrerequisitesAsync"/>: Rust, the packaged
     /// Tailwind, dx and wasm-bindgen, the libgit2 library (the message lists each with how to fix
-    /// it); or the frontend's Cargo.lock names a version of a crate the vendor folder no longer holds (the message gives the
-    /// command that brings it in step).</exception>
+    /// it); the frontend's Cargo.lock names a version of a crate the vendor folder no longer holds (the message gives the
+    /// command that brings it in step); or its <c>Dioxus.toml</c> moves the Tailwind stylesheets.</exception>
     public async Task<int> ServeAsync(string applicationName, CancellationToken cancellationToken = default)
     {
         var plan = FindPlan(applicationName, forServe: true);
         var frontend = RequireFrontend(plan);
+        RequireFixedStylesheetPaths(plan, "dx was not started.");
         RequireLockFilesInStep(new[] { plan });
         await RequirePrerequisitesAsync("dx serve", false, cancellationToken).ConfigureAwait(false);
         var tools = FindHostTools();
@@ -841,7 +1112,8 @@ public sealed class PlatformFrontend
             arguments.Add(string.Join(",", plan.ServeFeatures));
         }
 
-        _runner.Say($"Starting dx serve{(plan.Label.Length == 0 ? string.Empty : " for" + plan.Label)} (Ctrl+C stops it) ...");
+        EnsureFrontendIgnoreFiles(plan);
+        _runner.Say($"Starting dx serve{(plan.IsOneOfSeveral ? " for " + plan.Subject : string.Empty)} (Ctrl+C stops it) ...");
         var result = await _runner.RunAsync(tools.DxPath, arguments, frontend, CreateDxEnvironment(tools, plan), cancellationToken: cancellationToken).ConfigureAwait(false);
         return result.ExitCode;
     }
@@ -895,7 +1167,7 @@ public sealed class PlatformFrontend
     /// </summary>
     private ApplicationPlan FindPlan(string applicationName, bool forServe)
     {
-        var names = string.Join(", ", _plans.Select(p => p.Application.IsDefault ? "(no name)" : "'" + p.Application.Name + "'"));
+        var names = string.Join(", ", _plans.Select(p => p.Application.IsDefault ? ApplicationPlan.RootApplicationText + " (no name)" : "'" + p.Application.Name + "'"));
         if (!string.IsNullOrEmpty(applicationName) && !string.Equals(applicationName, FrontendApplication.DefaultName, StringComparison.Ordinal))
         {
             return _plans.FirstOrDefault(p => !p.Application.IsDefault && string.Equals(p.Application.Name, applicationName, StringComparison.Ordinal))
@@ -915,7 +1187,38 @@ public sealed class PlatformFrontend
 
         throw new FrontendBuildException(string.IsNullOrEmpty(applicationName) && forServe
             ? $"Name the frontend application to run: every application has a name, and there are several ({names})."
-            : $"There is no frontend application without a name. The applications are: {names}.");
+            : $"There is no root application (a frontend application without a name). The applications are: {names}.");
+    }
+
+    /// <summary>
+    /// Refuses a frontend whose <c>Dioxus.toml</c> sets <c>tailwind_input</c> or
+    /// <c>tailwind_output</c> to another path than the platform's fixed one.
+    /// </summary>
+    /// <param name="plan">The application.</param>
+    /// <param name="consequence">The sentence that ends the message ("Nothing was written.").</param>
+    /// <exception cref="FrontendBuildException">It does.</exception>
+    private static void RequireFixedStylesheetPaths(ApplicationPlan plan, string consequence)
+    {
+        var problem = DioxusTailwindSettings.DescribeProblem(plan.FrontendDirectory);
+        if (problem != null)
+        {
+            throw new FrontendBuildException(problem + " " + consequence);
+        }
+    }
+
+    /// <summary>
+    /// Writes the <c>.gitignore</c> of the build-owned folders of a frontend that the build does
+    /// not otherwise write into itself: <c>target</c> (cargo's and dx's output; <c>cargo clean</c>
+    /// removes it with the folder, and it comes back here) and <c>assets/generated</c> (when it
+    /// exists or the frontend has a Tailwind input, so that dx will write the stylesheet there).
+    /// </summary>
+    private static void EnsureFrontendIgnoreFiles(ApplicationPlan plan)
+    {
+        BuildOutputFolder.EnsureIgnoreFile(plan.TargetDirectory);
+        if (Directory.Exists(plan.GeneratedAssetsDirectory) || File.Exists(plan.TailwindInputFile))
+        {
+            BuildOutputFolder.EnsureIgnoreFile(plan.GeneratedAssetsDirectory);
+        }
     }
 
     /// <summary>
@@ -923,7 +1226,7 @@ public sealed class PlatformFrontend
     /// (<see cref="PackagedTailwind"/>), then the folder of the packaged wasm-opt (when the package
     /// has one for this machine) and then the folder of wasm-bindgen, so those are the ones dx
     /// finds - a Tailwind installed on the machine is never the one dx runs; DX_HOME is
-    /// <see cref="DxHomeDirectory"/>; and the folder holding the libgit2 library dx needs to start (<see cref="Libgit2Directory"/>) goes first on the
+    /// the application's <c>target/dx-home</c>; and the folder holding the libgit2 library dx needs to start (<see cref="Libgit2Directory"/>) goes first on the
     /// loader's search variable - LD_LIBRARY_PATH on Linux, DYLD_LIBRARY_PATH on macOS, PATH on
     /// Windows. Only dx's process gets these.
     /// </summary>

@@ -12,10 +12,11 @@ namespace CodeBrix.WebPlatform.Backend.Internal;
 /// <summary>
 /// Decides, for ASP.NET Core's response-compression middleware, which answers are compressed as
 /// they are sent (<see cref="PlatformBackendOptions.CompressResponses"/>): the answers of the
-/// actions marked <c>[WireFile]</c> (read from the matched endpoint's metadata, per request), and
-/// with <see cref="ResponseCompression.FileAnswersAndJson"/> the JSON answers too. Never a
-/// web-root file (those are compressed when the frontend is built), never hub traffic, never
-/// <c>text/event-stream</c>, never a type that is compressed already, never an answer that
+/// actions marked <c>[WireFile]</c> (read from the matched endpoint's metadata, per request) whose
+/// type is in <see cref="PlatformBackendOptions.CompressedFileTypes"/> or is JSON, and with
+/// <see cref="ResponseCompression.FileAnswersAndJson"/> the JSON answers too. Never a served
+/// file (the built frontend's are compressed when the frontend is built), never hub traffic,
+/// never <c>text/event-stream</c>, never an answer that
 /// already has a <c>Content-Encoding</c> or a <c>Content-Range</c>. Brotli when the request
 /// prefers it, otherwise gzip, both at their fastest setting, over HTTPS too. The coding is
 /// chosen by <see cref="ContentCodings"/>, as for the precompressed files.
@@ -23,13 +24,15 @@ namespace CodeBrix.WebPlatform.Backend.Internal;
 internal sealed class PlatformResponseCompressionProvider : IResponseCompressionProvider
 {
     private readonly ResponseCompression _mode;
+    private readonly MediaTypePatterns _fileTypes;
     private readonly ResponseCompressionProvider _framework;
     private readonly ICompressionProvider _brotli;
     private readonly ICompressionProvider _gzip;
 
-    public PlatformResponseCompressionProvider(IServiceProvider services, ResponseCompression mode)
+    public PlatformResponseCompressionProvider(IServiceProvider services, ResponseCompression mode, MediaTypePatterns fileTypes)
     {
         _mode = mode;
+        _fileTypes = fileTypes ?? throw new ArgumentNullException(nameof(fileTypes));
         _brotli = new BrotliCompressionProvider(Options.Create(new BrotliCompressionProviderOptions { Level = CompressionLevel.Fastest }));
         _gzip = new GzipCompressionProvider(Options.Create(new GzipCompressionProviderOptions { Level = CompressionLevel.Fastest }));
         var options = new ResponseCompressionOptions { EnableForHttps = true, MimeTypes = new[] { "*/*" } };
@@ -56,7 +59,7 @@ internal sealed class PlatformResponseCompressionProvider : IResponseCompression
         if (context.Items.ContainsKey(FrontendServing.FrontendFileItem)
             || context.Request.Path.StartsWithSegments(PlatformBackendPaths.Hubs, StringComparison.OrdinalIgnoreCase)
             || endpoint?.Metadata.GetMetadata<HubMetadata>() != null
-            || !IsCompressedAnswer(context.Response.ContentType, endpoint?.Metadata.GetMetadata<WireFileAttribute>() != null, _mode))
+            || !IsCompressedAnswer(context.Response.ContentType, endpoint?.Metadata.GetMetadata<WireFileAttribute>() != null, _mode, _fileTypes))
         {
             return false;
         }
@@ -65,11 +68,12 @@ internal sealed class PlatformResponseCompressionProvider : IResponseCompression
     }
 
     /// <summary>
-    /// Whether an answer is compressed in a mode: an answer of a <c>[WireFile]</c> action of any
-    /// type that is not compressed already, with <see cref="ResponseCompression.FileAnswersAndJson"/>
-    /// also a JSON answer of any action, and nothing else.
+    /// Whether an answer is compressed in a mode: an answer of a <c>[WireFile]</c> action whose
+    /// type is JSON or in <paramref name="fileTypes"/> (never <c>text/event-stream</c>), with
+    /// <see cref="ResponseCompression.FileAnswersAndJson"/> also a JSON answer of any action,
+    /// and nothing else.
     /// </summary>
-    internal static bool IsCompressedAnswer(string contentType, bool wireFileAnswer, ResponseCompression mode)
+    internal static bool IsCompressedAnswer(string contentType, bool wireFileAnswer, ResponseCompression mode, MediaTypePatterns fileTypes)
     {
         if (mode == ResponseCompression.None || string.IsNullOrEmpty(contentType)
             || !MediaTypeHeaderValue.TryParse(contentType, out var parsed) || !parsed.MediaType.HasValue)
@@ -78,31 +82,17 @@ internal sealed class PlatformResponseCompressionProvider : IResponseCompression
         }
 
         var type = parsed.MediaType.Value.ToLowerInvariant();
-        if (wireFileAnswer)
-        {
-            return IsJson(type) || IsCompressibleFileType(type);
-        }
-
-        return mode == ResponseCompression.FileAnswersAndJson && IsJson(type);
-    }
-
-    private static bool IsCompressibleFileType(string type)
-    {
         if (type == "text/event-stream")
         {
             return false;
         }
 
-        return type.StartsWith("text/", StringComparison.Ordinal)
-            || type == "application/octet-stream"
-            || type == "application/wasm"
-            || type == "application/javascript"
-            || type == "application/x-javascript"
-            || type == "application/xml"
-            || type.EndsWith("+xml", StringComparison.Ordinal)
-            || type == "application/yaml"
-            || type == "application/x-yaml"
-            || type == "application/toml";
+        if (wireFileAnswer)
+        {
+            return IsJson(type) || fileTypes.Matches(type);
+        }
+
+        return mode == ResponseCompression.FileAnswersAndJson && IsJson(type);
     }
 
     private static bool IsJson(string type)

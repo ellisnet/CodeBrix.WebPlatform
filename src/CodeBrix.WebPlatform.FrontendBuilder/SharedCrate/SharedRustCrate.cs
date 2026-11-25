@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using CodeBrix.WebPlatform.FrontendBuilder.Internal;
 
 namespace CodeBrix.WebPlatform.FrontendBuilder.SharedCrate;
 
@@ -35,7 +36,10 @@ public static class SharedRustCrate
     /// Makes a folder hold exactly the shared crate. Files that already have the right content
     /// are left untouched (so cargo does not rebuild for nothing), changed and missing files are
     /// written, and files that are not part of the crate are deleted, except cargo's own
-    /// <c>target</c> folder and <c>Cargo.lock</c>.
+    /// <c>target</c> folder and <c>Cargo.lock</c>. The folder is build output: its own
+    /// <c>.gitignore</c> (the rule <c>*</c>, under a header saying what wrote it) is written
+    /// whenever it is missing or differs, so that git ignores the folder without a rule of the
+    /// developer's; it is not listed in the result.
     /// </summary>
     /// <param name="directory">The folder to write the crate into. It is created when missing.
     /// The folder belongs to the crate: never point this at a folder that holds anything else.</param>
@@ -48,7 +52,7 @@ public static class SharedRustCrate
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
         var root = Path.GetFullPath(directory);
-        if (Directory.Exists(root) && Directory.EnumerateFileSystemEntries(root).Any() && !IsCrateFolder(root))
+        if (Directory.Exists(root) && Directory.EnumerateFileSystemEntries(root).Any(e => !BuildOutputFolder.IsIgnoreFile(e)) && !IsCrateFolder(root))
         {
             throw new InvalidOperationException(
                 $"The folder '{root}' is not empty and does not hold the {CrateName} crate. Nothing was written. Choose a folder that is used for nothing else.");
@@ -59,6 +63,11 @@ public static class SharedRustCrate
         var expected = new HashSet<string>(StringComparer.Ordinal);
         foreach (var file in Files)
         {
+            if (file.RelativePath == BuildOutputFolder.IgnoreFileName)
+            {
+                continue;
+            }
+
             expected.Add(file.RelativePath);
             var target = Path.Combine(root, file.RelativePath.Replace('/', Path.DirectorySeparatorChar));
             if (File.Exists(target) && File.ReadAllBytes(target).AsSpan().SequenceEqual(file.Content))
@@ -74,7 +83,7 @@ public static class SharedRustCrate
         foreach (var existing in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories).ToList())
         {
             var relative = Path.GetRelativePath(root, existing).Replace(Path.DirectorySeparatorChar, '/');
-            if (expected.Contains(relative) || IsCargoOutput(relative))
+            if (expected.Contains(relative) || IsCargoOutput(relative) || relative == BuildOutputFolder.IgnoreFileName)
             {
                 continue;
             }
@@ -83,6 +92,7 @@ public static class SharedRustCrate
             changed.Add(relative);
         }
 
+        BuildOutputFolder.EnsureIgnoreFile(root);
         changed.Sort(StringComparer.Ordinal);
         return changed;
     }

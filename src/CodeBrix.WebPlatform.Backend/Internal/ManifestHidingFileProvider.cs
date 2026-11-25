@@ -10,11 +10,12 @@ using Microsoft.Extensions.Primitives;
 namespace CodeBrix.WebPlatform.Backend.Internal;
 
 /// <summary>
-/// The web root's files without the frontend manifest and without the compressed copies the
-/// frontend build writes. The manifest is recognised both by the address asked for (its name at
-/// the web root in any casing, also with the trailing dots, spaces or stream suffix a Windows
-/// file system ignores) and by the physical file it resolves to, so no spelling of the address
-/// reaches it. A copy is a file whose name ends in <c>.br</c> or <c>.gz</c> (any casing, with
+/// The built frontend's files (<c>frontend-built/</c>) without the frontend manifest, without the
+/// folder's own <c>.gitignore</c> and without the compressed copies the frontend build writes.
+/// The manifest is recognised both by the address asked for (its name at the folder's top in any
+/// casing, also with the trailing dots, spaces or stream suffix a Windows file system ignores)
+/// and by the physical file it resolves to, so no spelling of the address reaches it; the
+/// <c>.gitignore</c> by its address, in the same way. A copy is a file whose name ends in <c>.br</c> or <c>.gz</c> (any casing, with
 /// the same Windows spellings) beside a file of the name without that suffix: it is an alternate
 /// of that file, served only in its place (<see cref="GetCopy"/>), never under its own name. A
 /// <c>.br</c> / <c>.gz</c> file with no such file beside it is an ordinary file.
@@ -24,18 +25,27 @@ internal sealed class ManifestHidingFileProvider : IFileProvider
     private readonly IFileProvider _inner;
     private readonly string _manifestPath;
 
-    public ManifestHidingFileProvider(IFileProvider inner, string webRootPath)
+    /// <summary>The name of the file the frontend build writes to keep the folder out of git.</summary>
+    public const string GitIgnoreFileName = ".gitignore";
+
+    /// <summary>The built frontend's files, read through <paramref name="inner"/>.</summary>
+    /// <param name="inner">The folder's files.</param>
+    /// <param name="builtFrontendPath">The folder's full path, to know the manifest's physical file; null when there is no folder.</param>
+    public ManifestHidingFileProvider(IFileProvider inner, string builtFrontendPath)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
-        _manifestPath = string.IsNullOrEmpty(webRootPath)
+        _manifestPath = string.IsNullOrEmpty(builtFrontendPath)
             ? null
-            : Path.GetFullPath(Path.Combine(webRootPath, FrontendManifest.FileName));
+            : Path.GetFullPath(Path.Combine(builtFrontendPath, FrontendManifest.FileName));
     }
 
+    /// <inheritdoc/>
     public IFileInfo GetFileInfo(string subpath)
     {
         var info = _inner.GetFileInfo(subpath);
-        return IsManifestAddress(subpath) || IsManifestFile(info) || IsCopyAddress(subpath) ? new NotFoundFileInfo(subpath ?? string.Empty) : info;
+        return IsManifestAddress(subpath) || IsRootAddress(subpath, GitIgnoreFileName) || IsManifestFile(info) || IsCopyAddress(subpath)
+            ? new NotFoundFileInfo(subpath ?? string.Empty)
+            : info;
     }
 
     /// <summary>
@@ -49,16 +59,24 @@ internal sealed class ManifestHidingFileProvider : IFileProvider
         return info.Exists && !info.IsDirectory ? info : new NotFoundFileInfo(subpath + suffix);
     }
 
+    /// <inheritdoc/>
     public IDirectoryContents GetDirectoryContents(string subpath)
     {
         var contents = _inner.GetDirectoryContents(subpath);
-        return contents.Exists ? new FilteredContents(contents, this) : contents;
+        return contents.Exists ? new FilteredContents(contents, this, string.IsNullOrEmpty(subpath?.Replace('\\', '/').Trim('/'))) : contents;
     }
 
+    /// <inheritdoc/>
     public IChangeToken Watch(string filter) => _inner.Watch(filter);
 
-    /// <summary>True when an address names the manifest at the web root.</summary>
-    internal static bool IsManifestAddress(string subpath)
+    /// <summary>True when an address names the manifest at the folder's top.</summary>
+    internal static bool IsManifestAddress(string subpath) => IsRootAddress(subpath, FrontendManifest.FileName);
+
+    /// <summary>
+    /// True when an address names a file of a name at the top of its folder, in any casing, also
+    /// with the trailing dots, spaces or stream suffix a Windows file system ignores.
+    /// </summary>
+    internal static bool IsRootAddress(string subpath, string fileName)
     {
         if (string.IsNullOrEmpty(subpath))
         {
@@ -78,7 +96,7 @@ internal sealed class ManifestHidingFileProvider : IFileProvider
         }
 
         trimmed = trimmed.TrimEnd('.', ' ');
-        return string.Equals(trimmed, FrontendManifest.FileName, StringComparison.OrdinalIgnoreCase);
+        return string.Equals(trimmed, fileName, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -136,11 +154,13 @@ internal sealed class ManifestHidingFileProvider : IFileProvider
     {
         private readonly IDirectoryContents _inner;
         private readonly ManifestHidingFileProvider _owner;
+        private readonly bool _top;
 
-        public FilteredContents(IDirectoryContents inner, ManifestHidingFileProvider owner)
+        public FilteredContents(IDirectoryContents inner, ManifestHidingFileProvider owner, bool top)
         {
             _inner = inner;
             _owner = owner;
+            _top = top;
         }
 
         public bool Exists => _inner.Exists;
@@ -149,7 +169,9 @@ internal sealed class ManifestHidingFileProvider : IFileProvider
         {
             var files = _inner.ToList();
             var names = new HashSet<string>(files.Where(f => !f.IsDirectory).Select(f => f.Name), StringComparer.OrdinalIgnoreCase);
-            return files.Where(f => !_owner.IsManifestFile(f) && !IsCopyOf(f, names)).GetEnumerator();
+            return files.Where(f => !_owner.IsManifestFile(f) && !IsCopyOf(f, names)
+                    && !(_top && string.Equals(f.Name, GitIgnoreFileName, StringComparison.OrdinalIgnoreCase)))
+                .GetEnumerator();
         }
 
         private static bool IsCopyOf(IFileInfo file, HashSet<string> names)

@@ -29,7 +29,7 @@ use serde_json::{json, Value};
 use super::protocol::{self, RecordBuffer, RECORD_SEPARATOR};
 use super::runtime;
 use super::transport::{
-    EventQueue, LocalFuture, NegotiateReply, OpenFailed, SendFailed, Socket, Transport, TransportEvent,
+    EventQueue, Failure, LocalFuture, NegotiateReply, OpenFailed, SendFailed, Socket, Transport, TransportEvent,
 };
 use super::HubDescriptor;
 use crate::api::client;
@@ -220,7 +220,7 @@ impl Transport for FakeTransport {
             hook();
         }
         let reply = if server.refuse.get() {
-            NegotiateReply::Failed
+            NegotiateReply::Failed(Failure::sent(FAKE_REFUSES))
         } else if server.sign_in_failure.get() {
             NegotiateReply::Unauthorized
         } else {
@@ -241,7 +241,7 @@ impl Transport for FakeTransport {
 
     fn open(&self, url: &str, events: Rc<EventQueue>) -> Result<Box<dyn Socket>, OpenFailed> {
         if self.server.refuse.get() {
-            return Err(OpenFailed);
+            return Err(OpenFailed(FAKE_REFUSES.to_string()));
         }
         self.server.socket_urls.borrow_mut().push(url.to_string());
         let state = Rc::new(FakeSocketState {
@@ -270,16 +270,23 @@ impl Transport for FakeTransport {
     }
 }
 
+/// The cause of a failed attempt while a fake refuses connections
+/// ([`FakeHub::refuse_connections`]).
+pub(crate) const FAKE_REFUSES: &str = "the fake hub refuses connections";
+
+/// The cause of a failed attempt when no fake is installed for the hub.
+const OFFLINE: &str = "no fake hub is installed for this hub's path";
+
 /// What a native build talks to when no fake is installed: a server that is never there.
 struct Offline;
 
 impl Transport for Offline {
     fn negotiate(&self, _url: &str, _headers: &[(String, String)]) -> LocalFuture<NegotiateReply> {
-        Box::pin(std::future::ready(NegotiateReply::Failed))
+        Box::pin(std::future::ready(NegotiateReply::Failed(Failure::sent(OFFLINE))))
     }
 
     fn open(&self, _url: &str, _events: Rc<EventQueue>) -> Result<Box<dyn Socket>, OpenFailed> {
-        Err(OpenFailed)
+        Err(OpenFailed(OFFLINE.to_string()))
     }
 }
 
@@ -401,7 +408,9 @@ impl FakeHub {
         self.server.refuse.set(refuse);
     }
 
-    /// Makes negotiate answer 401 until the application's refresh hook has run.
+    /// Makes negotiate answer 401 until the application's refresh hook has renewed the session
+    /// (resolved to `RefreshOutcome::Refreshed`); a refresh that was refused or did not reach the
+    /// server leaves it answering 401.
     pub fn require_sign_in_failure(&self, fail: bool) {
         self.server.sign_in_failure.set(fail);
     }

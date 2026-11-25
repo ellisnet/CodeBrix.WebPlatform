@@ -3,6 +3,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using CodeBrix.WebPlatform.FrontendBuilder.Crates;
+using CodeBrix.WebPlatform.FrontendBuilder.Internal;
 using CodeBrix.WebPlatform.FrontendBuilder.Tests.Helpers;
 using SilverAssertions;
 using Xunit;
@@ -77,6 +78,46 @@ public class PlatformCratesTests
         //Assert
         text.Should().Contain("name = \"dioxus\"\nversion = \"0.7.10\"");
         text.Should().Contain("name = \"codebrix-webplatform\"");
+    }
+
+    [Fact]
+    public void ExtractTo_writes_the_folders_gitignore_also_when_the_crates_are_unchanged()
+    {
+        //Arrange
+        using var folder = new TempFolder();
+        var archive = Frontends.WriteCratesArchive(folder);
+        var vendor = folder.Combine("frontend/platform/vendor");
+        var ignoreFile = Path.Combine(vendor, BuildOutputFolder.IgnoreFileName);
+
+        //Act
+        var first = PlatformCrates.ExtractTo(archive, vendor);
+        var written = File.ReadAllText(ignoreFile);
+        File.Delete(ignoreFile);
+        var second = PlatformCrates.ExtractTo(archive, vendor);
+
+        //Assert
+        first.Should().BeTrue();
+        second.Should().BeFalse("the stamp says the crates are the same");
+        written.Should().Be(BuildOutputFolder.IgnoreFileText);
+        File.ReadAllText(ignoreFile).Should().Be(BuildOutputFolder.IgnoreFileText);
+        PlatformCrates.ListCrates(vendor).Should().Equal("fake-crate-1.0.0");
+    }
+
+    [Fact]
+    public void ExtractTo_counts_a_folder_that_holds_only_its_gitignore_as_its_own()
+    {
+        //Arrange
+        using var folder = new TempFolder();
+        var archive = Frontends.WriteCratesArchive(folder);
+        var vendor = folder.Combine("vendor");
+        folder.Write("vendor/" + BuildOutputFolder.IgnoreFileName, BuildOutputFolder.IgnoreFileText);
+
+        //Act
+        var written = PlatformCrates.ExtractTo(archive, vendor);
+
+        //Assert
+        written.Should().BeTrue();
+        File.Exists(Path.Combine(vendor, PlatformCrates.StampFileName)).Should().BeTrue();
     }
 
     [Fact]

@@ -28,9 +28,9 @@ use serde_json::Value;
 
 use super::protocol::{self, HubMessage, RecordBuffer};
 use super::runtime::{self, Notify, Sleep};
-use super::transport::{EventQueue, NegotiateReply, Socket, Transport, TransportEvent};
+use super::transport::{EventQueue, Failure, NegotiateReply, Socket, Transport, TransportEvent};
 use super::{ConnectionState, HubDescriptor, HubError};
-use crate::api::client;
+use crate::api::client::{self, RefreshOutcome};
 use crate::app_runtime::AppRuntime;
 
 /// Delays before the reconnect attempts after a connection is lost; the last one repeats.
@@ -76,6 +76,8 @@ pub(crate) struct Inner {
     /// Wakes those waiting for a connection: a state change or a failed attempt.
     progress: Notify,
     failures: Cell<u64>,
+    /// Why the last attempt to connect failed; cleared when the connection is made or started.
+    last_failure: RefCell<Option<Failure>>,
     /// Why the connection is Disconnected.
     last_error: RefCell<Option<HubError>>,
     ever_connected: Cell<bool>,
@@ -105,6 +107,7 @@ impl Inner {
             attention: Notify::default(),
             progress: Notify::default(),
             failures: Cell::new(0),
+            last_failure: RefCell::new(None),
             last_error: RefCell::new(None),
             ever_connected: Cell::new(false),
             live: RefCell::new(None),
@@ -138,6 +141,7 @@ impl Inner {
         }
         self.driver.set(Some(epoch));
         *self.last_error.borrow_mut() = None;
+        *self.last_failure.borrow_mut() = None;
         self.set_state(self.attempt_state());
         runtime::spawn(drive(self.clone(), epoch));
     }
@@ -201,14 +205,23 @@ impl Inner {
     }
 
     fn disconnected_error(&self) -> HubError {
-        self.last_error.borrow().clone().unwrap_or(HubError::NotConnected)
+        self.last_error.borrow().clone().unwrap_or_else(|| self.not_connected_error())
+    }
+
+    /// The error of an operation that needs the connection while there is none: with the cause
+    /// of the last failed attempt, if one failed since the connection was last made or started.
+    fn not_connected_error(&self) -> HubError {
+        match self.last_failure.borrow().as_ref() {
+            Some(failure) => failure.error(),
+            None => HubError::NotConnected { cause: None },
+        }
     }
 
     fn send_text(&self, text: &str) -> Result<(), HubError> {
         {
             let live = self.live.borrow();
             let Some(live) = live.as_ref() else {
-                return Err(HubError::NotConnected);
+                return Err(self.not_connected_error());
             };
             live.socket.send(text).map_err(|_| HubError::Network)?;
         }
@@ -220,6 +233,7 @@ impl Inner {
         let generation = self.generation.get() + 1;
         self.generation.set(generation);
         *self.live.borrow_mut() = Some(Live { socket, generation });
+        *self.last_failure.borrow_mut() = None;
         self.last_sent.set(runtime::now_ms());
         let reconnected = self.ever_connected.replace(true);
         self.set_state(ConnectionState::Connected);
@@ -424,7 +438,8 @@ struct Link {
 enum Attempt {
     Connected(Link),
     Unauthorized,
-    Failed,
+    /// The attempt failed; the connection retries with backoff.
+    Failed(Failure),
     Stopped,
 }
 
@@ -457,7 +472,9 @@ async fn drive(inner: Rc<Inner>, epoch: u64) {
                 inner.set_state(ConnectionState::Reconnecting);
                 retry = Some(0);
             }
-            Attempt::Failed => {
+            Attempt::Failed(failure) => {
+                // Recorded before `failures` moves, so a waiter woken by it reads this cause.
+                *inner.last_failure.borrow_mut() = Some(failure);
                 inner.failures.set(inner.failures.get() + 1);
                 inner.progress.notify();
                 retry = Some(retry.map_or(1, |n| n + 1));
@@ -533,34 +550,42 @@ async fn establish(inner: &Rc<Inner>, epoch: u64) -> Attempt {
                     return Attempt::Unauthorized;
                 };
                 let app = AppRuntime::capture();
-                let ok = app.enter(app.run(|| refresh())).await;
-                inner.transport.session_refreshed();
+                let outcome = app.enter(app.run(|| refresh())).await;
+                if outcome == RefreshOutcome::Refreshed {
+                    inner.transport.session_refreshed();
+                }
                 if inner.epoch.get() != epoch {
                     return Attempt::Stopped;
                 }
-                if !ok {
-                    return Attempt::Unauthorized;
+                match outcome {
+                    RefreshOutcome::Refreshed => {}
+                    RefreshOutcome::Refused => return Attempt::Unauthorized,
+                    // Not known to be signed out (no answer, or a 5xx): a failed attempt, retried.
+                    RefreshOutcome::Failed(error) => return Attempt::Failed(Failure::from_api(&error)),
                 }
             }
             NegotiateReply::Unauthorized => return Attempt::Unauthorized,
-            NegotiateReply::Failed => return Attempt::Failed,
+            NegotiateReply::Failed(failure) => return Attempt::Failed(failure),
         }
     };
-    let Ok(token) = protocol::parse_negotiate(&body) else {
-        return Attempt::Failed;
+    let token = match protocol::parse_negotiate(&body) {
+        Ok(token) => token,
+        Err(error) => return Attempt::Failed(negotiate_unusable(error)),
     };
     let queue = Rc::new(EventQueue::default());
-    let Ok(socket) = inner.transport.open(&protocol::socket_url(hub.path, &token), queue.clone()) else {
-        return Attempt::Failed;
+    let socket = match inner.transport.open(&protocol::socket_url(hub.path, &token), queue.clone()) {
+        Ok(socket) => socket,
+        Err(failed) => return Attempt::Failed(Failure::not_sent(format!("the WebSocket could not be opened: {}", failed.0))),
     };
     let deadline = runtime::now_ms() + HANDSHAKE_TIMEOUT_MS;
     match inner.next_event(epoch, &queue, deadline).await {
         Next::Event(TransportEvent::Opened) => {}
         Next::Stopped => return Attempt::Stopped,
-        Next::Event(_) | Next::TimedOut => return Attempt::Failed,
+        Next::Event(_) => return Attempt::Failed(Failure::sent("the WebSocket closed before it opened")),
+        Next::TimedOut => return Attempt::Failed(handshake_timed_out()),
     }
     if socket.send(&protocol::handshake_request()).is_err() {
-        return Attempt::Failed;
+        return Attempt::Failed(Failure::sent("the handshake could not be sent"));
     }
     let mut buffer = RecordBuffer::default();
     loop {
@@ -572,14 +597,37 @@ async fn establish(inner: &Rc<Inner>, epoch: u64) -> Attempt {
                 };
                 return match protocol::parse_handshake_response(&first) {
                     Ok(()) => Attempt::Connected(Link { socket, queue, buffer, leftover: records.collect() }),
-                    Err(_) => Attempt::Failed,
+                    Err(error) => Attempt::Failed(Failure::sent(format!("the server refused the handshake: {error}"))),
                 };
             }
             Next::Event(TransportEvent::Opened) => {}
             Next::Stopped => return Attempt::Stopped,
-            Next::Event(TransportEvent::Closed) | Next::TimedOut => return Attempt::Failed,
+            Next::Event(TransportEvent::Closed) => {
+                return Attempt::Failed(Failure::sent("the WebSocket closed before the handshake completed"))
+            }
+            Next::TimedOut => return Attempt::Failed(handshake_timed_out()),
         }
     }
+}
+
+/// The failure of an attempt whose socket did not open and shake hands within
+/// `HANDSHAKE_TIMEOUT_MS`.
+fn handshake_timed_out() -> Failure {
+    Failure::sent(format!(
+        "the WebSocket did not open and complete the handshake within {} ms",
+        HANDSHAKE_TIMEOUT_MS
+    ))
+}
+
+/// The failure of an attempt whose negotiate answer (a 2xx) cannot be used.
+fn negotiate_unusable(error: protocol::NegotiateError) -> Failure {
+    let what = match error {
+        protocol::NegotiateError::Refused => "negotiate answered with an error",
+        protocol::NegotiateError::Redirected => "negotiate sent the client to another address, which is not supported",
+        protocol::NegotiateError::NoWebSockets => "the server offers no WebSocket transport with text frames",
+        protocol::NegotiateError::Malformed => "the negotiate answer could not be read",
+    };
+    Failure::sent(what)
 }
 
 enum Woke {
@@ -644,8 +692,9 @@ async fn run(inner: &Inner, epoch: u64, queue: &EventQueue, mut buffer: RecordBu
     }
 }
 
-/// Resolves once the connection is Connected. Fails with `NotConnected` when an attempt fails
-/// meanwhile, or with the reason the connection is Disconnected. Asks a connection that is
+/// Resolves once the connection is Connected. Fails with `NotConnected` (or `NotSent`), carrying
+/// that attempt's cause, when an attempt fails meanwhile, or with the reason the connection is
+/// Disconnected. Asks a connection that is
 /// waiting in backoff to try now.
 fn wait_ready(inner: &Inner) -> impl Future<Output = Result<(), HubError>> + '_ {
     let start = inner.failures.get();
@@ -653,7 +702,7 @@ fn wait_ready(inner: &Inner) -> impl Future<Output = Result<(), HubError>> + '_ 
     poll_fn(move |cx| match inner.state.get() {
         ConnectionState::Connected => Poll::Ready(Ok(())),
         ConnectionState::Disconnected => Poll::Ready(Err(inner.disconnected_error())),
-        _ if inner.failures.get() != start => Poll::Ready(Err(HubError::NotConnected)),
+        _ if inner.failures.get() != start => Poll::Ready(Err(inner.not_connected_error())),
         _ => {
             inner.progress.register(cx);
             if !kicked {
@@ -909,7 +958,7 @@ impl HubConnection {
         match self.inner.state.get() {
             ConnectionState::Connected => self.inner.send_text(&protocol::invocation(None, method, &args)),
             ConnectionState::Disconnected => Err(self.inner.disconnected_error()),
-            _ => Err(HubError::NotConnected),
+            _ => Err(self.inner.not_connected_error()),
         }
     }
 

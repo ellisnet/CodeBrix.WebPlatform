@@ -10,10 +10,12 @@ using System.Threading.Tasks;
 namespace CodeBrix.WebPlatform.FrontendBuilder.Internal;
 
 /// <summary>
-/// Writes the compressed copies of a built frontend application's files in the web root
-/// (<see cref="PlatformFrontendOptions.CompressOutput"/>): <c>&lt;name&gt;.br</c> (Brotli,
-/// quality 11, window 24) and <c>&lt;name&gt;.gz</c> (gzip, smallest size) beside each
-/// compressible file, only when the copy is smaller. The same file always gives the same bytes.
+/// Writes the compressed copies of a built frontend application's files in the built frontend
+/// folder (<see cref="PlatformFrontendOptions.CompressOutput"/>): <c>&lt;name&gt;.br</c> (Brotli,
+/// quality 11, window 24) and <c>&lt;name&gt;.gz</c> (gzip, smallest size) beside each file
+/// whose extension is in <see cref="PlatformFrontendOptions.CompressibleExtensions"/>, only when
+/// the copy is smaller. The same file always gives the same bytes. A <c>.gitignore</c> is never
+/// compressed or counted.
 /// </summary>
 internal static class OutputCompressor
 {
@@ -30,22 +32,45 @@ internal static class OutputCompressor
     internal const int BrotliWindow = 24;
 
     /// <summary>
-    /// The extensions of the files that are compressed: what a built platform site holds that is
-    /// not compressed already (the WebAssembly, the JavaScript glue and loader, stylesheets,
-    /// pages, JSON and source maps, SVG, text, and the plain-text formats and uncompressed fonts
-    /// an application may ship as assets). Everything else - PNG, JPEG, GIF, WebP, AVIF, ICO,
-    /// WOFF, WOFF2, audio, video, ZIP, gzip and Brotli files and the like - is never compressed.
+    /// True when a file of that name is compressed: its extension is in the set, and it is not a
+    /// <c>.gitignore</c> (a <c>.br</c> / <c>.gz</c> name is never in the set, see
+    /// <see cref="RequireExtensions"/>).
     /// </summary>
-    internal static readonly IReadOnlyCollection<string> CompressibleExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-    {
-        ".wasm", ".js", ".mjs", ".css", ".html", ".htm", ".json", ".map", ".webmanifest",
-        ".svg", ".txt", ".xml", ".csv", ".md", ".toml", ".yaml", ".yml",
-        ".wgsl", ".glsl", ".gltf", ".obj", ".ttf", ".otf",
-    };
+    /// <param name="fileName">The file's name.</param>
+    /// <param name="extensions">The compressible extensions, with the dot (compared ignoring case).</param>
+    internal static bool IsCompressible(string fileName, IReadOnlyCollection<string> extensions)
+        => !string.IsNullOrEmpty(fileName) && !BuildOutputFolder.IsIgnoreFile(fileName) && extensions.Contains(Path.GetExtension(fileName));
 
-    /// <summary>True when a file of that name is compressed.</summary>
-    internal static bool IsCompressible(string fileName)
-        => !string.IsNullOrEmpty(fileName) && CompressibleExtensions.Contains(Path.GetExtension(fileName));
+    /// <summary>
+    /// Checks a set of compressible extensions and returns it as a set that ignores case.
+    /// </summary>
+    /// <param name="extensions">The extensions (<see cref="PlatformFrontendOptions.CompressibleExtensions"/>).</param>
+    /// <returns>The set.</returns>
+    /// <exception cref="FrontendBuildException">An entry is not an extension (null, blank, not
+    /// starting with a dot, with a further dot or a path separator), or is <c>.br</c> / <c>.gz</c>.</exception>
+    internal static IReadOnlyCollection<string> RequireExtensions(IEnumerable<string> extensions)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var extension in extensions ?? Array.Empty<string>())
+        {
+            if (string.IsNullOrWhiteSpace(extension) || extension.Length < 2 || extension[0] != '.' || extension.IndexOf('.', 1) >= 0
+                || extension.IndexOfAny(new[] { '/', '\\', ' ' }) >= 0)
+            {
+                throw new FrontendBuildException(
+                    $"PlatformFrontendOptions.CompressibleExtensions holds \"{extension}\", which is not a file extension. Each entry is one extension with its dot, such as \".wasm\".");
+            }
+
+            if (IsCopyName(extension))
+            {
+                throw new FrontendBuildException(
+                    $"PlatformFrontendOptions.CompressibleExtensions holds \"{extension}\": a {BrotliSuffix} or {GzipSuffix} file is a compressed copy already. Remove it from the set.");
+            }
+
+            set.Add(extension);
+        }
+
+        return set;
+    }
 
     /// <summary>True when the name ends in <c>.br</c> or <c>.gz</c>.</summary>
     internal static bool IsCopyName(string fileName)
@@ -61,19 +86,20 @@ internal static class OutputCompressor
     /// removed, whatever the option. A <c>.br</c> / <c>.gz</c> file of the application with no
     /// file beside it is a file in its own right and is left alone.
     /// </summary>
-    /// <param name="applicationDirectory">The application's folder in the web root.</param>
+    /// <param name="applicationDirectory">The application's folder in the built frontend folder.</param>
     /// <param name="relativeFiles">The application's files, relative to that folder.</param>
     /// <param name="compression">The copies to write.</param>
+    /// <param name="extensions">The compressible extensions (from <see cref="RequireExtensions"/>).</param>
     /// <param name="cancellationToken">Stops the work between files.</param>
     /// <returns>What was written and removed.</returns>
     /// <exception cref="FrontendBuildException">A file could not be read or a copy could not be
     /// written.</exception>
-    internal static FrontendCompressionResult Compress(string applicationDirectory, IEnumerable<string> relativeFiles, FrontendCompression compression, CancellationToken cancellationToken = default)
+    internal static FrontendCompressionResult Compress(string applicationDirectory, IEnumerable<string> relativeFiles, FrontendCompression compression, IReadOnlyCollection<string> extensions, CancellationToken cancellationToken = default)
     {
         var stopwatch = Stopwatch.StartNew();
-        var files = new HashSet<string>(relativeFiles.Select(f => f.Replace('\\', '/')), StringComparer.Ordinal);
+        var files = new HashSet<string>(relativeFiles.Select(f => f.Replace('\\', '/')).Where(f => !BuildOutputFolder.IsIgnoreFile(f)), StringComparer.Ordinal);
         var copies = files.Where(f => IsCopyName(f) && files.Contains(f.Substring(0, f.Length - 3))).ToHashSet(StringComparer.Ordinal);
-        var originals = files.Where(f => !copies.Contains(f) && IsCompressible(Path.GetFileName(f))).OrderBy(f => f, StringComparer.Ordinal).ToList();
+        var originals = files.Where(f => !copies.Contains(f) && IsCompressible(Path.GetFileName(f), extensions)).OrderBy(f => f, StringComparer.Ordinal).ToList();
         var removed = 0;
         var results = new List<CompressedFile>();
         if (compression != FrontendCompression.None)
@@ -96,7 +122,7 @@ internal static class OutputCompressor
                     catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
                     {
                         throw new FrontendBuildException(
-                            $"The compressed copies of {path} could not be written: {e.Message} Check that nothing else holds the web root's files open, or set PlatformFrontendOptions.CompressOutput to None.", e);
+                            $"The compressed copies of {path} could not be written: {e.Message} Check that nothing else holds the built frontend folder's files open, or set PlatformFrontendOptions.CompressOutput to None.", e);
                     }
                 });
             }

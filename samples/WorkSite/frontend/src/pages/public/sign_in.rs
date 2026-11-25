@@ -61,6 +61,11 @@ pub fn SignIn(next: String) -> Element {
                     toast::success(format!("Welcome back, {}.", user.first_name));
                     session::signed_in(user);
                 }
+                Err(err) if err.is_offline() => {
+                    // The backend is offline for maintenance (its app-offline.html is in place):
+                    // nothing is wrong with what was typed, so say only that.
+                    form_error.set(Some("WorkSite is down for maintenance. Please try again in a few minutes.".to_string()));
+                }
                 Err(err) => {
                     if err.code() == "invalid_credentials" {
                         password.set(String::new());

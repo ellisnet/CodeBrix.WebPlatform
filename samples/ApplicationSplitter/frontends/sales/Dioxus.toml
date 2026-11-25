@@ -1,8 +1,15 @@
-# Settings for `dx` (the Dioxus build tool). Only the page title is set here (it fills
-# `{app_title}` in index.html). The application's base path is NOT set here: the build program
-# gives dx the application's name, so the name is written in one place only.
+# Settings for `dx` (the Dioxus build tool). The page title is set here (it fills `{app_title}` in
+# index.html), and the development proxy below. The application's base path is NOT set here: the
+# build program gives dx the application's name, so the name is written in one place only.
 [application]
 name = "splitter-sales"
 
 [web.app]
 title = "Sales"
+
+# For `serve sales` only (dx's development server, http://localhost:8080/sales): dx passes every
+# request below /api - the REST calls and the clock hub - on to the backend, which must be running
+# at this address (the port `run` uses). A build ignores this. For the hub to connect through the
+# proxy, the backend accepts the dx server's origin in Development (backend Program.cs).
+[[web.proxy]]
+backend = "http://localhost:5210/api"

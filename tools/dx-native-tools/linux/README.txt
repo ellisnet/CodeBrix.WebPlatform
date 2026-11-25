@@ -41,7 +41,7 @@ tools/dx-native-tools/linux - building dx and wasm-bindgen for linux-x64 and
     not re-checked); wasm-bindgen unchanged; THIRD-PARTY-NOTICES-Dioxus.txt
     regenerated. ADOPTED into ../../../native_libraries/ on 2026-11-19
     (../BUILD-PROVENANCE.txt).
-    STATUS 2026-11-23 (the programs shipped now): both RIDs REBUILT after
+    STATUS 2026-11-23 (replaced on 2026-11-24): both RIDs REBUILT after
     the bundle splitter's patch 0004 (the main module of a split build keeps
     its data; SEVEN dioxus-cli patches, FOUR splitter patches), on the
     owner's Mac Pro running LMDE 7, where the derived image was built for
@@ -50,7 +50,24 @@ tools/dx-native-tools/linux - building dx and wasm-bindgen for linux-x64 and
     byte-identically to the dx it replaces); each RID built ONCE;
     wasm-bindgen and the four licence and notices files unchanged. ADOPTED
     into ../../../native_libraries/ on 2026-11-23
-    (../BUILD-PROVENANCE.txt). <<<
+    (../BUILD-PROVENANCE.txt).
+    STATUS 2026-11-24 (the programs shipped now): both RIDs REBUILT on the
+    x86_64 LMDE 7 laptop (podman 5.4.2, the derived image reused) after
+    dioxus-cli patches 0008 to 0010 (Tailwind's default output in
+    assets/generated, the stand-in split loader of an unsplit build and of
+    `dx serve`, root addresses without "/./") and splitter patches 0005 and
+    0006 (a data symbol of size 0, the shared chunk filled): TEN dioxus-cli
+    patches, SIX splitter patches. Every gate check passed but ONE, the
+    linux-x64 functional gate's comparison with today's tools, which read
+    DIFFERENT as expected: patch 0010 changes WorkSite's index.html (two
+    lines), its glue script (one line) and so that script's hashed name;
+    the .wasm and every other site file were byte-identical. The difference
+    was accepted (../BUILD-PROVENANCE.txt, ADOPTED 2026-11-24, says exactly
+    what differed); with these programs adopted the comparison passes again.
+    Each RID built twice, byte-identical both times (linux-x64 runs 23 and
+    24, linux-arm64 runs 25 and 26); wasm-bindgen and the four licence and
+    notices files unchanged. ADOPTED into ../../../native_libraries/ on
+    2026-11-24. <<<
 
 NOTHING HERE INSTALLS ANYTHING ON YOUR MACHINE. Every script checks what it
 needs, and if something is missing it names it, prints the command that
@@ -76,10 +93,14 @@ PREREQUISITES (Debian-based Linux, x86_64)
      WasmShrink package's wasm-opt in the local NuGet cache (a restore of the
      repository's solution puts both there; or TAILWIND_DIR=<folder>,
      WASM_OPT_DIR=<folder>; a Tailwind installed on the machine is never
-     used), the sample's frontend
-     materialized once (platform/ with the platform's crates, src/generated/
-     and .cargo/), and git (only to make the local template repository that
-     `dx new` is tested with):
+     used), the sample's frontend MATERIALIZED BY A FrontendBuilder OF THE
+     CURRENT LAYOUT (the sample's `generate`; THE HOST-TOOLS PROGRAMS in the
+     root MAINTAINER-README.txt): platform/ with the platform's crates,
+     src/generated/, .cargo/ and the stylesheet at
+     frontend/assets/generated/tailwind.css. Having materialized it once is
+     not enough: a frontend materialized by an older FrontendBuilder has its
+     stylesheet elsewhere and is not the layout dx now builds. And git (only
+     to make the local template repository that `dx new` is tested with):
          sudo apt install git
      SKIP_FUNCTIONAL_GATE=1 skips it.
   5. Disk: about 3 GB for the derived image, about 3 GB of cargo target folder

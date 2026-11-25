@@ -4,7 +4,7 @@
 pub mod client;
 pub mod error;
 
-pub use client::{Auth, ClientConfig, Method, REQUEST_MARKER_HEADER};
+pub use client::{Auth, ClientConfig, Method, RefreshOutcome, REQUEST_MARKER_HEADER};
 pub use error::ApiError;
 
 /// What every generated API function returns.

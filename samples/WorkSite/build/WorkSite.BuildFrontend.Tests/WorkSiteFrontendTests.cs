@@ -150,9 +150,9 @@ public class WorkSiteFrontendTests
         options.DxPath.Should().BeNull("dx comes from the host-tools package");
         options.WasmBindgenPath.Should().BeNull();
         options.CrateMode.Should().Be(CrateMode.PlatformCratesOnly);
-        options.ResolvedVendorDirectory.Should().Be(Path.Combine(paths.Layout.Frontend, "platform", "vendor"));
-        options.DxHomeDirectory.Should().Be(paths.DxHome);
-        paths.DxHome.Should().StartWith(paths.Artifacts);
+        options.VendorDirectory.Should().Be(Path.Combine(paths.Layout.Frontend, "platform", "vendor"));
+        options.DxHomeDirectory.Should().Be(Path.Combine(paths.Layout.Frontend, "target", "dx-home"), "the platform's folder layout is fixed");
+        options.TailwindOutputFile.Should().Be(Path.Combine(paths.Layout.Frontend, "assets", "generated", "tailwind.css"));
         options.ServeFeatures.Should().Equal("devtools");
         options.SharedCrateDirectory.Should().Be(Path.Combine(paths.Layout.Frontend, "platform", "codebrix-webplatform"));
         options.GeneratedClientDirectory.Should().Be(Path.Combine(paths.Layout.Frontend, "src", "generated"));
@@ -174,6 +174,27 @@ public class WorkSiteFrontendTests
         report[PrerequisiteKind.HostTools].Message.Should().Contain("package");
         report[PrerequisiteKind.Tailwind].Status.Should().Be(PrerequisiteStatus.Ok, report[PrerequisiteKind.Tailwind].Message);
         report[PrerequisiteKind.Tailwind].Message.Should().Contain(PackagedTailwind.GetPackageId(HostTools.CurrentRuntimeIdentifier));
+    }
+
+    [Fact]
+    public void the_notices_file_is_written_beside_the_built_site_with_its_compressed_copies()
+    {
+        //Arrange
+        using var folder = new TempFolder();
+        var paths = ArrangePaths(folder);
+        Directory.CreateDirectory(paths.ApiProjectDirectory);
+        folder.Write("samples/WorkSite/frontend/Cargo.toml", "[package]\nname = \"worksite-frontend\"\nversion = \"0.1.0\"\n");
+        var frontend = new PlatformFrontend(WorkSiteFrontend.CreateOptions(paths, null));
+        var notices = Builder.CombineNotices(string.Concat(Enumerable.Repeat("WorkSite's own notices.\n", 200)), string.Concat(Enumerable.Repeat("The platform's notices.\n", 200)));
+
+        //Act
+        var result = frontend.WriteBuiltFile(paths.ApiProjectDirectory, BuilderPaths.BuiltNoticesFileName, notices, FrontendConfiguration.Release, TestContext.Current.CancellationToken);
+
+        //Assert
+        File.ReadAllText(paths.BuiltNoticesFile).Should().Be(notices);
+        File.Exists(paths.BuiltNoticesFile + ".br").Should().BeTrue();
+        File.Exists(paths.BuiltNoticesFile + ".gz").Should().BeTrue();
+        result.Files.Should().HaveCount(1);
     }
 
     [Fact]
@@ -200,7 +221,8 @@ public class WorkSiteFrontendTests
         //Assert
         first.GeneratedFiles.Should().HaveCount(4);
         second.WasUpToDate.Should().BeTrue();
-        Directory.EnumerateFiles(options.GeneratedClientDirectory).Select(Path.GetFileName).Order().Should().Equal("api.rs", "hubs.rs", "mod.rs", "models.rs");
+        Directory.EnumerateFiles(options.GeneratedClientDirectory).Select(Path.GetFileName).Order(StringComparer.Ordinal).Should().Equal(".gitignore", "api.rs", "hubs.rs", "mod.rs", "models.rs");
+        File.ReadAllText(Path.Combine(options.GeneratedClientDirectory, RustClientGenerator.IgnoreFileName)).Should().Be(RustClientGenerator.IgnoreFileText, "the generated folder ignores itself in git");
         File.ReadAllText(Path.Combine(options.GeneratedClientDirectory, "hubs.rs")).Should().Contain("use codebrix_webplatform::signalr::{self as signalr,");
         File.ReadAllText(Path.Combine(options.GeneratedClientDirectory, "mod.rs")).Should()
             .Contain("pub const REQUEST_MARKER: &str = \"WorkSite\";")
@@ -209,7 +231,7 @@ public class WorkSiteFrontendTests
         File.Exists(Path.Combine(options.SharedCrateDirectory, "src", "lib.rs")).Should().BeTrue();
         File.Exists(Path.Combine(options.SharedCrateDirectory, "src", "signalr", "mod.rs")).Should().BeTrue();
         first.VendorChanged.Should().BeTrue();
-        Directory.Exists(Path.Combine(options.ResolvedVendorDirectory, "dioxus-0.7.10")).Should().BeTrue();
+        Directory.Exists(Path.Combine(options.VendorDirectory, "dioxus-0.7.10")).Should().BeTrue();
         File.ReadAllText(options.CargoConfigurationFile).Should().Contain("directory = \"platform/vendor\"");
     }
 }

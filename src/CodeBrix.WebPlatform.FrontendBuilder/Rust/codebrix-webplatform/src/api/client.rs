@@ -5,7 +5,12 @@
 //! - the `X-Requested-With` header (the backend's request marker) on every request that changes
 //!   state (anything but GET/HEAD);
 //! - on 401 from a route that needs sign-in: one refresh call (shared by every request that is
-//!   waiting on it) and one retry; if that fails too the application is told the session ended;
+//!   waiting on it) and one retry; when the server refuses the refresh (a 4xx other than 408 and
+//!   429), or the retry is 401 too, the application is told the session ended; when the refresh
+//!   request gets no answer (or cannot be sent), or the server cannot deal with it now (a 5xx,
+//!   such as 503 while the site is offline for maintenance, a 408 timeout or a 429 rate limit),
+//!   the request fails with that error and the session is left alone, so the user can simply try
+//!   again;
 //! - a success answer read as JSON ([`send_json`]), as nothing ([`send_empty`]) or as the bytes
 //!   it is ([`send_bytes`], for a file the frontend reads itself); a non-success answer parsed
 //!   into [`ApiError`] whichever was asked, because an error is always the standard JSON problem
@@ -61,7 +66,9 @@ pub struct ClientConfig {
     pub refresh_path: Option<String>,
     /// Called with the body of a successful refresh answer (for example to update the stored user).
     pub on_refreshed: Option<Rc<dyn Fn(&str)>>,
-    /// Called when a request is still 401 after one refresh: the session is gone.
+    /// Called when the server refuses the refresh (a 4xx other than 408 and 429), or a request is
+    /// still 401 after one refresh: the session is gone. Never called when the refresh request got
+    /// no answer or the server could not deal with it now (a 5xx, 408 or 429).
     pub on_session_ended: Option<Rc<dyn Fn()>>,
 }
 
@@ -164,7 +171,10 @@ fn with_browser_options(request: reqwest::RequestBuilder, _cache: CacheMode) -> 
     request
 }
 
-/// Sends one request and reads the whole answer, its body as `read` asks.
+/// Sends one request and reads the whole answer, its body as `read` asks. A request that cannot
+/// be built (an address that is not a valid URL, a header value that is not allowed) fails with
+/// [`ApiError::NotSent`] and is never sent; a request that is sent and gets no complete answer
+/// fails with [`ApiError::Network`]. Both carry reqwest's description of the failure.
 async fn send_once(method: &Method, path: &str, body: Option<&str>, read: BodyKind) -> Result<RawResponse, ApiError> {
     let url = format!("{}{}", browser::origin(), path);
     let mut request = CLIENT
@@ -184,12 +194,12 @@ async fn send_once(method: &Method, path: &str, body: Option<&str>, read: BodyKi
     let response = {
         // The browser stores the answer's cookies before `send` resolves.
         let _in_flight = changes_state(method).then(StateChangeInFlight::begin);
-        request.send().await.map_err(|_| ApiError::Network)?
+        request.send().await.map_err(|error| ApiError::from_transport(&error))?
     };
     let status = response.status().as_u16();
     let body = match read {
-        BodyKind::Text => RawBody::Text(response.text().await.map_err(|_| ApiError::Network)?),
-        BodyKind::Bytes => RawBody::Bytes(response.bytes().await.map_err(|_| ApiError::Network)?.into()),
+        BodyKind::Text => RawBody::Text(response.text().await.map_err(|error| ApiError::from_transport(&error))?),
+        BodyKind::Bytes => RawBody::Bytes(response.bytes().await.map_err(|error| ApiError::from_transport(&error))?.into()),
     };
     Ok(RawResponse { status, body })
 }
@@ -267,16 +277,36 @@ pub(crate) fn state_changes_finished() -> u64 {
     STATE_CHANGES.try_with(|changes| changes.finished.get()).unwrap_or(0)
 }
 
+/// How a session refresh ended. Every caller waiting on the same refresh gets the same outcome.
+#[derive(Clone, Debug, PartialEq)]
+pub enum RefreshOutcome {
+    /// The server renewed the session (a 2xx answer); the application's `on_refreshed` hook has
+    /// been handed the answer.
+    Refreshed,
+    /// The server looked at the session and said no (a 4xx answer other than 408 and 429), or the
+    /// application has no refresh path: the session is gone.
+    Refused,
+    /// The refresh did not settle whether the session is still good, so it is left alone and the
+    /// user may simply try again. The error says why: [`ApiError::Network`] or
+    /// [`ApiError::NotSent`] (with its cause) when the refresh request got no answer or could not
+    /// be sent; [`ApiError::Problem`] (built from the answer, with its status, code and title)
+    /// when the server answered but could not deal with the request now - a 5xx, for example 503
+    /// with the code "offline" while the site is down for maintenance ([`ApiError::is_offline`]),
+    /// 408 (request timeout) or 429 (rate limited) - or answered with a status that is neither
+    /// success nor an error (1xx, 3xx).
+    Failed(ApiError),
+}
+
 /// The shared state of one refresh in flight: its outcome once known and who is waiting.
 #[derive(Default)]
 struct RefreshSlot {
-    outcome: Cell<Option<bool>>,
+    outcome: RefCell<Option<RefreshOutcome>>,
     waiters: RefCell<Vec<Waker>>,
 }
 
 impl RefreshSlot {
-    fn finish(&self, ok: bool) {
-        self.outcome.set(Some(ok));
+    fn finish(&self, outcome: RefreshOutcome) {
+        *self.outcome.borrow_mut() = Some(outcome);
         for waker in self.waiters.borrow_mut().drain(..) {
             waker.wake();
         }
@@ -288,11 +318,12 @@ struct WaitForRefresh {
 }
 
 impl Future for WaitForRefresh {
-    type Output = bool;
+    type Output = RefreshOutcome;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<bool> {
-        match self.slot.outcome.get() {
-            Some(ok) => Poll::Ready(ok),
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<RefreshOutcome> {
+        let outcome = self.slot.outcome.borrow().clone();
+        match outcome {
+            Some(outcome) => Poll::Ready(outcome),
             None => {
                 self.slot.waiters.borrow_mut().push(cx.waker().clone());
                 Poll::Pending
@@ -301,14 +332,45 @@ impl Future for WaitForRefresh {
     }
 }
 
+/// Sends the refresh request once and reads what its answer means.
+async fn refresh_once(refresh_path: &str) -> RefreshOutcome {
+    let config = config();
+    refresh_outcome(send_once(&Method::POST, refresh_path, None, BodyKind::Text).await, &config)
+}
+
+/// What the refresh request's result means: a 2xx renewed the session (its answer is handed to
+/// the application's `on_refreshed` hook); a 4xx refused it, except 408 and 429, which say "not
+/// now" rather than "no"; anything else - those two, a 5xx, an unexpected 1xx or 3xx, or no answer
+/// at all (a transport error) - leaves the session unknown. Only a definite "no" signs the user
+/// out, so every status the client does not understand as one is treated as a failure to refresh.
+fn refresh_outcome(result: Result<RawResponse, ApiError>, config: &ClientConfig) -> RefreshOutcome {
+    match result {
+        Ok(response) if (200..300).contains(&response.status) => {
+            if let Some(on_refreshed) = &config.on_refreshed {
+                on_refreshed(&response.body.into_text());
+            }
+            RefreshOutcome::Refreshed
+        }
+        Ok(response) if refuses_the_session(response.status) => RefreshOutcome::Refused,
+        Ok(response) => RefreshOutcome::Failed(ApiError::from_response(response.status, &response.body.into_text())),
+        Err(error) => RefreshOutcome::Failed(error),
+    }
+}
+
+/// Whether a refresh answer with `status` is the server's "no" to the session: a 4xx, except 408
+/// (request timeout) and 429 (rate limited), which only say "not now".
+fn refuses_the_session(status: u16) -> bool {
+    (400..500).contains(&status) && status != 408 && status != 429
+}
+
 /// Refreshes the session once, however many callers ask at the same time (a refresh token that
-/// rotates would sign the user out if two refreshes ran in parallel). The refresh itself runs as
-/// a root task so it completes even if the component that started it goes away. Returns whether
-/// the session is now fresh; false at once when the application has no refresh path. Must be
-/// called from inside the running application.
-pub async fn refresh_session() -> bool {
+/// rotates would sign the user out if two refreshes ran in parallel); every caller waiting on it
+/// gets the same [`RefreshOutcome`]. The refresh itself runs as a root task so it completes even
+/// if the component that started it goes away. [`RefreshOutcome::Refused`] at once when the
+/// application has no refresh path. Must be called from inside the running application.
+pub async fn refresh_session() -> RefreshOutcome {
     let Some(refresh_path) = config().refresh_path else {
-        return false;
+        return RefreshOutcome::Refused;
     };
     let existing = REFRESH.with(|cell| cell.borrow().clone());
     let slot = match existing {
@@ -318,18 +380,9 @@ pub async fn refresh_session() -> bool {
             REFRESH.with(|cell| *cell.borrow_mut() = Some(slot.clone()));
             let worker = slot.clone();
             spawn_forever(async move {
-                let config = config();
-                let ok = match send_once(&Method::POST, &refresh_path, None, BodyKind::Text).await {
-                    Ok(response) if (200..300).contains(&response.status) => {
-                        if let Some(on_refreshed) = &config.on_refreshed {
-                            on_refreshed(&response.body.into_text());
-                        }
-                        true
-                    }
-                    _ => false,
-                };
+                let outcome = refresh_once(&refresh_path).await;
                 REFRESH.with(|cell| *cell.borrow_mut() = None);
-                worker.finish(ok);
+                worker.finish(outcome);
             });
             slot
         }
@@ -343,15 +396,28 @@ fn session_ended() {
     }
 }
 
+/// What a request that needs sign-in does after its first answer was 401 and the session
+/// refresh ended with `outcome`: `Ok` - send it again (the session was renewed); the server
+/// refused the refresh - the session is gone: the application is told and the request fails
+/// with [`ApiError::Unauthorized`]; the refresh failed (no answer, or a 5xx) - the request fails
+/// with the refresh's own error and the session is left alone.
+fn after_refresh(outcome: RefreshOutcome) -> Result<(), ApiError> {
+    match outcome {
+        RefreshOutcome::Refreshed => Ok(()),
+        RefreshOutcome::Refused => {
+            session_ended();
+            Err(ApiError::Unauthorized)
+        }
+        RefreshOutcome::Failed(error) => Err(error),
+    }
+}
+
 /// Runs a request with the refresh-and-retry rule. Returns the body of a 2xx answer, read as
 /// `read` asks.
 async fn execute(method: Method, path: &str, body: Option<String>, auth: Auth, read: BodyKind) -> Result<RawBody, ApiError> {
     let first = send_once(&method, path, body.as_deref(), read).await?;
     let response = if first.status == 401 && auth == Auth::Session {
-        if !refresh_session().await {
-            session_ended();
-            return Err(ApiError::Unauthorized);
-        }
+        after_refresh(refresh_session().await)?;
         let second = send_once(&method, path, body.as_deref(), read).await?;
         if second.status == 401 {
             session_ended();
@@ -463,7 +529,7 @@ mod tests {
         let _reset = Reset;
         reset_for_tests();
         // No request is sent and no task is spawned (which would need a Dioxus runtime).
-        assert!(!crate::signalr::testing::block_on(refresh_session()));
+        assert_eq!(crate::signalr::testing::block_on(refresh_session()), RefreshOutcome::Refused);
     }
 
     struct Reset;
@@ -472,6 +538,171 @@ mod tests {
         fn drop(&mut self) {
             reset_for_tests();
         }
+    }
+
+    /// Counts the application's `on_session_ended` calls.
+    fn count_session_ends() -> Rc<Cell<usize>> {
+        let ended = Rc::new(Cell::new(0));
+        let counter = ended.clone();
+        configure(ClientConfig {
+            on_session_ended: Some(Rc::new(move || counter.set(counter.get() + 1))),
+            ..ClientConfig::default()
+        });
+        ended
+    }
+
+    #[test]
+    fn a_refreshed_session_sends_the_request_again_and_keeps_the_session() {
+        let _reset = Reset;
+        let ended = count_session_ends();
+        assert_eq!(after_refresh(RefreshOutcome::Refreshed), Ok(()));
+        assert_eq!(ended.get(), 0);
+    }
+
+    #[test]
+    fn a_refresh_the_server_refused_ends_the_session() {
+        let _reset = Reset;
+        let ended = count_session_ends();
+        assert_eq!(after_refresh(RefreshOutcome::Refused), Err(ApiError::Unauthorized));
+        assert_eq!(ended.get(), 1);
+    }
+
+    #[test]
+    fn a_refresh_that_got_no_answer_fails_the_request_with_its_error_and_keeps_the_session() {
+        let _reset = Reset;
+        let ended = count_session_ends();
+        let network = ApiError::Network { cause: "error sending request".to_string() };
+        assert_eq!(after_refresh(RefreshOutcome::Failed(network.clone())), Err(network));
+        let not_sent = ApiError::NotSent { cause: "builder error".to_string() };
+        assert_eq!(after_refresh(RefreshOutcome::Failed(not_sent.clone())), Err(not_sent));
+        assert_eq!(ended.get(), 0);
+    }
+
+    /// A configuration whose `on_refreshed` hook records the answers it is handed.
+    fn recording_refreshes() -> (ClientConfig, Rc<RefCell<Vec<String>>>) {
+        let seen = Rc::new(RefCell::new(Vec::new()));
+        let sink = seen.clone();
+        let config = ClientConfig {
+            on_refreshed: Some(Rc::new(move |body: &str| sink.borrow_mut().push(body.to_string()))),
+            ..ClientConfig::default()
+        };
+        (config, seen)
+    }
+
+    #[test]
+    fn a_refresh_answered_with_success_renewed_the_session_and_hands_over_the_answer() {
+        let (config, seen) = recording_refreshes();
+        let response = RawResponse { status: 200, body: RawBody::Text(r#"{"name":"Ada"}"#.to_string()) };
+        assert_eq!(refresh_outcome(Ok(response), &config), RefreshOutcome::Refreshed);
+        assert_eq!(*seen.borrow(), vec![r#"{"name":"Ada"}"#.to_string()]);
+    }
+
+    #[test]
+    fn a_refresh_answered_with_a_client_error_was_refused() {
+        let (config, seen) = recording_refreshes();
+        for status in [400, 401, 403, 404, 407, 409, 410, 428, 430, 499] {
+            let response = RawResponse { status, body: RawBody::Text(String::new()) };
+            assert_eq!(refresh_outcome(Ok(response), &config), RefreshOutcome::Refused, "{status}");
+        }
+        assert!(seen.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_refresh_answered_with_a_timeout_or_a_rate_limit_failed_with_that_problem() {
+        let (config, seen) = recording_refreshes();
+        let limited = r#"{"title":"Too many attempts. Wait a moment and try again.","status":429,"code":"rate_limited"}"#;
+        let response = RawResponse { status: 429, body: RawBody::Text(limited.to_string()) };
+        assert_eq!(refresh_outcome(Ok(response), &config), RefreshOutcome::Failed(ApiError::from_response(429, limited)));
+        let response = RawResponse { status: 408, body: RawBody::Text(String::new()) };
+        let outcome = refresh_outcome(Ok(response), &config);
+        assert_eq!(outcome, RefreshOutcome::Failed(ApiError::from_response(408, "")));
+        let RefreshOutcome::Failed(error) = outcome else { unreachable!() };
+        assert_eq!(error.status(), Some(408));
+        assert!(seen.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_rate_limited_refresh_fails_the_request_with_its_problem_and_keeps_the_session() {
+        let _reset = Reset;
+        let ended = count_session_ends();
+        for status in [408, 429] {
+            let problem = ApiError::from_response(status, "");
+            assert_eq!(after_refresh(RefreshOutcome::Failed(problem.clone())), Err(problem), "{status}");
+        }
+        assert_eq!(ended.get(), 0);
+    }
+
+    /// The standard problem body the backend answers with while the site is offline.
+    const OFFLINE_BODY: &str = r#"{"title":"The site is offline for maintenance. Try again later.","status":503,"code":"offline"}"#;
+
+    #[test]
+    fn a_refresh_answered_with_a_server_error_failed_with_that_problem() {
+        let (config, seen) = recording_refreshes();
+        let response = RawResponse { status: 503, body: RawBody::Text(OFFLINE_BODY.to_string()) };
+        let outcome = refresh_outcome(Ok(response), &config);
+        assert_eq!(outcome, RefreshOutcome::Failed(ApiError::from_response(503, OFFLINE_BODY)));
+        let RefreshOutcome::Failed(error) = outcome else { unreachable!() };
+        assert!(error.is_offline());
+        assert_eq!(error.status(), Some(503));
+        assert_eq!(error.message(), "The site is offline for maintenance. Try again later.");
+        for status in [500, 502, 504, 599] {
+            let response = RawResponse { status, body: RawBody::Text(String::new()) };
+            let outcome = refresh_outcome(Ok(response), &config);
+            assert_eq!(outcome, RefreshOutcome::Failed(ApiError::from_response(status, "")), "{status}");
+        }
+        assert!(seen.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_refresh_answered_with_neither_success_nor_an_error_failed() {
+        let (config, seen) = recording_refreshes();
+        for status in [100, 101, 301, 302, 304, 307] {
+            let response = RawResponse { status, body: RawBody::Text(String::new()) };
+            let outcome = refresh_outcome(Ok(response), &config);
+            assert!(matches!(outcome, RefreshOutcome::Failed(ApiError::Problem { .. })), "{status}: {outcome:?}");
+        }
+        assert!(seen.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_refresh_the_server_could_not_deal_with_fails_the_request_with_its_problem_and_keeps_the_session() {
+        let _reset = Reset;
+        let ended = count_session_ends();
+        let offline = ApiError::from_response(503, OFFLINE_BODY);
+        assert_eq!(after_refresh(RefreshOutcome::Failed(offline.clone())), Err(offline));
+        assert_eq!(ended.get(), 0);
+    }
+
+    #[test]
+    fn a_refresh_request_that_cannot_be_built_is_unreachable_with_its_cause() {
+        let (config, seen) = recording_refreshes();
+        // What send_once gives when the page origin could not be read: no base for the address.
+        let error = ApiError::from_transport(&reqwest::Client::new().post("/api/session/refresh").build().unwrap_err());
+        let outcome = refresh_outcome(Err(error.clone()), &config);
+        assert_eq!(outcome, RefreshOutcome::Failed(error));
+        let RefreshOutcome::Failed(error) = outcome else { unreachable!() };
+        assert!(matches!(error, ApiError::NotSent { .. }), "{error:?}");
+        assert!(error.cause().expect("a cause").contains("relative URL without a base"));
+        assert!(seen.borrow().is_empty());
+    }
+
+    #[test]
+    fn every_caller_waiting_on_one_refresh_gets_the_same_outcome() {
+        let slot = Rc::new(RefreshSlot::default());
+        let mut first = WaitForRefresh { slot: slot.clone() };
+        let mut second = WaitForRefresh { slot: slot.clone() };
+        let mut cx = Context::from_waker(Waker::noop());
+        assert!(Pin::new(&mut first).poll(&mut cx).is_pending());
+        assert!(Pin::new(&mut second).poll(&mut cx).is_pending());
+        assert_eq!(slot.waiters.borrow().len(), 2);
+        let outcome = RefreshOutcome::Failed(ApiError::Network { cause: "connection reset".to_string() });
+        slot.finish(outcome.clone());
+        assert!(slot.waiters.borrow().is_empty());
+        assert_eq!(Pin::new(&mut first).poll(&mut cx), Poll::Ready(outcome.clone()));
+        assert_eq!(Pin::new(&mut second).poll(&mut cx), Poll::Ready(outcome.clone()));
+        // A caller that comes along after the outcome is known gets it at once.
+        let mut late = WaitForRefresh { slot };
+        assert_eq!(Pin::new(&mut late).poll(&mut cx), Poll::Ready(outcome));
     }
 
     #[test]

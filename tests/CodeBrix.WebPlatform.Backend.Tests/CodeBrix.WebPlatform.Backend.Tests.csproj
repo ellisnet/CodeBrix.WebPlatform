@@ -20,6 +20,17 @@
     <Compile Include="..\..\src\CodeBrix.WebPlatform.FrontendBuilder\Applications\FrontendManifestWriter.cs" Link="Linked\FrontendManifestWriter.cs" />
   </ItemGroup>
 
+  <!--
+    The package's buildTransitive targets file, copied beside the test assembly so that a test can
+    check that it names the built frontend's folder the backend serves from. (That it carries the
+    folder into a publish is checked by hand; MAINTAINER-README says how.)
+  -->
+  <ItemGroup>
+    <None Include="..\..\src\CodeBrix.WebPlatform.Backend\buildTransitive\CodeBrix.WebPlatform.Backend.ApacheLicenseForever.targets"
+          Link="Packaging\CodeBrix.WebPlatform.Backend.ApacheLicenseForever.targets"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.15" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />

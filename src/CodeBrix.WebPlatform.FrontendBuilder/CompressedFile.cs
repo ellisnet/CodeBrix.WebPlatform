@@ -1,8 +1,8 @@
 namespace CodeBrix.WebPlatform.FrontendBuilder;
 
 /// <summary>
-/// One compressible file of a built frontend application in the web root, and the compressed
-/// copies <see cref="PlatformFrontend.BuildAsync"/> wrote beside it (part of
+/// One compressible file of a built frontend application in the built frontend folder, and the
+/// compressed copies <see cref="PlatformFrontend.BuildAsync(FrontendConfiguration, string, System.Threading.CancellationToken)"/> wrote beside it (part of
 /// <see cref="FrontendCompressionResult"/>).
 /// </summary>
 public sealed class CompressedFile
@@ -16,8 +16,8 @@ public sealed class CompressedFile
     }
 
     /// <summary>
-    /// The file's path inside the application's folder of the web root
-    /// (<see cref="FrontendBuildResult.WebRootApplicationDirectory"/>), with forward slashes, for
+    /// The file's path inside the application's folder of the built frontend folder
+    /// (<see cref="FrontendBuildResult.BuiltApplicationDirectory"/>), with forward slashes, for
     /// example <c>wasm/app_bg.wasm</c>.
     /// </summary>
     public string Path { get; }
