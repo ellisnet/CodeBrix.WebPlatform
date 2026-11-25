@@ -16,12 +16,18 @@ tools/dx-native-tools/windows - building dx.exe and wasm-bindgen.exe for win-x64
     DLL (0xC0000135), worked as written. It has been run with PowerShell 7.6
     only, not with Windows PowerShell 5.1. The script
     builds whatever the tool sources hold (today ten dioxus-cli patches,
-    six splitter patches); nothing in it names the patches. NOT YET REBUILT:
-    the adopted Windows programs of 2026-11-22 carry dioxus-cli 0001 to 0007
-    and splitter 0001 to 0003 only - none of dioxus-cli 0008 to 0010 or
-    splitter 0004 to 0006, which the Linux programs carry since 2026-11-24
-    (../BUILD-PROVENANCE.txt, ADOPTED 2026-11-24) - and are to be rebuilt
-    and adopted. <<<
+    six splitter patches); nothing in it names the patches.
+    RUN AGAIN 2026-11-24, unchanged, from scratch: dx.exe rebuilt with all
+    ten dioxus-cli patches and six splitter patches, every gate check passed
+    (the functional gate included), and dx.exe adopted
+    (../BUILD-PROVENANCE.txt, ADOPTED 2026-11-24 - the second Windows build).
+    wasm-bindgen.exe was KEPT from 2026-11-22: its source is unchanged, and
+    the rebuild differed only in the linker's build stamps and in 9
+    characters of this repository's HEAD commit, which wasm-bindgen-shared's
+    build.rs picks up with `git rev-parse HEAD` because the vendored sources
+    lie inside this repository (that block says where they end up). The
+    WorkSite frontend's generated folders came from an archive materialized
+    on the Linux side (step 2 below). <<<
 
 WHAT THIS IS
 --------------------------------------------------------------------------------

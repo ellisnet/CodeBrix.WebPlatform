@@ -7,13 +7,24 @@ This program was BUILT HERE, from the source in this repository, by:
 on a Windows x64 machine, natively with MSVC (no container). Nothing was
 downloaded during the build: cargo ran --locked --offline against the vendored
 tool crates, and the libgit2 package came from the local NuGet cache. This is
-the FIRST Windows build of these programs.
+the SECOND Windows build of dx.exe (the rebuild of 2026-11-24, Pacific time);
+the wasm-bindgen.exe beside it is still the first build's (2026-11-22), kept
+because its source did not change (see BUILD-PROVENANCE.txt).
 
 Source            : dioxus-cli 0.7.10 (upstream commit 57d6794ad60b949e5bd8aa282f6f8c3dc97a365e) with the
-                    repository's SEVEN patches (0007 swaps in the patched bundle splitter,
-                    tools/dx-native-tools/sources/wasm-split-cli, with THREE patches of its own)
+                    repository's TEN patches (0007 swaps in the repository's patched copy of the
+                    bundle splitter, tools/dx-native-tools/sources/wasm-split-cli, which carries
+                    SIX patches of its own: 0001 and 0002 fix its call graph, 0003 makes a split
+                    build give the same files from the same source, 0004 keeps the main
+                    module's data whole when a split module's constant lies over it, 0005 lets a
+                    split build pass a data symbol of size 0, 0006 puts the code and data several
+                    split modules use into the shared chunk, once; 0008 makes Tailwind's default
+                    output assets/generated/tailwind.css, 0009 gives an unsplit build and
+                    `dx serve` a stand-in __wasm_split.js, 0010 writes the root application's
+                    addresses as "/assets/..." instead of "/./assets/...")
                     (tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt and
-                    vendoring/wasm-split-cli/PATCH-NOTES.txt); every dx command is there
+                    vendoring/wasm-split-cli/PATCH-NOTES.txt); every dx command is there - the
+                    same sources as the linux-x64 and linux-arm64 programs adopted 2026-11-24
 Folder            : tools/dx-native-tools/sources (TOOL_SOURCES_DIR in
                     tools/dx-native-tools/linux/pins.env), read-only
 libgit2-sys       : the declarations-only stand-in tools/dx-native-tools/sources/
@@ -24,14 +35,17 @@ LINKS libgit2     : libgit2 1.9.7 as a SHARED LIBRARY, git2-49e408b.dll, linked 
                     (runtimes/win-x64/native/git2-49e408b.dll, sha256
                     57e17c62ced01f96fd88dd041baee399f3102b09682ef7ad2dd1baa4c75dfd2d; the package
                     has no import library: dumpbin /exports -> .def, 954 exports -> lib /def
-                    /machine:x64). dx.exe DOES NOT START without the DLL beside it or on PATH
-                    (measured: exit 0xC0000135, STATUS_DLL_NOT_FOUND); it is NOT in this
-                    folder - it reaches a build through that package
+                    /machine:x64; import library sha256
+                    d37d4f49ec7490d6d17d5771002cfb541829efda2e56dbf21e6c98311ae4ed01). dx.exe DOES
+                    NOT START without the DLL beside it or on PATH (measured: exit 0xC0000135,
+                    STATUS_DLL_NOT_FOUND); it is NOT in this folder - it reaches a build through
+                    that package
 --version         : "dioxus 0.7.10 (57d6794)" (with the DLL's folder on PATH)
 
-Built             : 2026-11-23 02:46:42 UTC (2026-11-22, Pacific time)
-Build time        : dx 117s in the adopted run (cargo found most of dx already compiled by
-                    the first run of the same sources, 865s); about 6 minutes with the gate
+Built             : 2026-11-25 06:02:34 UTC (2026-11-24, Pacific time)
+Build time        : dx 714s, compiled FROM SCRATCH (the build root's cargo target folder,
+                    C:\cbx-dx\target, was deleted before the run); about 18 minutes end to end
+                    with wasm-bindgen (114s) and the gate
 Build host        : Windows 11 Pro 10.0.26300, x64, Dell Precision 7770
                     (12th Gen Intel Core i7-12850HX)
 MSVC              : Visual Studio Professional 2026 18.12.1, MSVC 14.52.37025
@@ -46,30 +60,35 @@ Command           : cargo +1.100.0 build --release --locked --offline --target
                     profile, -C target-feature=+crt-static -C link-arg=/PDBALTPATH:%_PDB%
 
 File             : dx.exe
-Size             : 68396032 bytes  <- the shipped file (no debug information in it: the
+Size             : 68323840 bytes  <- the shipped file (no debug information in it: the
                    .pdb stays in the build folder)
-Size (gzip -9 -n): 22445060 bytes
-SHA256           : 664e819f6672b380060ca687b7c9b4766c22d661224e4ef626a84a4db77e1f57
+Size (gzip -9 -n): 22447896 bytes (measured on the build machine, Git for Windows' gzip 1.14)
+SHA256           : 6f700e30414cc98f638b5e5a2e0596333de4380dd391cfd52ed28178641fcc49
+                   replaces sha256 664e819f... (ADOPTED 2026-11-22, the first Windows build)
 PE               : PE32+, machine 8664 (x64), the C runtime linked statically (no Visual C++
                    Redistributable needed)
 Imports          : advapi32.dll api-ms-win-core-synch-l1-2-0.dll bcrypt.dll bcryptprimitives.dll
                    combase.dll git2-49e408b.dll kernel32.dll ntdll.dll shell32.dll user32.dll
-                   userenv.dll ws2_32.dll
+                   userenv.dll ws2_32.dll (the same set as the first build's)
 
 Gate              : PE machine x64; imports only operating-system DLLs and git2-49e408b.dll
-                    (combase.dll, from which dx imports only CoTaskMemFree, added to the
-                    allow-list on this first run), no VCRUNTIME/MSVCP/ucrtbase/api-ms-win-crt/
-                    libssl/libcrypto/zlib/libssh2; no user-profile, repository, source or build
-                    path in the file; `--version`; RUN with the DLL on PATH, and WITHOUT it
-                    (does not start: 0xC0000135); licence and notices files present;
-                    the functional gate, run by build.dx.ps1: the new dx.exe + wasm-bindgen.exe
-                    built a scratch copy of the WorkSite frontend with WasmShrink 1.0.323.365's
-                    wasm-opt and the Tailwind of CodeBrix.WebPlatform.Styling.Tailwind4.WindowsX64
-                    1.0.327.82 (.wasm 1,827,634 bytes, 17 site files), a DX_SKIP_WASM_OPT release
-                    build with no wasm-opt succeeded (.wasm 2,071,013 bytes), and `dx new` from a
-                    local git template with no git program on PATH succeeded - ALL PASSED. No
-                    earlier win-x64 programs existed to compare with
-                    (tools/dx-native-tools/output/win-x64/GATE.txt at the time of the build)
+                    (combase.dll on the allow-list since the first build), no VCRUNTIME/MSVCP/
+                    ucrtbase/api-ms-win-crt/libssl/libcrypto/zlib/libssh2; no user-profile,
+                    repository, source or build path in the file; `--version`; RUN with the DLL on
+                    PATH, and WITHOUT it (does not start: 0xC0000135); licence and notices files
+                    present; the functional gate, run by build.dx.ps1: the new dx.exe + the new
+                    build's wasm-bindgen.exe built a scratch copy of the WorkSite frontend with
+                    WasmShrink 1.0.323.365's wasm-opt and the Tailwind of
+                    CodeBrix.WebPlatform.Styling.Tailwind4.WindowsX64 1.0.327.82 (.wasm 1,838,015
+                    bytes, 19 site files; index.html links "/assets/...", not "/./assets/...":
+                    patch 0010), a DX_SKIP_WASM_OPT release build with no wasm-opt succeeded
+                    (.wasm 2,086,096 bytes), and `dx new` from a local git template with no git
+                    program on PATH succeeded - ALL PASSED. The script makes no comparison with
+                    the earlier win-x64 programs. The WorkSite frontend's generated folders
+                    (platform\, src\generated\, .cargo\, assets\generated\) came from an archive
+                    materialized on the Linux side in the current layout (windows/README.txt,
+                    step 2) (tools/dx-native-tools/output/win-x64/GATE.txt at the time of the
+                    build)
 
 LICENCE AND NOTICES FILES BESIDE THIS ONE:
   LICENSE-Dioxus.txt              dx's licence (Apache-2.0 text; dioxus-cli is
@@ -78,5 +97,6 @@ LICENCE AND NOTICES FILES BESIDE THIS ONE:
   THIRD-PARTY-NOTICES-Dioxus.txt  every crate compiled into dx, with licence
                                   texts (generated: LibraryChecker notices --write)
   THIRD-PARTY-NOTICES-WasmBindgen.txt  the same for wasm-bindgen
-libgit2's own licence travels with the library, in its package.
+(the rebuild's copies of these four files were byte-identical to these and were
+kept). libgit2's own licence travels with the library, in its package.
 See tools/dx-native-tools/BUILD-PROVENANCE.txt.
