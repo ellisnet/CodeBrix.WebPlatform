@@ -40,9 +40,9 @@ The patches, in the order they apply:
                                             "/./assets/..." for an application
                                             at the site root
 
-Which adopted programs carry them (BUILD-PROVENANCE.txt): linux-x64 and
-linux-arm64 carry all ten (adopted 2026-11-24); win-x64, osx-arm64 and
-osx-x64 carry 0001 to 0007 only (adopted 2026-11-22, NOT YET REBUILT).
+Which adopted programs carry them (BUILD-PROVENANCE.txt): all five RIDs carry
+all ten - linux-x64 and linux-arm64 (adopted 2026-11-24), win-x64 (dx.exe,
+adopted 2026-11-24), osx-arm64 and osx-x64 (dx, adopted 2026-11-24).
 
 
 0001-image-crate-encoders.patch
@@ -286,8 +286,8 @@ Drop when: never while the platform's generated stylesheet lives in
 Status: decided by the repository owner, 2026-11-24 (the frontend's fixed
         folder layout).
         In the adopted programs (BUILD-PROVENANCE.txt): linux-x64 and
-        linux-arm64 since 2026-11-24; NOT YET in win-x64, osx-arm64 and
-        osx-x64 (their programs of 2026-11-22 have 0001 to 0007).
+        linux-arm64 since 2026-11-24; win-x64, osx-arm64 and osx-x64 since
+        their dx rebuilds of 2026-11-24.
 
 0009-unsplit-build-split-loader.patch
 -------------------------------------
@@ -359,8 +359,8 @@ Does not touch Cargo.toml or the lock file (wasmparser and serde_json are
         0003 and 0005 to 0008, before 0004 is regenerated.
 Status: made under the repository owner's GO of 2026-11-24 (S2 / B1).
         In the adopted programs (BUILD-PROVENANCE.txt): linux-x64 and
-        linux-arm64 since 2026-11-24; NOT YET in win-x64, osx-arm64 and
-        osx-x64 (their programs of 2026-11-22 have 0001 to 0007).
+        linux-arm64 since 2026-11-24; win-x64, osx-arm64 and osx-x64 since
+        their dx rebuilds of 2026-11-24.
 
 
 0010-site-root-addresses-without-dot.patch
@@ -392,8 +392,8 @@ Does not touch Cargo.toml or the lock file; on an upgrade it is re-applied
         after 0009 (both change src/build/web.rs).
 Status: made under the repository owner's GO of 2026-11-24.
         In the adopted programs (BUILD-PROVENANCE.txt): linux-x64 and
-        linux-arm64 since 2026-11-24; NOT YET in win-x64, osx-arm64 and
-        osx-x64 (their programs of 2026-11-22 have 0001 to 0007).
+        linux-arm64 since 2026-11-24; win-x64, osx-arm64 and osx-x64 since
+        their dx rebuilds of 2026-11-24.
 
 
 BUILD SWITCHES (not a patch)

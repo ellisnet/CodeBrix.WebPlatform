@@ -63,9 +63,9 @@ GO of 2026-11-24 for one bounded attempt at the shared-chunk path, applied
 only after the gate recorded in its section had passed on a scratch copy.
 
 Which adopted programs carry them (BUILD-PROVENANCE.txt; dx links this
-splitter): linux-x64 and linux-arm64 carry all six (adopted 2026-11-24);
-win-x64, osx-arm64 and osx-x64 carry 0001 to 0003 only (adopted 2026-11-22,
-NOT YET REBUILT) - a split build made there still lacks 0004, 0005 and 0006.
+splitter): all five RIDs carry all six - linux-x64 and linux-arm64 (adopted
+2026-11-24), win-x64, osx-arm64 and osx-x64 (their dx rebuilds of
+2026-11-24).
 
 
 THE BUG 0001 AND 0002 FIX

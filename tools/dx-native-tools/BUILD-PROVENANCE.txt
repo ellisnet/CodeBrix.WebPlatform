@@ -12,6 +12,111 @@ its section here is updated from that build's output/<rid>/BUILD-INFO.txt and
 the <program>.provenance.txt beside it is written from the same values.
 
 ================================================================================
+ADOPTED 2026-11-24 - the second macOS builds: osx-arm64 and osx-x64 dx with
+the ten dioxus-cli patches and six splitter patches (wasm-bindgen KEPT)
+================================================================================
+(The times below are UTC, which was already 2026-11-25; the builds ran on the
+evening of 2026-11-24, Pacific time.)
+What: macos/build.sh run again, unchanged since the first macOS builds, on the
+owner's Apple Silicon Mac (Mac mini, Apple M2 Pro, macOS 27.2.1 (26B131);
+Xcode SDK macosx 27.2, Apple clang 21.0.0; rustc/cargo 1.100.0 through rustup,
+`cargo +1.100.0`), from the same tool sources as the Linux and Windows
+programs adopted the same day (the blocks below): dioxus-cli 0.7.10 with its
+ten patches, the splitter with its six, wasm-bindgen-cli 0.2.130 unpatched;
+--locked --offline, nothing downloaded (the libgit2 package came from the
+local NuGet cache). Run, and dx adopted, at the owner's request.
+Before the run:
+  * the WorkSite frontend was brought to the current layout WITHOUT running
+    its build program, as on Windows: its four generated folders -
+    platform/, src/generated/, .cargo/ and assets/generated/ - were
+    extracted from worksite-frontend-materialized.tar.gz (the Linux side's
+    archive; macos/README.txt, step 2) into a scratch folder, checked
+    (14,869 regular files and folders, relative paths only, no links, none
+    of them a file git tracks), and copied in; none of the four existed in
+    the clone before;
+  * a restore of the repository's solution brought the Styling 1.0.327.82
+    packages (osx-arm64 and osx-x64 tailwindcss v4.3.5) into the NuGet
+    cache from nuget.org, for the functional gate.
+Runs (output/osx-<arch>/GATE.txt, BUILD-INFO.txt, FUNCTIONAL-GATE.txt):
+  osx-arm64  2026-11-25 06:27 UTC - dx ADOPTED. dx 157s, wasm-bindgen 27s.
+             Gate passed every check; the functional gate (WasmShrink
+             1.0.323.365's wasm-opt, Styling 1.0.327.82's tailwindcss) passed
+             every check but ONE, the comparison with today's tools (THE
+             EXPECTED DIFFERENCE, below): .wasm 1,844,151 bytes shrunk,
+             2,091,038 with DX_SKIP_WASM_OPT, 19 site files, `dx new` passed.
+             build.sh therefore ended with "VERIFICATION FAILED" and wrote no
+             record; it was run again (06:36:46 UTC) with REFERENCE_TOOLS_DIR
+             naming an empty folder, so that the comparison was reported as
+             skipped and the record written. That run reused cargo's output
+             and gave dx and wasm-bindgen BYTE-IDENTICAL to the first run's;
+             every other check passed again.
+             dx  52,243,600 bytes (gzip -9 -n 19,621,536), sha256
+                 e678f184101f688f7e8e00ccc074b667ab820e9d9f418a235d4c4e174fc81fbd
+                 replaces sha256 388dc981... (ADOPTED 2026-11-22)
+             wasm-bindgen (built, gated, NOT adopted) sha256
+                 8f8530b4fcf29a97bf8888b278a5083eebe8c85413ee6fa686a503d4aab5e6df
+  osx-x64    2026-11-25 06:34:38 UTC - dx ADOPTED. dx 146s, wasm-bindgen 26s.
+             Gate passed every check (--version under Rosetta 2); build.sh
+             skips the functional gate for x64 on Apple Silicon, so it was
+             run by hand from an x86_64 shell (arch -x86_64 /bin/bash
+             linux/functional-gate.sh, osx-x64 wasm-opt and tailwindcss, the
+             arguments build.sh passes): every check but the same ONE passed
+             (.wasm 1,844,232 bytes shrunk, 2,091,121 with DX_SKIP_WASM_OPT,
+             19 site files, `dx new` passed). NOT run on an Intel Mac.
+             dx  56,127,632 bytes (gzip -9 -n 21,588,188), sha256
+                 1a61d76323031af016e6d56fa37eaec1cd668266c7c24b72ba9c3eac4d77eb66
+                 replaces sha256 e806aa06... (ADOPTED 2026-11-22)
+             wasm-bindgen (built, gated, NOT adopted) sha256
+                 050f7ca1d6e6f6c1414b466432cbdd948bcc7d2240bfeda8dfb50cb1028f9750
+THE EXPECTED DIFFERENCE (both slices), the same as linux-x64's of 2026-11-24
+(accepted there on the owner's behalf; the block below): the site built by
+today's tools - the programs of 2026-11-22 in native_libraries/osx-<arch> -
+differed from the new tools' ONLY by dioxus-cli patch 0010's root addresses:
+index.html's preload <link> and module <script> ("/./assets/..." became
+"/assets/..."), and the glue file's .wasm address, so its content-hashed name.
+Checked on each slice's kept output: with "/./assets/" normalised to
+"/assets/" and the hashed names normalised, every site file of the two builds
+is identical, and the .wasm is byte-identical. From now on the comparison is
+against these programs.
+REPRODUCIBILITY: both slices were built again from scratch in a fresh build
+root (SKIP_FUNCTIONAL_GATE=1; every check passed). The four programs were NOT
+byte-identical to the adopted build's, but differed only in their 16-byte
+Mach-O UUID (LC_UUID) and so in the ad-hoc signature, which covers the whole
+file: with the signature removed and the UUID zeroed, all four are identical.
+macOS builds are therefore not byte-identical across runs (the Linux ones
+are). The cause of the UUID change was not proven; Apple's linker derives the
+UUID from what it links, which includes the build root's object files.
+WASM-BINDGEN KEPT (the owner's decision, as on Linux and Windows): its source
+is unchanged, and the new builds differ from the kept ones (osx-arm64
+3c786214..., osx-x64 b6a1cb7b..., both 2026-11-22) only in the UUID, the
+signature and the commit the Windows block below describes: the first 9
+characters of THIS REPOSITORY's HEAD commit at build time, stored by
+vendor/wasm-bindgen-shared-0.2.130/build.rs - "0e916efba" in the kept
+osx-arm64 program, "7e3da5c82" in the new one. So the macOS programs ARE
+affected, like the Windows ones. dx does not carry it (checked on both
+slices).
+After adoption, with THESE programs (osx-arm64 host, .NET 10.0.404):
+  * dotnet build -c Release of src/CodeBrix.WebPlatform.FrontendBuilder.MacOSArm64
+    and .MacOSX64: their packages in bin/Release (1.0.329.414, local builds,
+    not published) carry the new dx (e678f184..., 1a61d763...) and the kept
+    wasm-bindgen (3c786214..., b6a1cb7b...) with the four licence and
+    notices files under tools/frontend-tools/osx-<arch>/;
+  * tests/CodeBrix.WebPlatform.FrontendBuilder.HostTools.Tests: 9 passed, 0
+    failed, 0 skipped (osx-arm64; not run under an x64 .NET SDK);
+  * PlatformFrontendDxBuildTests (CODEBRIX_WEBPLATFORM_DX_BUILD_TESTS=1),
+    which build with the ADOPTED dx and need dioxus-cli patch 0008: 3
+    passed, 0 failed, 0 skipped.
+Adopted into ../../native_libraries/osx-arm64 and osx-x64 on 2026-11-24: dx
+replaced (sha256 checked after the copy), dx.provenance.txt rewritten;
+wasm-bindgen, wasm-bindgen.provenance.txt and the four licence and notices
+files unchanged (the rebuild's four files were byte-identical).
+Not done:
+  * osx-x64 has still not been run on an Intel Mac, nor its HostTools tests
+    under an x64 .NET SDK;
+  * the samples' temporary packages and the published packages were not
+    repacked (a later step).
+
+================================================================================
 ADOPTED 2026-11-24 - the second Windows build: win-x64 dx.exe with the ten
 dioxus-cli patches and six splitter patches (wasm-bindgen.exe KEPT; osx-arm64
 and osx-x64 NOT YET REBUILT)
@@ -1238,7 +1343,7 @@ Adopted          : YES, 2026-11-22, into native_libraries/win-x64/; dx.exe
                    machine (9 of 9) after each
 
 ================================================================================
-osx-arm64                                     BUILT 2026-11-22, ADOPTED
+osx-arm64                         BUILT 2026-11-22, dx REBUILT 2026-11-24
 ================================================================================
 Route            : macos/build.sh arm64, natively on the Apple Silicon Mac:
                    rustup 1.100.0, aarch64-apple-darwin,
@@ -1249,19 +1354,26 @@ Route            : macos/build.sh arm64, natively on the Apple Silicon Mac:
                    and without libgit2), linux/functional-gate.sh
 Build host       : Mac mini, Apple M2 Pro, macOS 27.2.1 (26B131), Xcode SDK
                    macosx 27.2, Apple clang 21.0.0
-Built            : 2026-11-22 19:26:49 UTC (once; not yet rebuilt for
-                   byte-identity)
-dx               : 52176896 bytes (gzip -9 -n 19606019), sha256
-                   388dc9811b05054ff73751d8a9a43c05a376751db6a5ba9e0788620a5da77bc6
+Built            : dx 2026-11-25 06:27 UTC (the rebuild of 2026-11-24, Pacific
+                   time: ten dioxus-cli patches, six splitter patches);
+                   wasm-bindgen 2026-11-22 19:26:49 UTC (the first build,
+                   kept). A rebuild from scratch matches apart from the
+                   Mach-O UUID
+dx               : 52243600 bytes (gzip -9 -n 19621536), sha256
+                   e678f184101f688f7e8e00ccc074b667ab820e9d9f418a235d4c4e174fc81fbd
 wasm-bindgen     : 5169072 bytes (gzip -9 -n 2069624), sha256
                    3c786214dd190fb13f4be1ccef141e3b13a5f259906f06171599f59bca4241df
-Gate             : every check passed, the functional gate included
-Adopted          : YES, 2026-11-22, into native_libraries/osx-arm64/ (the
-                   ADOPTED section at the top); HostTools tests passed on the
-                   Mac (7 of 7)
+Gate             : every check passed in both builds, the functional gate
+                   included - in the rebuild apart from the comparison with
+                   the programs of 2026-11-22, which differed only by patch
+                   0010's root addresses (the ADOPTED section at the top)
+Adopted          : YES, 2026-11-22, into native_libraries/osx-arm64/; dx
+                   REPLACED 2026-11-24 (the ADOPTED sections at the top; the
+                   newest is first); HostTools tests passed on the Mac after
+                   each (7 of 7, then 9 of 9)
 
 ================================================================================
-osx-x64                                       BUILT 2026-11-22, ADOPTED
+osx-x64                           BUILT 2026-11-22, dx REBUILT 2026-11-24
 ================================================================================
 Route            : macos/build.sh x64 - as osx-arm64 with x86_64-apple-darwin
                    and MACOSX_DEPLOYMENT_TARGET=10.15, cross-built on the Apple
@@ -1270,16 +1382,21 @@ Route            : macos/build.sh x64 - as osx-arm64 with x86_64-apple-darwin
                    hand from an x86_64 shell: arch -x86_64 /bin/bash
                    linux/functional-gate.sh <dx> <wasm-bindgen> <scratch>,
                    with WASM_OPT_DIR (WasmShrink's osx-x64 wasm-opt),
-                   LIBGIT2_DIR and GATE_RID=osx-x64
+                   LIBGIT2_DIR and GATE_RID=osx-x64 (the osx-x64 tailwindcss
+                   is found from GATE_RID)
 Build host       : as osx-arm64
-Built            : 2026-11-22 19:30:08 UTC (once; not yet rebuilt for
-                   byte-identity)
-dx               : 55957504 bytes (gzip -9 -n 21543459), sha256
-                   e806aa064de60f485ef41f25ba3b56f342dd9d22d6ed00ad8fd8d94e9cb114d9
+Built            : dx 2026-11-25 06:34:38 UTC (the rebuild of 2026-11-24,
+                   Pacific time); wasm-bindgen 2026-11-22 19:30:08 UTC (the
+                   first build, kept). A rebuild from scratch matches apart
+                   from the Mach-O UUID
+dx               : 56127632 bytes (gzip -9 -n 21588188), sha256
+                   1a61d76323031af016e6d56fa37eaec1cd668266c7c24b72ba9c3eac4d77eb66
 wasm-bindgen     : 5584400 bytes (gzip -9 -n 2311729), sha256
                    b6a1cb7b8e6131789739523dd105e646347a3b9fea1ef725b428b76dc2f89ee1
-Gate             : every check passed (functional gate under Rosetta 2 as
-                   above); NOT yet run on an Intel Mac, and the HostTools
-                   tests not yet run under an x64 .NET SDK
-Adopted          : YES, 2026-11-22, into native_libraries/osx-x64/
+Gate             : every check passed in both builds (functional gate under
+                   Rosetta 2 as above; in the rebuild apart from the expected
+                   patch 0010 difference); NOT yet run on an Intel Mac, and the
+                   HostTools tests not yet run under an x64 .NET SDK
+Adopted          : YES, 2026-11-22, into native_libraries/osx-x64/; dx
+                   REPLACED 2026-11-24
 ================================================================================

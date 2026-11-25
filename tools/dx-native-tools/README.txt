@@ -193,19 +193,15 @@ dx linked against libgit2. Which RIDs' adopted programs carry which patches
                            owner's Windows x64 machine, once; wasm-bindgen.exe
                            (unpatched, its source unchanged) is the first
                            build's, of 2026-11-22
-  osx-arm64, osx-x64       NOT YET REBUILT: dioxus-cli 0001 to 0007, splitter
-                           0001 to 0003 only - built 2026-11-22 on the owner's
-                           Apple Silicon Mac (osx-x64's functional gate run
-                           from an x86_64 shell under Rosetta 2; not yet run
-                           on an Intel Mac)
-So a split build made on macOS still lacks splitter 0004 to 0006 (the main
-module keeps its data; a data symbol of size 0 no longer fails the build; the
-code several split modules use goes into the shared chunk once), and dx there
-still lacks dioxus-cli 0008 to 0010 (Tailwind's default output in
-assets/generated, the stand-in split loader of an unsplit build, root
-addresses without "/./"; vendoring/dioxus-cli/PATCH-NOTES.txt,
-vendoring/wasm-split-cli/PATCH-NOTES.txt) until macos/build.sh is run again
-and its programs adopted. All five platforms' packages carry their programs.
+  osx-arm64, osx-x64       ALL of them (dx): built 2026-11-24 (Pacific time)
+                           on the owner's Apple Silicon Mac, each slice once
+                           plus a reproducibility build (identical apart from
+                           the Mach-O UUID); osx-x64's functional gate run
+                           from an x86_64 shell under Rosetta 2, not yet run
+                           on an Intel Mac. wasm-bindgen (unpatched, its
+                           source unchanged) is the first build's, of
+                           2026-11-22
+All five platforms' packages carry their programs.
 
 NOT SUPPORTED, and neither built nor scripted: linux-riscv64, win-arm64,
 android-*.

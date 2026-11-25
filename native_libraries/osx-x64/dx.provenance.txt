@@ -6,11 +6,14 @@ This program was BUILT HERE, from the source in this repository, by:
 
 on an Apple Silicon Mac, natively with the Xcode SDK (no container). Nothing
 was downloaded during the build: cargo ran --locked --offline against the
-vendored tool crates. This is the FIRST macOS build of these programs.
+vendored tool crates. This is the SECOND macOS build of dx (2026-11-24,
+Pacific time); it replaces the first, of 2026-11-22.
 
 Source            : dioxus-cli 0.7.10 (upstream commit 57d6794ad60b949e5bd8aa282f6f8c3dc97a365e) with the
-                    repository's SEVEN patches (0007 swaps in the patched bundle splitter,
-                    tools/dx-native-tools/sources/wasm-split-cli, with THREE patches of its own)
+                    repository's TEN patches (0007 swaps in the patched bundle splitter,
+                    tools/dx-native-tools/sources/wasm-split-cli, with SIX patches of its own;
+                    0008 writes the Tailwind output into assets/generated/, 0009 the split
+                    loader of an unsplit build, 0010 the site root's addresses without "./")
                     (tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt and
                     vendoring/wasm-split-cli/PATCH-NOTES.txt); every dx command is there
 Folder            : tools/dx-native-tools/sources (TOOL_SOURCES_DIR in
@@ -26,9 +29,9 @@ LINKS libgit2     : libgit2 1.9.7 as a SHARED LIBRARY, load command
                     reaches a build through that package
 --version         : "dioxus 0.7.10 (57d6794)" (with the library on DYLD_LIBRARY_PATH)
 
-Built             : 2026-11-22 19:30:08 UTC
-Build time        : dx 148s, wasm-bindgen 27s (186s with the gate)
-Build host        : macOS 27.2.1 (26B131), arm64, Apple M2 Pro
+Built             : 2026-11-25 06:34:38 UTC
+Build time        : dx 146s, wasm-bindgen 26s (cargo, from scratch)
+Build host        : Mac mini, macOS 27.2.1 (26B131), arm64, Apple M2 Pro
 Xcode             : SDK macosx 27.2, Apple clang version 21.0.0 (clang-2100.4.1.1)
 Toolchain         : rustc 1.100.0 (0ef1bc386 2026-11-09)
                     cargo 1.100.0 (3acc79c0c 2026-11-05)
@@ -42,27 +45,47 @@ Command           : cargo +1.100.0 build --release --locked --offline --target
                     then strip, then codesign --force --sign - (ad hoc)
 
 File             : dx
-Size (stripped)  : 55957504 bytes  <- the shipped file
-Size (gzip -9 -n): 21543459 bytes
-SHA256           : e806aa064de60f485ef41f25ba3b56f342dd9d22d6ed00ad8fd8d94e9cb114d9
+Size (stripped)  : 56127632 bytes  <- the shipped file
+Size (gzip -9 -n): 21588188 bytes
+SHA256           : 1a61d76323031af016e6d56fa37eaec1cd668266c7c24b72ba9c3eac4d77eb66
+Replaces         : sha256 e806aa06... (ADOPTED 2026-11-22)
 Mach-O           : thin x64 slice (x86_64-apple-darwin), ad-hoc signed
-Links            : /usr/lib/libSystem.B.dylib /System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation /System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices /System/Library/Frameworks/Security.framework/Versions/A/Security @rpath/libgit2-49e408b.1.9.dylib /usr/lib/libobjc.A.dylib /System/Library/Frameworks/Foundation.framework/Versions/C/Foundation /usr/lib/libiconv.2.dylib 
+Links            : /usr/lib/libSystem.B.dylib, CoreFoundation, CoreServices, Security,
+                    Foundation (/System/Library/Frameworks), /usr/lib/libobjc.A.dylib,
+                    /usr/lib/libiconv.2.dylib, @rpath/libgit2-49e408b.1.9.dylib
+Reproducible     : a second build from scratch, in a fresh build root, gave this
+                    program with only its 16-byte Mach-O UUID different (and so the
+                    ad-hoc signature, which covers the file); everything else byte for
+                    byte. dx does not carry this repository's commit.
 
-Gate              : thin slice, only system libraries, @rpath/libgit2-49e408b.1.9.dylib required (no Homebrew, no
+Gate              : thin slice, only system libraries and
+                    @rpath/libgit2-49e408b.1.9.dylib (no Homebrew, no
                     libssl/libcrypto/libssh2/libz), no LC_RPATH, minos = 10.15,
                     codesign --verify --strict, no build paths, `--version`,
                     licence and notices files present;
-                    RUN on the Apple Silicon build host through Rosetta 2 (macOS 27.2.1, Apple M2 Pro), with the library on DYLD_LIBRARY_PATH, and WITHOUT it (does not start) - not yet run on an Intel Mac;
-                    the functional gate - SKIPPED by build.sh on Apple Silicon, then run by hand from an x86_64 shell (arch -x86_64 /bin/bash linux/functional-gate.sh, osx-x64 wasm-opt, the same arguments build.sh passes; output/osx-x64/FUNCTIONAL-GATE.txt): the new dx + wasm-bindgen built a scratch copy of the WorkSite frontend (.wasm 1,833,781 bytes, 17 site files), a DX_SKIP_WASM_OPT release build with no wasm-opt succeeded (.wasm 2,076,007 bytes), and `dx new` from a local git template with no git program on PATH succeeded - ALL PASSED. No earlier osx-x64 programs existed to compare with
+                    RUN on the Apple Silicon build host through Rosetta 2 (macOS 27.2.1, Apple M2 Pro) - not yet run on an Intel Mac,
+                    with the library on DYLD_LIBRARY_PATH, and WITHOUT it (does not start);
+                    the functional gate - SKIPPED by build.sh on Apple Silicon, then run by
+                    hand from an x86_64 shell (arch -x86_64 /bin/bash
+                    linux/functional-gate.sh with WasmShrink 1.0.323.365's osx-x64 wasm-opt
+                    and Styling 1.0.327.82's osx-x64 tailwindcss v4.3.5): the new dx +
+                    wasm-bindgen built a scratch copy of the WorkSite frontend (.wasm
+                    1,844,232 bytes, 19 site files), a DX_SKIP_WASM_OPT release build with
+                    no wasm-opt succeeded (.wasm 2,091,121 bytes), and `dx new` from a local
+                    git template with no git program on PATH succeeded - ALL PASSED but ONE,
+                    the comparison with today's tools, which differed ONLY by patch 0010's
+                    root addresses, exactly as for osx-arm64 (the .wasm byte-identical)
                     (tools/dx-native-tools/output/osx-x64/GATE.txt and FUNCTIONAL-GATE.txt
                     at the time of the build)
 
-LICENCE AND NOTICES FILES BESIDE THIS ONE:
+LICENCE AND NOTICES FILES BESIDE THIS ONE (unchanged: the rebuild's four files
+were byte-identical to these):
   LICENSE-Dioxus.txt              dx's licence (Apache-2.0 text; dioxus-cli is
                                   MIT OR Apache-2.0)
   LICENSE-WasmBindgen.txt         wasm-bindgen-cli's LICENSE-APACHE, verbatim
   THIRD-PARTY-NOTICES-Dioxus.txt  every crate compiled into dx, with licence
                                   texts (generated: LibraryChecker notices --write)
   THIRD-PARTY-NOTICES-WasmBindgen.txt  the same for wasm-bindgen
+wasm-bindgen beside this one is KEPT from 2026-11-22 (wasm-bindgen.provenance.txt).
 libgit2's own licence travels with the library, in its package.
 See tools/dx-native-tools/BUILD-PROVENANCE.txt.

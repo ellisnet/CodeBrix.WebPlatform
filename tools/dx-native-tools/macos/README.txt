@@ -14,12 +14,18 @@ tools/dx-native-tools/macos - building dx and wasm-bindgen for osx-arm64 and
     neither slice has been run on an Intel Mac yet, and the HostTools tests
     have not been run under an x64 .NET SDK. The script builds whatever the
     tool sources hold (today ten dioxus-cli patches, six splitter
-    patches); nothing in it names the patches. NOT YET REBUILT: the adopted
-    macOS programs of 2026-11-22 carry dioxus-cli 0001 to 0007 and splitter
-    0001 to 0003 only - none of dioxus-cli 0008 to 0010 or splitter 0004 to
-    0006, which the Linux programs carry since 2026-11-24
-    (../BUILD-PROVENANCE.txt, ADOPTED 2026-11-24) - and are to be rebuilt
-    and adopted. <<<
+    patches); nothing in it names the patches.
+    REBUILT 2026-11-24 (Pacific time): dx for both slices, with all ten
+    dioxus-cli and six splitter patches, built, gated and adopted
+    (../BUILD-PROVENANCE.txt, the newest ADOPTED block); wasm-bindgen KEPT
+    from 2026-11-22, as on Linux and Windows. The WorkSite frontend was
+    brought to the current layout from the Linux side's archive (step 2).
+    The functional gate's comparison with today's tools failed with exactly
+    the expected difference of dioxus-cli patch 0010 (root addresses
+    "/assets/..." instead of "/./assets/..."), as on linux-x64; it compares
+    against these programs from now on. A rebuild from scratch gives the
+    same programs apart from the 16-byte Mach-O UUID (and so the ad-hoc
+    signature): macOS builds are not byte-identical across runs. <<<
 
 WHAT THIS IS
 --------------------------------------------------------------------------------
