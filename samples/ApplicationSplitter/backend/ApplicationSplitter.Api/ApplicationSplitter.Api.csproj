@@ -22,7 +22,7 @@
       The published CodeBrix.WebPlatform packages, from nuget.org: ONE version for all of them, as
       they are published together (THE SAMPLES' PACKAGES in the root MAINTAINER-README.txt).
     -->
-    <WebPlatformPackageVersion>1.0.327.240</WebPlatformPackageVersion>
+    <WebPlatformPackageVersion>1.0.329.452</WebPlatformPackageVersion>
   </PropertyGroup>
 
   <ItemGroup>

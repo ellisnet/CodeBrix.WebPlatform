@@ -10,7 +10,7 @@
 
   <ItemGroup>
     <!-- The published package; the same version as the other CodeBrix.WebPlatform packages of WorkSite. -->
-    <PackageReference Include="CodeBrix.WebPlatform.Core.ApacheLicenseForever" Version="1.0.327.240" />
+    <PackageReference Include="CodeBrix.WebPlatform.Core.ApacheLicenseForever" Version="1.0.329.452" />
   </ItemGroup>
 
 </Project>
