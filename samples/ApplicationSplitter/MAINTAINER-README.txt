@@ -265,14 +265,16 @@ What to check:
   - the console shows NO errors and NO Content-Security-Policy violations,
     in all three, under the site's policy (Program.ContentSecurityPolicy);
   - in sales, the network log shows the lazy loading: the first page
-    requests the main .wasm, the shared chunk (chunk_0_split-dxh....wasm:
-    the code and data that several pieces use, held once) and ITS OWN
-    route piece (module_..._route...) only; opening another page for the
-    first time requests that page's piece and not the chunk again (it is
-    fetched once per page load); a second visit requests nothing new; a
-    deep link requests the main .wasm, the chunk and the piece of the page
-    it opens. An application whose pieces share nothing has an empty chunk,
-    which is never requested. The parts split by hand (with the lower-level
+    requests the main .wasm, the shared chunks its piece uses
+    (chunk_<n>_split-dxh....wasm: the code and data that several pieces
+    use, held once; how many there are depends on the platform version and
+    its SharedChunkThreshold - see CODE SPLITTING in the root AGENT-README)
+    and ITS OWN route piece (module_..._route...) only; opening another page
+    for the first time requests that page's piece and only the chunks not
+    requested yet (each is fetched once per page load); a second visit
+    requests nothing new; a deep link requests the main .wasm, the chunks of
+    the page it opens and its piece. An application whose pieces share
+    nothing has an empty chunk, which is never requested. The parts split by hand (with the lower-level
     forms of CODE SPLITTING) request their pieces when they are first used;
   - in sales, the formatting self-check (src/selfcheck.rs): the footer's
     element with id="format-check" has data-failed="0" on every page, and on

@@ -8,9 +8,9 @@ CodeBrix.WebPlatform ships two prebuilt Rust programs, one NuGet package per
 build platform, so that a developer no longer compiles them (and needs no C
 compiler for them):
 
-  dx            the Dioxus CLI - dioxus-cli 0.7.10 with the repository's ten
-                patches (the seventh swaps in a patched copy of the bundle
-                splitter, sources/wasm-split-cli), built with the cargo
+  dx            the Dioxus CLI - dioxus-cli 0.7.10 with the repository's
+                thirteen patches (the seventh swaps in a patched copy of the
+                bundle splitter, sources/wasm-split-cli), built with the cargo
                 features no-downloads and disable-telemetry; every dx
                 command is there, `dx new`,
                 `dx init` and `dx components` included. dx LINKS libgit2
@@ -88,6 +88,10 @@ FOLDER MAP
                           of the crates.io crate)
     vendor/               every crate the two are built from (cargo vendor)
     .cargo/config.toml    replaces crates.io with vendor/
+  split-check/            OURS, maintainer tooling only (in no program and no
+                          package): a check of a site built with bundle
+                          splitting - see CHECKING A SPLIT BUILD; built
+                          offline from sources/vendor (its .cargo/config.toml)
   vendoring/<tool>/       per tool: the pristine crates.io archive, its
                           .sha256, the numbered patches (dioxus-cli,
                           wasm-split-cli),
@@ -178,22 +182,33 @@ THE FIVE RUNTIME IDENTIFIERS
   -----------  ---------------------------  -----------------------  -------
   linux-x64    linux/build.sh x64           dx, wasm-bindgen         BUILT
   linux-arm64  linux/build.sh arm64 (cross) dx, wasm-bindgen         BUILT
-  win-x64      windows/build.dx.ps1         dx.exe, wasm-bindgen.exe BUILT
-  osx-arm64    macos/build.sh arm64         dx, wasm-bindgen         BUILT
-  osx-x64      macos/build.sh x64           dx, wasm-bindgen         BUILT
+  win-x64      windows/build.dx.ps1         dx.exe, wasm-bindgen.exe BEHIND
+  osx-arm64    macos/build.sh arm64         dx, wasm-bindgen         BEHIND
+  osx-x64      macos/build.sh x64           dx, wasm-bindgen         BEHIND
 
-BUILT = built here, gated and adopted into ../../native_libraries/<rid>/.
-The current sources hold TEN dioxus-cli patches and SIX splitter patches,
-dx linked against libgit2. Which RIDs' adopted programs carry which patches
-(BUILD-PROVENANCE.txt):
-  linux-x64, linux-arm64   ALL of them: dioxus-cli 0001 to 0010, splitter
-                           0001 to 0006 - built 2026-11-24 on the x86_64
+BUILT = built here from the current sources, gated and adopted into
+../../native_libraries/<rid>/. BEHIND = built and adopted, but from older
+sources: the dx there must be rebuilt.
+The current sources hold THIRTEEN dioxus-cli patches and SEVEN splitter
+patches, dx linked against libgit2. Which RIDs' adopted programs carry which
+patches (BUILD-PROVENANCE.txt):
+  linux-x64, linux-arm64   ALL of them: dioxus-cli 0001 to 0013, splitter
+                           0001 to 0007 - built 2026-11-27 on the x86_64
                            laptop, each RID twice, byte-identical
-  win-x64                  ALL of them (dx.exe): built 2026-11-24 on the
+  win-x64, osx-arm64,      NOT YET REBUILT - they carry the PREVIOUS dx,
+  osx-x64                  without dioxus-cli 0011 to 0013 and splitter 0007.
+                           The FrontendBuilder of this repository refuses a
+                           split build with such a dx (it prints no shared-
+                           chunk line), so the owner rebuilds them
+                           (windows/build.dx.ps1, macos/build.sh arm64 and
+                           x64) and adopts them BEFORE the packages are
+                           published. What they carry now:
+  win-x64                  dioxus-cli 0001 to 0010, splitter 0001 to 0006
+                           (dx.exe): built 2026-11-24 on the
                            owner's Windows x64 machine, once; wasm-bindgen.exe
                            (unpatched, its source unchanged) is the first
                            build's, of 2026-11-22
-  osx-arm64, osx-x64       ALL of them (dx): built 2026-11-24 (Pacific time)
+  osx-arm64, osx-x64       the same as win-x64 (dx): built 2026-11-24 (Pacific time)
                            on the owner's Apple Silicon Mac, each slice once
                            plus a reproducibility build (identical apart from
                            the Mach-O UUID); osx-x64's functional gate run
@@ -201,7 +216,8 @@ dx linked against libgit2. Which RIDs' adopted programs carry which patches
                            on an Intel Mac. wasm-bindgen (unpatched, its
                            source unchanged) is the first build's, of
                            2026-11-22
-All five platforms' packages carry their programs.
+All five platforms' packages carry their programs (three of them the
+previous dx, above).
 
 NOT SUPPORTED, and neither built nor scripted: linux-riscv64, win-arm64,
 android-*.
@@ -273,6 +289,42 @@ ADOPTING A BUILT BINARY (any platform)
      tests/CodeBrix.WebPlatform.FrontendBuilder.HostTools.Tests ON THAT
      PLATFORM: it checks the programs are in the output, report the expected
      versions, and that the notices are the generated ones.
+
+
+CHECKING A SPLIT BUILD (after a change to the splitter or to dx's split path)
+--------------------------------------------------------------------------------
+The functional gate builds an UNSPLIT frontend only. A dx whose bundle
+splitting changed is checked by hand as well:
+  1. The opt-in build test of the FrontendBuilder tests (TESTING in the root
+     MAINTAINER-README.txt): its split tests build a small split frontend
+     with a threshold of one byte (several chunks; the same files twice) and
+     with a limit of one (one chunk), and check the piece file names. To run
+     them with a dx before it is adopted, name the folder that holds it and
+     wasm-bindgen in CODEBRIX_WEBPLATFORM_DX_BUILD_TESTS_DX_FOLDER.
+  2. split-check on the built sites - that split frontend's, and a split
+     build of the ApplicationSplitter sample's sales application (with the
+     current threshold, and with DX_WASM_SPLIT_CHUNK_THRESHOLD lowered to get
+     many chunks when dx is run by hand; delete the frontend's target/dx
+     first - dx never cleans its output folder, so an earlier build's chunks,
+     pieces and loader would stay beside the new ones and split-check would
+     refuse the folder: "2 loaders". BuildAsync deletes target/dx before
+     every build, and replaces the application's part of frontend-built/, so
+     a platform build never ships such files):
+         cd split-check
+         CARGO_TARGET_DIR=<a folder outside the repository> \
+             cargo build --release --offline --locked
+         <that folder>/release/split-check <the site folder: the one with
+             index.html, e.g. backend/<Api>/frontend-built/sales>
+     It reads the loader and every WebAssembly file of the site and checks:
+     every piece imports the main module's table; no table slot is filled by
+     two pieces, nor by a piece and the main module; every call through a
+     constant table index reaches a filled slot of the same signature; a
+     module that calls into a chunk waits for it, and calls into no other
+     module; no two pieces write different bytes at one address. One summary
+     line; "PROBLEM ..." lines and exit code 1 when something is wrong.
+  3. The sample in headless Chrome (its MAINTAINER-README.txt, CHECKING IN A
+     BROWSER) and its reproducibility steps (CHECKING THAT A BUILD IS
+     REPRODUCIBLE there).
 
 
 A ONE-MINUTE TOUR (on Linux)

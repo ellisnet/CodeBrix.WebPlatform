@@ -10,8 +10,9 @@ namespace CodeBrix.WebPlatform.FrontendBuilder.SharedCrate;
 /// <summary>
 /// The shared Rust crate that every platform frontend compiles in: the REST transport, the
 /// SignalR client (with a fake hub for native unit tests), the error type that reads
-/// CodeBrix.WebPlatform.Core's <c>ApiProblem</c>, query-string building and the calendar date
-/// type. The crate's source travels inside this assembly;
+/// CodeBrix.WebPlatform.Core's <c>ApiProblem</c>, query strings, the browser helpers and the
+/// calendar date type (in the browser-free types crate inside its folder,
+/// <see cref="TypesCrateName"/>). The crate's source travels inside this assembly;
 /// <see cref="PlatformFrontend.MaterializeAsync"/> writes it out with
 /// <see cref="ExtractTo(string)"/>, and the frontend names the folder as a path dependency in its
 /// <c>Cargo.toml</c>.
@@ -23,6 +24,22 @@ public static class SharedRustCrate
 
     /// <summary>The crate's name in Rust source (<c>use codebrix_webplatform::...</c>).</summary>
     public const string RustName = "codebrix_webplatform";
+
+    /// <summary>
+    /// The package name of the shared crate's browser-free part, the types the generated client
+    /// code names besides serde (the calendar date): a crate of its own, depending on serde only,
+    /// in the folder <see cref="TypesFolderName"/> inside the shared crate's folder. The shared
+    /// crate re-exports it (<c>codebrix_webplatform::dates</c>), so a frontend never names it; a
+    /// native program or test that uses the generated contract types without the browser-bound
+    /// crate names it under <see cref="CrateName"/> (<c>package = "codebrix-webplatform-types"</c>).
+    /// </summary>
+    public const string TypesCrateName = "codebrix-webplatform-types";
+
+    /// <summary>The types crate's name in Rust source.</summary>
+    public const string TypesRustName = "codebrix_webplatform_types";
+
+    /// <summary>The folder of the types crate inside the shared crate's folder (<c>platform/codebrix-webplatform/types</c>).</summary>
+    public const string TypesFolderName = "types";
 
     private const string ResourcePrefix = "CodeBrix.WebPlatform.FrontendBuilder.Rust/";
     private const string ManifestFile = "Cargo.toml";

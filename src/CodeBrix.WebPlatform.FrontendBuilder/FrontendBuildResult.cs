@@ -1,5 +1,7 @@
+using System;
 using System.Collections.Generic;
 using CodeBrix.WebPlatform.FrontendBuilder.Prerequisites;
+using CodeBrix.WebPlatform.FrontendBuilder.Sizes;
 using CodeBrix.WebPlatform.FrontendBuilder.Tools;
 
 namespace CodeBrix.WebPlatform.FrontendBuilder;
@@ -39,6 +41,14 @@ public sealed class FrontendBuildResult
     public bool WasmSplit { get; internal set; }
 
     /// <summary>
+    /// How many shared chunks dx made for this application, as it reported them: for a build
+    /// with bundle splitting at least 1 (the common chunk, written even when nothing is shared),
+    /// more when shared code reached <see cref="PlatformFrontendOptions.SharedChunkThreshold"/>;
+    /// 0 for a build without splitting.
+    /// </summary>
+    public int SharedChunks { get; internal set; }
+
+    /// <summary>
     /// The folder, inside <see cref="BuiltFrontendDirectory"/>, that holds this application's
     /// site: that folder itself for the root application, otherwise the sub-folder of the
     /// application's name. <c>null</c> when no backend project folder was given.
@@ -58,6 +68,23 @@ public sealed class FrontendBuildResult
     /// backend project folder was given.
     /// </summary>
     public FrontendCompressionResult Compression { get; internal set; }
+
+    /// <summary>
+    /// The warnings the Rust compiler gave while dx built this application, each as its whole
+    /// text (the warning, the source lines it points at and its notes, without colour codes), in
+    /// the order dx reported them; empty when there were none. They are also written to
+    /// <see cref="PlatformFrontendOptions.Output"/>.
+    /// </summary>
+    public IReadOnlyList<string> CompilerWarnings { get; internal set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// The sizes of this application's WebAssembly files: the main file, and for a build with
+    /// bundle splitting every piece and every shared chunk, with the sizes of their compressed
+    /// copies where they were written; for a build with
+    /// <see cref="PlatformFrontendOptions.KeepFunctionNames"/>, each file's code by Rust crate.
+    /// Also written to <see cref="PlatformFrontendOptions.Output"/>.
+    /// </summary>
+    public FrontendSizeReport Sizes { get; internal set; }
 
     /// <summary>The kind of build that was made.</summary>
     public FrontendConfiguration Configuration { get; }

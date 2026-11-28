@@ -82,6 +82,39 @@ public class PlatformFrontendTests
     public void GetDxBuildArguments_makes_a_plain_debug_build()
         => PlatformFrontend.GetDxBuildArguments(FrontendConfiguration.Debug).Should().Equal("build", "--platform", "web");
 
+    [Fact]
+    public void GetDxBuildArguments_without_names_are_the_arguments_of_every_build_so_far()
+    {
+        //Assert
+        PlatformFrontend.GetDxBuildArguments(FrontendConfiguration.Release, "sales", true, false).Should().Equal(PlatformFrontend.GetDxBuildArguments(FrontendConfiguration.Release, "sales", true));
+        PlatformFrontend.GetDxBuildArguments(FrontendConfiguration.Debug, null, false, false).Should().Equal(PlatformFrontend.GetDxBuildArguments(FrontendConfiguration.Debug));
+    }
+
+    [Fact]
+    public void GetDxBuildArguments_keeps_the_function_names_of_a_release_build_with_its_debug_symbols()
+        => PlatformFrontend.GetDxBuildArguments(FrontendConfiguration.Release, "sales", true, true).Should().Equal(
+            "build", "--platform", "web", "--release", "--debug-symbols", "true", "--base-path", "sales", "--wasm-split", "--keep-names");
+
+    [Fact]
+    public void GetDxBuildArguments_keeps_the_function_names_of_a_debug_build()
+        => PlatformFrontend.GetDxBuildArguments(FrontendConfiguration.Debug, null, false, true).Should().Equal("build", "--platform", "web", "--keep-names");
+
+    [Fact]
+    public void GetWasmOptArguments_strips_the_debug_information_unless_the_names_are_kept()
+    {
+        //Act
+        var plain = PlatformFrontend.GetWasmOptArguments(false);
+        var named = PlatformFrontend.GetWasmOptArguments(true);
+
+        //Assert
+        plain.Should().Equal("--enable-reference-types", "--enable-bulk-memory", "--enable-mutable-globals", "--enable-nontrapping-float-to-int", "--enable-threads", "--strip-debug");
+        named.Should().Equal("--enable-reference-types", "--enable-bulk-memory", "--enable-mutable-globals", "--enable-nontrapping-float-to-int", "--enable-threads", "--debuginfo");
+    }
+
+    [Fact]
+    public void KeepFunctionNames_is_off_by_default()
+        => new PlatformFrontendOptions().KeepFunctionNames.Should().BeFalse();
+
     [Theory]
     [InlineData("  1.2s ERROR wasm-opt failed with status code exit status: 1\nstderr: unknown option", true)]
     [InlineData("  1.9s  INFO Client build completed successfully!", false)]

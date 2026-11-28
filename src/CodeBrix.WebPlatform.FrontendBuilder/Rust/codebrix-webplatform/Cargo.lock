@@ -71,6 +71,7 @@ checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 name = "codebrix-webplatform"
 version = "1.0.0"
 dependencies = [
+ "codebrix-webplatform-types",
  "dioxus",
  "futures-core",
  "js-sys",
@@ -80,6 +81,13 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "codebrix-webplatform-types"
+version = "1.0.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

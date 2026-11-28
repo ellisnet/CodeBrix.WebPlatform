@@ -1,0 +1,14 @@
+# split-check - a MAINTAINER check of a site built with bundle splitting (dx --wasm-split): reads
+# the loader and every WebAssembly file of one built frontend application and checks the
+# invariants the bundle splitter must keep (tools/dx-native-tools/README.txt, CHECKING A SPLIT
+# BUILD). Not part of any shipped program. Built offline from ../sources/vendor (see
+# .cargo/config.toml); it uses only walrus, which the splitter uses too, so no crate is added.
+[package]
+name = "split-check"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "Apache-2.0"
+
+[dependencies]
+walrus = "=0.23.3"

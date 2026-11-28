@@ -1,5 +1,6 @@
 //! Calendar dates without time or zone. On the wire a date is the text `yyyy-MM-dd`, which is
-//! how a .NET `DateOnly` is written as JSON. Pure logic: compiles and is tested on the host.
+//! how a .NET `DateOnly` is written as JSON. Pure logic: compiles and is tested on the host (its
+//! JSON form is tested in the shared crate, which has serde_json).
 
 use std::fmt;
 
@@ -324,15 +325,5 @@ mod tests {
             "Dec 29, 2025 \u{2013} Jan 4, 2026"
         );
         assert_eq!(format_range(d("2026-11-17"), d("2026-11-17")), "Nov 17, 2026");
-    }
-
-    #[test]
-    fn json_is_the_iso_text() {
-        let date = d("2026-11-17");
-        assert_eq!(serde_json::to_string(&date).unwrap(), "\"2026-11-17\"");
-        assert_eq!(serde_json::from_str::<Date>("\"2026-11-17\"").unwrap(), date);
-        assert_eq!(serde_json::from_str::<Date>("\"2026-11-17T08:00:00Z\"").unwrap(), date);
-        assert!(serde_json::from_str::<Date>("\"17/11/2026\"").is_err());
-        assert!(serde_json::from_str::<Date>("20261117").is_err());
     }
 }

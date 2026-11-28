@@ -1,0 +1,138 @@
+diff -ruN a/src/build/web.rs b/src/build/web.rs
+--- a/src/build/web.rs
++++ b/src/build/web.rs
+@@ -221,14 +221,19 @@
+             }
+ 
+             // Write the modules that contain the entrypoints
++            //
++            // CodeBrix change: a module's file is named after its piece (split_module_file_stems),
++            // not after the function the split point calls. See
++            // tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt.
+             tracing::debug!("Writing split modules to disk");
++            let file_stems = split_module_file_stems(&modules.modules)?;
+             for (idx, module) in modules.modules.iter().enumerate() {
+                 let comp_name = module
+                     .component_name
+                     .as_ref()
+                     .context("generated bindgen module has no name?")?;
+ 
+-                let path = bindgen_outdir.join(format!("module_{idx}_{comp_name}.wasm"));
++                let path = bindgen_outdir.join(format!("module_{idx}_{}.wasm", file_stems[idx]));
+                 wasm_opt::write_wasm(&module.bytes, &path, &wasm_opt_options).await?;
+ 
+                 let hash_id = module
+@@ -1037,3 +1042,113 @@
+         assert_eq!(describe_shared_chunks(1, &none), "Bundle splitting: 1 shared chunk (no threshold: one chunk for all shared code)");
+     }
+ }
++
++// CodeBrix change: the file names of the split modules (see the call in `bundle_web` and
++// tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt).
++
++/// The piece name dioxus's `#[component(lazy)]` gives every lazy component
++/// (`lazy_loader!(extern "lazy" fn Lazy<Component>(..))`).
++const LAZY_COMPONENT_PIECE: &str = "lazy";
++
++/// The name part of each split module's file, `module_<n>_<name part>.wasm`, in the order of
++/// `modules` (CodeBrix change). See [`split_module_file_stem`].
++fn split_module_file_stems(modules: &[wasm_split_cli::SplitModule]) -> Result<Vec<String>> {
++    let mut uses: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
++    for module in modules {
++        *uses.entry(module.module_name.as_str()).or_default() += 1;
++    }
++    modules
++        .iter()
++        .map(|module| {
++            let function = module
++                .component_name
++                .as_deref()
++                .context("generated bindgen module has no name?")?;
++            Ok(split_module_file_stem(
++                &module.module_name,
++                function,
++                uses[module.module_name.as_str()] > 1,
++            ))
++        })
++        .collect()
++}
++
++/// The name part of a split module's file (CodeBrix change). `piece` is the name the split
++/// point gives its piece - the "NAME" of `lazy_loader!(extern "NAME" fn ...)`, the module of
++/// `#[wasm_split(NAME)]`, "lazy" for every `#[component(lazy)]`, and what the router's macro
++/// generates for a route - and `function` the function it calls:
++///   - a ROUTE (the router names the piece `module<Route><hash>` and the function
++///     `route<Route><hash>`, the same 32 hexadecimal digits after the same name): the function's
++///     name, `route<Route><hash>`;
++///   - a LAZY COMPONENT (`#[component(lazy)] fn Insights` gives the piece "lazy" and the
++///     function `LazyInsights`), and any other piece named "lazy": `lazy_<function>`, always, so
++///     that adding a second lazy component renames no file;
++///   - any other piece name that several split points share: `<piece>_<function>`;
++///   - otherwise the piece name; an empty one gives the function's name.
++/// Both names are ASCII letters, digits and `_` (the macros make `#[no_mangle]` items of them),
++/// so the result is a safe file name; the `module_<n>_` before it keeps every file apart.
++fn split_module_file_stem(piece: &str, function: &str, shared: bool) -> String {
++    if let Some(route) = piece.strip_prefix("module") {
++        let hash = route.len().checked_sub(32).map(|at| &route[at..]);
++        if route.len() > 32
++            && function.strip_prefix("route") == Some(route)
++            && hash.is_some_and(|hash| hash.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
++        {
++            return function.to_string();
++        }
++    }
++
++    if piece.is_empty() {
++        function.to_string()
++    } else if shared || piece == LAZY_COMPONENT_PIECE {
++        format!("{piece}_{function}")
++    } else {
++        piece.to_string()
++    }
++}
++
++#[cfg(test)]
++mod split_module_file_name_tests {
++    use super::split_module_file_stem;
++
++    #[test]
++    fn a_named_piece_keeps_its_name() {
++        assert_eq!(split_module_file_stem("details", "order_details_panel", false), "details");
++        assert_eq!(split_module_file_stem("forecast", "run_forecast", false), "forecast");
++    }
++
++    #[test]
++    fn a_lazy_component_always_carries_its_function_name() {
++        assert_eq!(split_module_file_stem("lazy", "LazyInsights", false), "lazy_LazyInsights");
++        assert_eq!(split_module_file_stem("lazy", "LazyInsights", true), "lazy_LazyInsights");
++    }
++
++    #[test]
++    fn a_shared_piece_name_gets_the_function_name() {
++        assert_eq!(split_module_file_stem("reports", "monthly", true), "reports_monthly");
++    }
++
++    #[test]
++    fn a_route_keeps_the_route_name() {
++        let hash = "d2348507f81099b5d7c92db749db3f60";
++        assert_eq!(
++            split_module_file_stem(&format!("moduleOrders{hash}"), &format!("routeOrders{hash}"), false),
++            format!("routeOrders{hash}")
++        );
++    }
++
++    #[test]
++    fn only_the_routers_pair_counts_as_a_route() {
++        assert_eq!(split_module_file_stem("moduleOrders", "routeOrders", false), "moduleOrders");
++        let hash = "d2348507f81099b5d7c92db749db3f60";
++        assert_eq!(
++            split_module_file_stem(&format!("moduleOrders{hash}"), "panel", false),
++            format!("moduleOrders{hash}")
++        );
++    }
++
++    #[test]
++    fn an_empty_piece_name_gives_the_function_name() {
++        assert_eq!(split_module_file_stem("", "panel", false), "panel");
++    }
++}

@@ -77,6 +77,8 @@ THE NATIVE BUILD OF dx AND wasm-bindgen
     tools/dx-native-tools/            scripts, pins, gate, records, notices
     tools/dx-native-tools/sources/    the tool sources and their crates
     tools/dx-native-tools/vendoring/  pristine archives, patches, notes
+    tools/dx-native-tools/split-check/ a maintainer check of a site built
+                                      with bundle splitting (in no package)
     native_libraries/<rid>/           the adopted programs
 
 How the programs the host-tools packages ship are built, gated and adopted.

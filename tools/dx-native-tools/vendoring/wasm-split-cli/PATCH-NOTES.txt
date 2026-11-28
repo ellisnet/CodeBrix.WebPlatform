@@ -43,14 +43,19 @@ The patches, in the order they apply:
                                                    the shared chunk, once,
                                                    instead of into each of
                                                    them
+  0007-several-shared-chunks.patch                 on request, shared code
+                                                   above a size threshold
+                                                   goes into chunks of its
+                                                   own, fetched only by the
+                                                   split modules that use it
 
-Patches 0001 to 0005 change src/lib.rs only; 0006 changes src/lib.rs and the
-loader, src/__wasm_split.js. 0001 and 0002 belong together: 0001
+Patches 0001 to 0005 and 0007 change src/lib.rs only; 0006 changes src/lib.rs
+and the loader, src/__wasm_split.js. 0001 and 0002 belong together: 0001
 is the fix of the panic, and 0002 keeps 0001 from pinning most of a split
 route's code into the main module (see the Effect of each). 0003 is a separate
 fix (reproducible output) and has its own section below, and so are 0004 (the
-main module's data), 0005 (data symbols without bytes) and 0006 (the shared
-chunk).
+main module's data), 0005 (data symbols without bytes), 0006 (the shared
+chunk) and 0007 (several shared chunks).
 
 Status of 0001 and 0002: approved by the repository owner 2026-11-19
 ("diagnose and fix"). Status of 0003: made under the repository owner's GO of
@@ -61,11 +66,15 @@ under the repository owner's GO of 2026-11-24 (B2: "find the cause and fix it as
 a further recorded patch"). Status of 0006: made under the repository owner's
 GO of 2026-11-24 for one bounded attempt at the shared-chunk path, applied
 only after the gate recorded in its section had passed on a scratch copy.
+Status of 0007: designed and measured on scratch copies, reviewed, and made
+under the repository owner's GO of 2026-11-27 for the work on several shared
+chunks, the split file names and the split release build's glue (dioxus-cli
+patches 0011 to 0013 are its dx side).
 
 Which adopted programs carry them (BUILD-PROVENANCE.txt; dx links this
-splitter): all five RIDs carry all six - linux-x64 and linux-arm64 (adopted
-2026-11-24), win-x64, osx-arm64 and osx-x64 (their dx rebuilds of
-2026-11-24).
+splitter): linux-x64 and linux-arm64 carry all seven (adopted 2026-11-27);
+win-x64, osx-arm64 and osx-x64 carry 0001 to 0006 (their dx rebuilds of
+2026-11-24) and must be rebuilt for 0007 before the packages are published.
 
 
 THE BUG 0001 AND 0002 FIX
@@ -190,7 +199,7 @@ Why:    Rust's HashMap and HashSet are seeded at random in every process, so
         application whose source did not change was renamed on every build,
         and every visitor's browser downloaded all of it again. Measured on
         the ApplicationSplitter sample's sales application: rustc's .wasm, the
-        main module and chunk_0 were identical across two clean builds; all
+        main module and chunk_0_split were identical across two clean builds; all
         ten module_*.wasm differed only in their data section (and, in the
         larger ones, their element section). The standalone splitter run
         three times on the same two input files gave three different sets of
@@ -204,7 +213,7 @@ Effect: a split build is a pure function of its input: the same source gives
         splitter always makes exactly one chunk (build_split_chunks pushes one
         set), so the set holds at most one number and its order cannot vary.
         If upstream ever makes more than one chunk, that list must be sorted
-        too.
+        too. (Patch 0007, which can make several, makes it a BTreeSet.)
 Drop when: upstream merges #5992 or an equivalent fix and the repository
         takes a stable release that has it.
 
@@ -436,7 +445,8 @@ Effect: - The chunk file holds the shared code and data once; each module
           does.
         NOT changed: there is still exactly one chunk, and
         SplitModule::relies_on_chunks stays a HashSet (see 0003: with one
-        chunk its order cannot vary). A failed load still never calls the
+        chunk its order cannot vary). (Patch 0007 makes several chunks
+        possible, on request, and orders that set.) A failed load still never calls the
         Rust side back (upstream's behaviour; the page keeps waiting).
 Upstream (checked 2026-11-24): the empty loop is unchanged on upstream's main
         branch. There is an OPEN, unmerged pull request, DioxusLabs/dioxus
@@ -498,14 +508,206 @@ Drop when: upstream fills the shared chunk itself (its own fix of the empty
         output on every run, the shared code NOT also in the main module,
         and dx writing every chunk dependency.
 
+0007-several-shared-chunks.patch
+--------------------------------
+The cost 0006 left: there is ONE shared chunk, and every split module that
+uses any shared code depends on it, so the first page a visitor opens brings
+everything any two split modules share - also code that only lazily loaded
+parts use. Measured on an application with one engine piece used by eight
+film pieces and a few route pieces (release, Brotli, pieces only; the main
+module is the same in every case): its first page fetched 453 KB of pieces
+(its own 11 KB and the chunk's 442 KB), of which nearly all was the engine's
+and the films' shared code.
+
+What:   src/lib.rs only.
+        - SplitOptions (new, public): chunk_threshold (Option<usize>, bytes)
+          and chunk_limit (usize, DEFAULT_CHUNK_LIMIT 16). Default: no
+          threshold - ONE chunk, exactly 0006's output.
+          Splitter::new_with_options (new, public) takes them;
+          Splitter::new is new_with_options with the default, so its output
+          is byte for byte what it was. A threshold or a limit of 0 is
+          refused (an error, before anything is read).
+        - build_split_chunks records the users in ordered maps and hands the
+          grouping to assign_shared_chunks (new): with no threshold, one chunk
+          with every shared symbol (0006). With one:
+            users(s)  = the split modules (by index) that reach symbol s,
+                        for every s that two or more reach and the main
+                        module does not hold (0006's set);
+            groups    = the symbols grouped by their EXACT set of users;
+            size(G)   = the bytes of G before optimisation: each function's
+                        body in the module wasm-bindgen wrote (walrus
+                        original_range) plus each data symbol's size
+                        (node_size, new); imported functions count 0;
+            large     = the groups with size >= threshold, largest first
+                        (ties: the user set), at most chunk_limit - 1 of
+                        them, then sorted by user set;
+            chunk 0   = the common chunk; chunk i + 1 = large[i];
+            each other group goes to the large group with the FEWEST users
+            among those whose users include all of its own (ties: the
+            smaller group, then the user set) - else to chunk 0.
+          A limit of 1 therefore also gives the one chunk of the default.
+        - emit_split_chunk imports what the chunk reaches in the main module
+          OR IN ANOTHER CHUNK. With only the main module's symbols, a chunk
+          kept a private copy of every function of another chunk it calls
+          (measured: 862 functions copied, one chunk 784 KB instead of 312
+          KB); now those calls go through the other chunk's table slots
+          (convert_chunk_funcs_to_imports, from 0006, already handled them).
+        - SplitModule::relies_on_chunks is a BTreeSet (it was a HashSet,
+          see 0003), so dx lists a module's chunks in one fixed order.
+        - accumulate_split_points splits a split point's import name at
+          "___00_import_" instead of the first "___00": a module name
+          holding "___00" (extern "a___00b") was cut short and the build
+          panicked ("Could not find export"). Names without "___00" are read
+          as before.
+        - Unit tests of the grouping (mod shared_chunk_tests, `cargo test
+          --lib`): no threshold, nothing shared, a group at the threshold,
+          the superset rule and its ties, the common chunk, the limit, and
+          that every symbol lands in exactly one chunk.
+        Nothing else: the table layout of 0006 (one slot per chunk function,
+        chunk after chunk, in the order of chunk_functions) serves several
+        chunks unchanged; the loader (src/__wasm_split.js) is unchanged.
+Why:    with a threshold, code that only some split modules share is fetched
+        only by them. A small group joins a LARGER group all of whose users
+        are its users too, rather than the common chunk: that adds no new
+        downloader to any chunk (every split module that uses the small
+        group already fetches the larger one), where the common chunk makes
+        every page that needs any common code download it too.
+Effect: - No threshold (every caller of Splitter::new, and dx without its
+          variable): byte for byte as before - checked on three applications
+          (every .wasm and the loader).
+        - A threshold: chunks 1 and up hold the large groups, chunk 0 the
+          rest. The main module is byte for byte the same at every threshold
+          (the number of chunk functions, and so its table, is the same).
+          When no group reaches the threshold the output is exactly the one
+          chunk of before.
+        - Measured on scratch copies (release, wasm-opt as dx runs it, Brotli
+          quality 11, pieces only; "first visit" = a piece and its chunks):
+            engine + films application, 12 split modules, 164 user sets
+            (1.41 MB of shared code before optimisation):
+              one chunk     first route 453 KB, film route 473, not-found
+                            442, a film 463 to 834, engine 661
+              16 KiB        9 chunks: first route 62, film route 82,
+                            not-found 6, films 99 to 823, engine 636
+              32 KiB        6 chunks: first route 60, film route 80
+              64 KiB        4 chunks: first route 91, film route 111
+            the ApplicationSplitter sample's sales application, 11 split
+            modules, 68 user sets (62 KB shared):
+              one chunk     pages 25 to 40 KB
+              16 KiB        2 chunks: three pages 2.2 KB larger (36.8 ->
+                            39.0, 40.2 -> 42.4, 38.4 -> 40.6), the other eight
+                            10 to 11 KB smaller (34.8 -> 24.0, 25.8 -> 15.0)
+              32 KiB        no group large enough: byte for byte as before
+            a site with 19 split modules, 63 user sets (151 KB shared):
+              16 KiB        3 chunks: every page 5 to 6 KB smaller, two
+                            larger pieces 22 KB smaller
+              32 KiB        2 chunks: most route pages about 2 KB larger,
+                            the two larger pieces 22 KB smaller
+          Downloading every piece costs 0.4 to 1.8 per cent more at 16 KiB
+          (more files, less shared compression). An extra chunk costs about
+          0.8 to 2.2 KB. Before optimisation the bytes are about the size of
+          the optimised file, and its Brotli copy about a third of that.
+          Merging a small group into the common chunk instead of into a
+          larger group of its users (measured, 32 KiB, the engine + films
+          application): first route 145 KB instead of 60, film route 165
+          instead of 80.
+        - A split module lists every chunk it uses; chunks list none (dx
+          writes them `makeLoad(url, [], ...)`, as before). Why that is
+          enough: see THE INVARIANT below.
+THE INVARIANT (why chunks need no dependency lists of their own): a split
+        module m depends on chunk Y when m REACHES a symbol of Y in the call
+        graph (emit_split_module). Reachability is transitive, through calls
+        and through data relocations (a vtable or a function pointer stored
+        in data is an edge too). So whoever can reach a symbol x of chunk X
+        that uses a symbol y of chunk Y reaches y as well, is itself a user
+        of y, and lists Y. Code of X runs only when a split module calls it,
+        and that module has listed and loaded Y first. A module that loads
+        X only for OTHER symbols of X (a small group placed in X by the
+        superset rule) never runs x, so Y not being loaded for it does no
+        harm: instantiating X runs no code (a split module or chunk has no
+        start function), it only fills X's own table slots and writes X's
+        own data, and the stubs in X that call into Y are just constant
+        table indices until called. The same holds for data: X's code that
+        reads Y's data runs only for modules that reached that data and so
+        listed Y. Every symbol is in exactly one chunk, every table slot is
+        filled by exactly one file and every data byte is written by one
+        file (or, for constants the linker stored inside one another, by
+        several with the same bytes), so the order in which chunks are
+        instantiated does not matter; the loader fetches a module's chunks
+        in parallel and instantiates the module after all of them.
+DETERMINISM: every map and set that decides an order is ordered (BTreeMap,
+        BTreeSet) and every tie is broken explicitly (size, then user set);
+        the split modules' indices come from their sorted import names
+        (upstream) and the sizes from the input bytes. The output is a pure
+        function of the input and the two options: three runs in separate
+        processes gave byte-identical files for each of three applications
+        and three thresholds. Nothing depends on the machine.
+FAILURE: unchanged loader behaviour - a module whose chunk fails to load is
+        not instantiated, the error goes to the console, the chunks that did
+        load stay loaded (harmless: their code runs only when a module that
+        loaded completely calls it), and a failed chunk is fetched again by
+        the next call.
+Rejected alternatives:
+        - one chunk per exact user set (upstream's open pull request #5738;
+          see 0006): 63 to 164 files for the applications above, and that
+          pull request numbers its chunks in hash order;
+        - clustering the user sets (upstream's comment names Louvain): hard
+          to reason about, and a small change to the program would reshuffle
+          the chunks;
+        - small groups always into the common chunk: measured above, every
+          page that uses any common code downloads them;
+        - copying small groups into every split module that uses them
+          (upstream before 0006): several files would fill one table slot
+          and write the same data, and a second module's load would reset a
+          mutable static;
+        - a threshold in compressed bytes: wasm-opt runs after the splitter,
+          so they are not known here.
+Open risks:
+        - when a group's size crosses the threshold the chunks are numbered
+          anew (their names change with their content anyway);
+        - a module may depend on up to chunk_limit chunks, fetched in
+          parallel: fine over HTTP/2, queued over HTTP/1.1;
+        - the three applications above were checked in headless Chrome
+          (two of them; every page, the hand-split parts, no console error,
+          each chunk fetched once) and statically (the third); split DEBUG
+          builds with several chunks were checked by the platform's opt-in
+          build test only.
+How it is checked: on scratch copies of three applications' split builds
+        (rustc's .wasm, wasm-bindgen 0.2.130 as dx runs it, this splitter,
+        wasm-opt as dx runs it; the unpatched pipeline reproduced the
+        shipped files byte for byte):
+        - no threshold, and a limit of 1: every .wasm and the loader byte
+          for byte as before;
+        - thresholds of 1 KiB to 256 KiB and limits of 4 and 16: read back
+          with the static checker (tools/dx-native-tools/split-check): all
+          pieces import the main module's table; no table slot is filled by
+          two files; every call through a constant table index goes to a
+          slot that exactly one file fills with a function of the same
+          signature; no module calls into a chunk it does not list; no two
+          files write different bytes at one address; against the one-chunk
+          build of the same input: the same data bytes written by the pieces
+          in all, every hole of the main module filled by the same function,
+          the same set of functions, and the main module's data and code the
+          same;
+        - in headless Chrome (the ApplicationSplitter sample's sales
+          application with 1, 2 and 11 chunks; the engine + films
+          application with 6 and 9 chunks, through software WebGPU): every
+          page as a deep link and in one session both ways, the hand-split
+          parts, the sample's formatting self-check at 0, no console error,
+          each chunk requested once per page load;
+        - three runs of each, byte-identical;
+        - `cargo test --lib` (the grouping's unit tests).
+Drop when: upstream groups shared code into several chunks deterministically,
+        with its chunks importing one another's code, and the repository
+        takes a stable release that has it; until then keep it with 0006.
+
 
 UPGRADING
 ---------
 When dx is upgraded, the crate's version changes with it (dx asks for the same
 release of wasm-split-cli). Take the new release's .crate from crates.io (or
 the local cargo cache) and record its checksum, check upstream for #5795,
-the type-index fix, #5992, #5772, the data-symbol lookup of 0005 and the
-shared chunk of 0006 (#5738) first, re-apply the patches that are still
+the type-index fix, #5992, #5772, the data-symbol lookup of 0005, the
+shared chunk of 0006 (#5738) and the several chunks of 0007 first, re-apply the patches that are still
 needed, and
 change the [patch] path and version in dx's Cargo.toml (dioxus-cli patch
 0007) to match. Then rebuild and check a split build with a field only on a
@@ -513,7 +715,10 @@ split page, as above, and build a split application twice from clean: every
 file name and every byte must be the same (0003); and open the sample's
 sales application: its formatting self-check must pass (0004), its chunk
 file must hold the code its pieces share, and every page must open first, as
-a deep link, and after every other page (0006).
+a deep link, and after every other page (0006); and build it with a low
+threshold (dioxus-cli patch 0011's DX_WASM_SPLIT_CHUNK_THRESHOLD): it must
+make several chunks that the static checker passes and work the same in a
+browser (0007).
 
 ================================================================================
 END OF PATCH NOTES

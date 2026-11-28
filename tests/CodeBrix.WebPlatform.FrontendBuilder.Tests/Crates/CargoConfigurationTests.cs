@@ -1,7 +1,9 @@
 using System;
 using System.IO;
+using System.Linq;
 using CodeBrix.WebPlatform.FrontendBuilder.Crates;
 using CodeBrix.WebPlatform.FrontendBuilder.Internal;
+using CodeBrix.WebPlatform.FrontendBuilder.SharedCrate;
 using CodeBrix.WebPlatform.FrontendBuilder.Tests.Helpers;
 using SilverAssertions;
 using Xunit;
@@ -24,14 +26,42 @@ public class CargoConfigurationTests
     }
 
     [Fact]
-    public void Create_for_an_application_that_adds_crates_sets_nothing()
+    public void Create_for_an_application_that_adds_crates_sets_only_the_shared_crates_patch()
     {
         //Act
         var text = CargoConfiguration.Create(CrateMode.ApplicationAddsCrates, "platform/vendor");
 
         //Assert
         text.Should().StartWith(CargoConfiguration.Marker);
-        text.Should().NotContain("[");
+        text.Should().NotContain("[source");
+        text.Should().NotContain("[net]");
+        text.Split('\n').Where(l => l.StartsWith('[')).Should().Equal("[patch.crates-io]");
+    }
+
+    [Theory]
+    [InlineData(CrateMode.PlatformCratesOnly)]
+    [InlineData(CrateMode.ApplicationAddsCrates)]
+    public void Create_patches_the_shared_crates_names_to_the_frontends_own_copies(CrateMode mode)
+    {
+        //Act
+        var text = CargoConfiguration.Create(mode, "platform/vendor");
+
+        //Assert
+        text.Should().EndWith("[patch.crates-io]\n"
+            + "codebrix-webplatform = { path = \"platform/codebrix-webplatform\" }\n"
+            + "codebrix-webplatform-types = { path = \"platform/codebrix-webplatform/types\" }\n");
+        CargoConfiguration.SharedCratePath.Should().Be("platform/" + SharedRustCrate.CrateName);
+    }
+
+    [Fact]
+    public void Create_without_the_patch_ends_with_the_crate_mode_settings()
+    {
+        //Act
+        var text = CargoConfiguration.Create(CrateMode.PlatformCratesOnly, "platform/vendor", patchSharedCrate: false);
+
+        //Assert
+        text.Should().EndWith("[net]\noffline = true\n");
+        text.Should().NotContain("[patch");
     }
 
     [Fact]

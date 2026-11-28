@@ -19,6 +19,7 @@ using CodeBrix.WebPlatform.FrontendBuilder.Crates;
 using CodeBrix.WebPlatform.FrontendBuilder.Internal;
 using CodeBrix.WebPlatform.FrontendBuilder.Prerequisites;
 using CodeBrix.WebPlatform.FrontendBuilder.SharedCrate;
+using CodeBrix.WebPlatform.FrontendBuilder.Sizes;
 using CodeBrix.WebPlatform.FrontendBuilder.Stylesheet;
 using CodeBrix.WebPlatform.FrontendBuilder.Tools;
 using CodeBrix.WebPlatform.WasmShrink;
@@ -55,7 +56,7 @@ public sealed class PlatformFrontend
     private static readonly string[] WasmOptArguments =
     {
         "--enable-reference-types", "--enable-bulk-memory", "--enable-mutable-globals",
-        "--enable-nontrapping-float-to-int", "--enable-threads", "--strip-debug",
+        "--enable-nontrapping-float-to-int", "--enable-threads",
     };
 
     private readonly ProcessRunner _runner;
@@ -145,12 +146,29 @@ public sealed class PlatformFrontend
     /// <returns>The arguments, starting with <c>build</c>.</returns>
     /// <exception cref="ArgumentException">The name breaks a rule.</exception>
     public static IReadOnlyList<string> GetDxBuildArguments(FrontendConfiguration configuration, string applicationName, bool wasmSplit)
+        => GetDxBuildArguments(configuration, applicationName, wasmSplit, false);
+
+    /// <summary>
+    /// The arguments <see cref="BuildAsync(FrontendConfiguration, string, CancellationToken)"/> runs <c>dx</c> with for one application, as
+    /// <see cref="GetDxBuildArguments(FrontendConfiguration, string, bool)"/>, for a build that
+    /// keeps the function names or not (<see cref="PlatformFrontendOptions.KeepFunctionNames"/>):
+    /// with names, a release build passes <c>--debug-symbols true</c> instead of
+    /// <c>--debug-symbols false</c>, and every build ends with <c>--keep-names</c>.
+    /// </summary>
+    /// <param name="configuration">The kind of build.</param>
+    /// <param name="applicationName">The application's name; <c>null</c>, empty or "app" for the
+    /// root application.</param>
+    /// <param name="wasmSplit">Whether the bundle is split.</param>
+    /// <param name="keepFunctionNames">Whether the shipped WebAssembly keeps its function names.</param>
+    /// <returns>The arguments, starting with <c>build</c>.</returns>
+    /// <exception cref="ArgumentException">The name breaks a rule.</exception>
+    public static IReadOnlyList<string> GetDxBuildArguments(FrontendConfiguration configuration, string applicationName, bool wasmSplit, bool keepFunctionNames)
     {
         var application = string.Equals(applicationName, FrontendApplication.DefaultName, StringComparison.Ordinal)
             ? FrontendApplication.Default
             : FrontendApplication.FromName(applicationName);
         var arguments = configuration == FrontendConfiguration.Release
-            ? new List<string> { "build", "--platform", "web", "--release", "--debug-symbols", "false" }
+            ? new List<string> { "build", "--platform", "web", "--release", "--debug-symbols", keepFunctionNames ? "true" : "false" }
             : new List<string> { "build", "--platform", "web" };
         if (!application.IsDefault)
         {
@@ -161,6 +179,11 @@ public sealed class PlatformFrontend
         if (wasmSplit)
         {
             arguments.Add("--wasm-split");
+        }
+
+        if (keepFunctionNames)
+        {
+            arguments.Add("--keep-names");
         }
 
         return arguments;
@@ -743,12 +766,18 @@ public sealed class PlatformFrontend
         var needsWasmOpt = plans.Any(p => ShrinkPlan.Decide(configuration, Options.Shrink, p.WasmSplit).NeedsWasmOpt);
         await RequirePrerequisitesAsync("The build", needsWasmOpt, cancellationToken).ConfigureAwait(false);
         var tools = FindHostTools();
-        var built = new List<(ApplicationPlan Plan, string Output, bool Shrunk, WasmOptSource Source)>();
+        var built = new List<(ApplicationPlan Plan, string Output, bool Shrunk, WasmOptSource Source, IReadOnlyList<string> Warnings, int SharedChunks)>();
         foreach (var plan in plans)
         {
-            var (output, shrunk, source) = await BuildOneAsync(plan, configuration, tools, cancellationToken).ConfigureAwait(false);
+            // BEFORE dx as well as after it: dx runs Tailwind first, and Tailwind scans every
+            // folder that does not ignore itself - a target/ without its .gitignore (removed with
+            // the folder by `cargo clean`, then made again by cargo) would feed it class names
+            // from cargo's and dx's output, and the stylesheet would depend on what an earlier
+            // build left there.
             EnsureFrontendIgnoreFiles(plan);
-            built.Add((plan, output, shrunk, source));
+            var (output, shrunk, source, warnings, sharedChunks) = await BuildOneAsync(plan, configuration, tools, cancellationToken).ConfigureAwait(false);
+            EnsureFrontendIgnoreFiles(plan);
+            built.Add((plan, output, shrunk, source, warnings, sharedChunks));
         }
 
         string manifest = null;
@@ -769,14 +798,17 @@ public sealed class PlatformFrontend
         var results = new List<FrontendBuildResult>();
         for (var i = 0; i < built.Count; i++)
         {
-            var (plan, output, shrunk, source) = built[i];
+            var (plan, output, shrunk, source, warnings, sharedChunks) = built[i];
             results.Add(new FrontendBuildResult(configuration, output, shrunk, shrunk ? source : WasmOptSource.Missing, tools, builtDirectory, copied == null ? 0 : copied[i])
             {
                 ApplicationName = plan.Application.Name,
                 WasmSplit = plan.WasmSplit,
+                SharedChunks = sharedChunks,
                 BuiltApplicationDirectory = builtDirectory == null ? null : ApplicationDirectory(builtDirectory, plan),
                 ManifestFile = manifest,
                 Compression = compressed[i],
+                CompilerWarnings = warnings,
+                Sizes = ReportSizes(plan, output, compressed[i]),
             });
         }
 
@@ -814,6 +846,43 @@ public sealed class PlatformFrontend
 
     private static string ApplicationDirectory(string builtDirectory, ApplicationPlan plan)
         => plan.Application.IsDefault ? builtDirectory : Path.Combine(builtDirectory, plan.Application.Folder);
+
+    /// <summary>
+    /// Measures one application's WebAssembly files (with the sizes of the compressed copies
+    /// written for them, if any) and writes the report to the output.
+    /// </summary>
+    private FrontendSizeReport ReportSizes(ApplicationPlan plan, string site, FrontendCompressionResult compression)
+    {
+        var problems = new List<string>();
+        var report = SizeReportBuilder.Measure(site, PackageName(plan), compression?.Files, problems);
+        foreach (var line in SizeReportBuilder.Describe(report, plan.Subject).Concat(problems.Select(p => "  " + p)))
+        {
+            _runner.Say(line);
+        }
+
+        return report;
+    }
+
+    /// <summary>
+    /// Writes the compiler warnings dx reported for one application to the output (dx's own
+    /// output is not shown for a build that succeeds).
+    /// </summary>
+    private void ReportCompilerWarnings(ApplicationPlan plan, IReadOnlyList<string> warnings)
+    {
+        if (warnings.Count == 0)
+        {
+            return;
+        }
+
+        _runner.Say($"The Rust compiler gave {warnings.Count} warning(s) for {plan.Subject}:");
+        foreach (var warning in warnings)
+        {
+            foreach (var line in warning.Split('\n'))
+            {
+                _runner.Say("    " + line);
+            }
+        }
+    }
 
     /// <summary>
     /// Writes the compressed copies of one application's files in the built frontend folder (the
@@ -1012,12 +1081,13 @@ public sealed class PlatformFrontend
     }
 
     /// <summary>Builds one application's site with dx and returns where dx left it.</summary>
-    private async Task<(string Output, bool Shrunk, WasmOptSource Source)> BuildOneAsync(ApplicationPlan plan, FrontendConfiguration configuration, HostTools tools, CancellationToken cancellationToken)
+    private async Task<(string Output, bool Shrunk, WasmOptSource Source, IReadOnlyList<string> Warnings, int SharedChunks)> BuildOneAsync(ApplicationPlan plan, FrontendConfiguration configuration, HostTools tools, CancellationToken cancellationToken)
     {
         var shrinkPlan = ShrinkPlan.Decide(configuration, Options.Shrink, plan.WasmSplit);
         var frontend = plan.FrontendDirectory;
         var environment = CreateDxEnvironment(tools, plan);
         environment[ShrinkPlan.SkipVariable] = shrinkPlan.SkipVariableValue;
+        SharedChunkSettings.Apply(environment, plan);
         var source = shrinkPlan.NeedsWasmOpt || shrinkPlan.SkipRequested ? await FindWasmOptAsync(cancellationToken).ConfigureAwait(false) : WasmOptSource.Missing;
         if (shrinkPlan.NeedsWasmOpt && source == WasmOptSource.Missing)
         {
@@ -1035,7 +1105,7 @@ public sealed class PlatformFrontend
         _runner.Say(configuration == FrontendConfiguration.Release
             ? (shrinkPlan.SkipRequested ? $"Building {what}, unshrunk (cargo, wasm-bindgen, Tailwind; Shrink is false) ..." : $"Building {what} (cargo, wasm-bindgen{splitting}, wasm-opt, Tailwind) ...")
             : (plan.WasmSplit ? $"Building {what} for development (cargo, wasm-bindgen{splitting}, wasm-opt, Tailwind) ..." : $"Building {what} for development (cargo, wasm-bindgen, Tailwind) ..."));
-        var arguments = GetDxBuildArguments(configuration, plan.Application.Name, plan.WasmSplit);
+        var arguments = GetDxBuildArguments(configuration, plan.Application.Name, plan.WasmSplit, Options.KeepFunctionNames);
         var result = await _runner.RunAsync(tools.DxPath, arguments, frontend, environment, echo: false, cancellationToken: cancellationToken).ConfigureAwait(false);
         var output = GetOutputDirectory(plan, configuration);
         if (!result.Succeeded || !File.Exists(Path.Combine(output, "index.html")))
@@ -1043,6 +1113,14 @@ public sealed class PlatformFrontend
             throw new FrontendBuildException($"The build of {what} failed:" + Environment.NewLine + OutputText.Tail(result.Output, 60));
         }
 
+        var sharedChunks = plan.WasmSplit ? SharedChunkSettings.ReportedChunks(result.Output) : 0;
+        if (sharedChunks == null)
+        {
+            throw new FrontendBuildException(SharedChunkSettings.MismatchMessage(what) + OutputText.Tail(result.Output, 30));
+        }
+
+        var warnings = DxCompilerWarnings.Read(result.Output);
+        ReportCompilerWarnings(plan, warnings);
         var dxShrank = shrinkPlan.DxRanWasmOpt(configuration, result.Output);
         if (dxShrank && ReportsShrinkFailure(result.Output))
         {
@@ -1054,7 +1132,7 @@ public sealed class PlatformFrontend
             await ShrinkFilesAsync(output, source, cancellationToken).ConfigureAwait(false);
         }
 
-        return (output, dxShrank || shrinkPlan.LibraryShrinks, source);
+        return (output, dxShrank || shrinkPlan.LibraryShrinks, source, warnings, sharedChunks.Value);
     }
 
     /// <summary>
@@ -1140,6 +1218,11 @@ public sealed class PlatformFrontend
         => GetOutputDirectory(FindPlan(applicationName, forServe: false), configuration);
 
     private string GetOutputDirectory(ApplicationPlan plan, FrontendConfiguration configuration)
+        => Path.Combine(plan.FrontendDirectory, "target", "dx", PackageName(plan), configuration == FrontendConfiguration.Release ? "release" : "debug", "web", "public");
+
+    /// <summary>The package name of an application's frontend crate.</summary>
+    /// <exception cref="FrontendBuildException">The frontend's Cargo.toml is missing or names no package.</exception>
+    private static string PackageName(ApplicationPlan plan)
     {
         var frontend = RequireFrontend(plan);
         string name;
@@ -1157,7 +1240,7 @@ public sealed class PlatformFrontend
             throw new FrontendBuildException($"The frontend's {CargoManifest.FileName} has no [package] name.");
         }
 
-        return Path.Combine(frontend, "target", "dx", name, configuration == FrontendConfiguration.Release ? "release" : "debug", "web", "public");
+        return name;
     }
 
     /// <summary>
@@ -1379,6 +1462,16 @@ public sealed class PlatformFrontend
         return path;
     }
 
+    /// <summary>
+    /// The arguments, after the file and the level, that this library runs wasm-opt with when it
+    /// shrinks a debug build: the WebAssembly features dx enables too, then <c>--strip-debug</c>,
+    /// or <c>--debuginfo</c> for a build that keeps the function names (wasm-opt writes the
+    /// <c>name</c> section only with it).
+    /// </summary>
+    /// <param name="keepFunctionNames"><see cref="PlatformFrontendOptions.KeepFunctionNames"/>.</param>
+    internal static IReadOnlyList<string> GetWasmOptArguments(bool keepFunctionNames)
+        => WasmOptArguments.Append(keepFunctionNames ? "--debuginfo" : "--strip-debug").ToList();
+
     private async Task ShrinkFilesAsync(string site, WasmOptSource source, CancellationToken cancellationToken)
     {
         var program = source == WasmOptSource.Package ? WasmShrinkTool.GetExecutablePath() : WasmShrinkTool.ToolName;
@@ -1386,7 +1479,7 @@ public sealed class PlatformFrontend
         {
             _runner.Say($"Shrinking {Path.GetFileName(file)} ...");
             var arguments = new List<string> { file, "-Oz", "-o", file };
-            arguments.AddRange(WasmOptArguments);
+            arguments.AddRange(GetWasmOptArguments(Options.KeepFunctionNames));
             var result = await _runner.RunAsync(program, arguments, site, echo: false, cancellationToken: cancellationToken).ConfigureAwait(false);
             if (!result.Succeeded)
             {

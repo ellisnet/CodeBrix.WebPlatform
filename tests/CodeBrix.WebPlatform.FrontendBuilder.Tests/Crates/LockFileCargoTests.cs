@@ -42,8 +42,9 @@ public class LockFileCargoTests
         }
     }
 
+    /// <summary>The configuration of the default crate mode, without the shared crate's patch table: these folders hold no materialized shared crate.</summary>
     private static void WriteConfiguration(string frontend, string vendor)
-        => CargoConfiguration.Write(Path.Combine(frontend, ".cargo", "config.toml"), CargoConfiguration.Create(CrateMode.PlatformCratesOnly, CargoConfiguration.VendorPath(frontend, vendor)));
+        => CargoConfiguration.Write(Path.Combine(frontend, ".cargo", "config.toml"), CargoConfiguration.Create(CrateMode.PlatformCratesOnly, CargoConfiguration.VendorPath(frontend, vendor), patchSharedCrate: false));
 
     private static async Task CargoMustSucceed(string directory, params string[] arguments)
     {

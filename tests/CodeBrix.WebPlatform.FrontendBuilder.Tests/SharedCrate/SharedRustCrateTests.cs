@@ -23,7 +23,11 @@ public class SharedRustCrateTests
         paths.Should().Contain("src/lib.rs");
         paths.Should().Contain("src/api/client.rs");
         paths.Should().Contain("src/api/error.rs");
-        paths.Should().Contain("src/dates.rs");
+        paths.Should().Contain("src/browser.rs");
+        paths.Should().Contain("types/Cargo.toml");
+        paths.Should().Contain("types/src/lib.rs");
+        paths.Should().Contain("types/src/dates.rs");
+        paths.Should().NotContain("src/dates.rs");
         paths.Should().Contain("src/query.rs");
         paths.Should().Contain("src/app_runtime.rs");
         paths.Should().Contain("src/signalr/mod.rs");
@@ -44,6 +48,22 @@ public class SharedRustCrateTests
         paths.Where(p => p.StartsWith("target/", StringComparison.Ordinal)).Should().BeEmpty();
         paths.Where(p => p.StartsWith(".cargo/", StringComparison.Ordinal)).Should().BeEmpty();
         paths.Where(p => p.Contains('\\')).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Files_types_manifest_names_the_types_crate_which_depends_on_serde_only()
+    {
+        //Act
+        var manifest = Encoding.UTF8.GetString(SharedRustCrate.Files.Single(f => f.RelativePath == SharedRustCrate.TypesFolderName + "/Cargo.toml").Content);
+        var shared = Encoding.UTF8.GetString(SharedRustCrate.Files.Single(f => f.RelativePath == "Cargo.toml").Content);
+
+        //Assert
+        manifest.Should().Contain($"name = \"{SharedRustCrate.TypesCrateName}\"");
+        var dependencies = manifest.Substring(manifest.IndexOf("[dependencies]\n", StringComparison.Ordinal)).Split('\n').Skip(1)
+            .TakeWhile(l => !l.StartsWith('[')).Where(l => l.Length > 0 && !l.StartsWith('#'));
+        dependencies.Should().Equal("serde = \"1\"");
+        shared.Should().Contain($"{SharedRustCrate.TypesCrateName} = {{ path = \"{SharedRustCrate.TypesFolderName}\" }}");
+        SharedRustCrate.TypesRustName.Should().Be(SharedRustCrate.TypesCrateName.Replace('-', '_'));
     }
 
     [Fact]

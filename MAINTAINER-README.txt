@@ -272,8 +272,17 @@ REPOSITORY LAYOUT
                                              and LockFileRules /
                                              LockFileOutcome (the lock-file
                                              marker and stale entries)
+      Sizes/                                 FrontendSizeReport, WasmFileSize,
+                                             WasmFileKind, WasmCrateSize;
+                                             internal WasmModuleReader (the
+                                             sections, bodies and names of a
+                                             .wasm file), RustSymbolNames (the
+                                             crate of a v0 or legacy mangled
+                                             name) and SizeReportBuilder
       Internal/                              process runner, output tail,
                                              execute permission, ShrinkPlan,
+                                             DxCompilerWarnings (rustc's
+                                             warnings in dx's output),
                                              OutputCompressor (the .br / .gz
                                              copies in frontend-built/),
                                              BuildOutputFolder (the
@@ -283,6 +292,10 @@ REPOSITORY LAYOUT
                                              consuming build's output
       Rust/codebrix-webplatform/             the shared Rust crate's source
         Cargo.toml, src/                       embedded in the assembly
+        types/                                 its browser-free types crate
+                                               (codebrix-webplatform-types:
+                                               the calendar date; serde only),
+                                               embedded with it
         Cargo.lock, .cargo/, target/           NOT embedded: for `cargo test`
                                                in this repository only
       Rust/platform-crates/                  the platform's CRATE SET: a
@@ -508,7 +521,8 @@ carries an XML doc comment; fix CS1591 by writing the comment, never with
 <NoWarn>.
 
 THE EMBEDDED RUST CRATE. The FrontendBuilder project embeds every file under
-Rust/codebrix-webplatform except target/, Cargo.lock and .cargo/, as resources
+Rust/codebrix-webplatform except target/, Cargo.lock and .cargo/ (and
+types/target/ and types/Cargo.lock), as resources
 named "CodeBrix.WebPlatform.FrontendBuilder.Rust/<path inside the crate>".
 Building FrontendBuilder does NOT compile the Rust; it only packs the source.
 A new file in the crate is picked up by the glob. SharedRustCrateTests checks
@@ -597,19 +611,36 @@ machine with no adopted programs. The lock-file tests that need cargo
 installed cargo offline on tiny made-up crates, and are skipped, with the
 reason, on a machine without cargo; so are Crates/PathCrateTests.cs (a
 frontend with a local path crate beside it materializes, passes the
-lock-file checks and builds offline) and the test that the packaged Tailwind
+lock-file checks and builds offline), Crates/SharedCratePatchTests.cs (a path
+crate that names the shared crate by version gets the frontend's own copy
+through the cargo configuration's patch table, and a frontend without one
+locks as before) and the test that the packaged Tailwind
 skips a folder that carries its own .gitignore. ONE OPT-IN CLASS builds a
 frontend with dx: PlatformFrontendDxBuildTests.cs materializes and
-Debug-builds a small Dioxus frontend with the ADOPTED dx
+Debug-builds a small Dioxus frontend (once as it is, with a compiler warning
+the result must report, and once more with KeepFunctionNames, whose size
+report must name the crates) with the ADOPTED dx
 (native_libraries/<rid>/), the real platform crates and the packaged
-Tailwind into a backend project folder. It runs only with
+Tailwind into a backend project folder (its target/.gitignore removed and a
+class name put into target/ first: the stylesheet must not see it, because
+BuildAsync writes that file again BEFORE dx runs Tailwind); and a small
+frontend WITH bundle
+splitting (three lazy_loader! pieces and two lazy components that share
+code in two sets) three times - with SharedChunkThreshold = 1 twice (it
+must make several shared chunks, report them, give the same files byte for
+byte, and name the piece files after their pieces) and with
+SharedChunkLimit = 1 (exactly one chunk). It runs only with
 CODEBRIX_WEBPLATFORM_DX_BUILD_TESTS=1 (otherwise its tests are skipped with
 the reason):
 
     CODEBRIX_WEBPLATFORM_DX_BUILD_TESTS=1 dotnet tests/CodeBrix.WebPlatform.FrontendBuilder.Tests/bin/Debug/net10.0/CodeBrix.WebPlatform.FrontendBuilder.Tests.dll -class CodeBrix.WebPlatform.FrontendBuilder.Tests.PlatformFrontendDxBuildTests
 
-Its test that dx writes the stylesheet into assets/generated/ needs an
-adopted dx with dioxus-cli patch 0008. The
+CODEBRIX_WEBPLATFORM_DX_BUILD_TESTS_DX_FOLDER=<folder> runs them with the dx
+and wasm-bindgen in that folder instead of the adopted ones (a dx just
+built, before it is adopted). Its test that dx writes the stylesheet into
+assets/generated/ needs a dx with dioxus-cli patch 0008; its split tests a
+dx with dioxus-cli patches 0011 to 0013 and splitter patch 0007 - with an
+older dx they fail and say so. The
 LibraryChecker tests run the whole gate
 against this repository and so need cargo (offline); they do not start the
 proof build. The HostTools tests check, for the machine they run on, that the
@@ -743,7 +774,12 @@ THE SHARED CRATE'S RUST TESTS
 
     cd src/CodeBrix.WebPlatform.FrontendBuilder/Rust/codebrix-webplatform
     cargo test --offline
+    cargo test --offline -p codebrix-webplatform-types
     cargo check --offline --target wasm32-unknown-unknown
+
+(The types crate in types/ is a path dependency, not a workspace member, so a
+plain `cargo test` does not run its tests; it has no dev-dependencies, which
+`-p` needs, and the date's JSON test lives in the shared crate.)
 
 The native `cargo test` runs the SignalR client against its fake hub (the
 same connection logic as in the browser, with a virtual clock) and creates
@@ -1202,6 +1238,15 @@ tools/dx-native-tools/vendoring/wasm-split-cli):
        dx serve, so split points work as ordinary loaded code
   0010 the root application's addresses without "/./" (/assets/..., not
        /./assets/...)
+  0011 DX_WASM_SPLIT_CHUNK_THRESHOLD / DX_WASM_SPLIT_CHUNK_LIMIT: several
+       shared chunks on request (the library always sets both from
+       SharedChunkThreshold / SharedChunkLimit), and one "Bundle splitting:"
+       line, without which the library fails a split build
+  0012 a split RELEASE build runs wasm-bindgen without --debug (a smaller
+       glue file; the .wasm is the same)
+  0013 a split module's file is named after its piece (module_<n>_details;
+       a lazy component always module_<n>_lazy_Lazy<Component>; routes keep
+       module_<n>_route<Name>...)
   0007 wasm-split-cli -> the patched copy in tools/dx-native-tools/sources/
        wasm-split-cli, whose patches are:
          0001 the edges recovered for wasm-bindgen's closure shims reach the
@@ -1225,6 +1270,12 @@ tools/dx-native-tools/vendoring/wasm-split-cli):
               index.html, once - even with nothing shared; an application
               whose pieces share code also gets new piece files and a
               filled chunk. Unsplit builds do not change.
+         0007 on request (a threshold), shared code is grouped by the exact
+              set of split modules that use it and a group above the
+              threshold gets a chunk of its own, fetched only by those
+              modules; a chunk calls another chunk's functions through the
+              table; a module's chunks are listed in a fixed order. Without a
+              threshold the output is byte for byte as before.
 Which of these an ADOPTED dx carries is in BUILD-PROVENANCE.txt and
 tools/dx-native-tools/README.txt.
 Every dx command is there (`dx new`, `dx init`, `dx components` included).
@@ -1437,8 +1488,8 @@ signalr-client crate (MIT License) and was reworked; protocol.rs and
 connection.rs carry a header naming the origin, and the root
 THIRD-PARTY-NOTICES.txt carries the notice with the original licence text.
 Keep both if those files change. The rest of the crate - the set-up call,
-REST transport, error type, query-string, date and browser code, the rest of
-the SignalR module - was written for the WorkSite sample in this repository
+REST transport, error type, query-string, date (now in the types crate) and
+browser code, the rest of the SignalR module - was written for the WorkSite sample in this repository
 and moved here.
 
 The repository also CARRIES third-party code, all of it outside the

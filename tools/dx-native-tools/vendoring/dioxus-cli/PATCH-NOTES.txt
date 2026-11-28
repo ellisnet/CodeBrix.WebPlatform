@@ -39,10 +39,23 @@ The patches, in the order they apply:
                                             "/assets/..." instead of
                                             "/./assets/..." for an application
                                             at the site root
+  0011-split-shared-chunk-options.patch     DX_WASM_SPLIT_CHUNK_THRESHOLD and
+                                            DX_WASM_SPLIT_CHUNK_LIMIT: several
+                                            shared chunks on request, and one
+                                            line saying what was made
+  0012-split-release-glue-without-debug.patch
+                                            a release build with bundle
+                                            splitting no longer runs
+                                            wasm-bindgen with --debug
+  0013-split-module-file-names.patch        a split module's file is named
+                                            after its piece, not after the
+                                            function the split point calls
 
-Which adopted programs carry them (BUILD-PROVENANCE.txt): all five RIDs carry
-all ten - linux-x64 and linux-arm64 (adopted 2026-11-24), win-x64 (dx.exe,
-adopted 2026-11-24), osx-arm64 and osx-x64 (dx, adopted 2026-11-24).
+Which adopted programs carry them (BUILD-PROVENANCE.txt): linux-x64 and
+linux-arm64 carry all thirteen (adopted 2026-11-27). win-x64 (dx.exe),
+osx-arm64 and osx-x64 (dx) carry 0001 to 0010 (adopted 2026-11-24) and must
+be rebuilt for 0011 to 0013 (and the splitter's 0007) before the packages are
+published: the FrontendBuilder refuses a split build with a dx without 0011.
 
 
 0001-image-crate-encoders.patch
@@ -394,6 +407,152 @@ Status: made under the repository owner's GO of 2026-11-24.
         In the adopted programs (BUILD-PROVENANCE.txt): linux-x64 and
         linux-arm64 since 2026-11-24; win-x64, osx-arm64 and osx-x64 since
         their dx rebuilds of 2026-11-24.
+
+
+0011-split-shared-chunk-options.patch
+-------------------------------------
+What:   src/build/web.rs - bundle_web, in a build WITH bundle splitting
+        (`--wasm-split`), reads two environment variables and passes them to
+        the splitter (wasm-split-cli's Splitter::new_with_options, splitter
+        patch 0007) instead of calling Splitter::new:
+          DX_WASM_SPLIT_CHUNK_THRESHOLD  the size, in bytes of code and data
+                                         before optimisation, from which a
+                                         group of shared code gets a chunk of
+                                         its own (SplitOptions::chunk_threshold)
+          DX_WASM_SPLIT_CHUNK_LIMIT      the most shared chunks, the common
+                                         chunk included (chunk_limit; unset:
+                                         the splitter's default, 16)
+        Unset or empty: the splitter's default, ONE chunk for all shared code,
+        exactly as before. Both are checked at the START of a split web build
+        (verify_web_tooling, before wasm-bindgen is looked for and before
+        cargo runs): a value that is not a positive whole number (digits only,
+        at least 1) stops the build there with a message of its own:
+          Bundle splitting cannot start: the environment variable
+          DX_WASM_SPLIT_CHUNK_THRESHOLD (the size in bytes from which shared
+          code gets a chunk of its own; unset: one chunk for all shared code)
+          must be a positive whole number - digits only, at least 1 - or
+          unset; it is "abc". Nothing was built.
+        (the same for DX_WASM_SPLIT_CHUNK_LIMIT). Unit tests (mod
+        split_chunk_option_tests): unset and empty, accepted values, refused
+        values of each variable, the line below. After splitting, dx prints
+        one line at INFO level:
+          Bundle splitting: 3 shared chunks (threshold 16384 bytes, limit 16)
+          Bundle splitting: 1 shared chunk (no threshold: one chunk for all shared code)
+        (the number counts every chunk file written, the common chunk
+        included, which is written even when empty). Builds without
+        splitting read neither variable and print no such line.
+Why:    the platform's build library (FrontendBuilder) sets both from
+        PlatformFrontendOptions.SharedChunkThreshold / SharedChunkLimit for
+        every build, so that shared code only some pieces use is fetched only
+        by them (splitter patch 0007 has the reasons and the measurements).
+        Environment variables, as for DX_SKIP_WASM_OPT (0006), so nothing in
+        dx's arguments or configuration schema changes. The line lets the
+        library tell this dx from one that ignores the variables: it fails a
+        split build whose dx printed none.
+Effect: a split build gets several shared chunks when asked; dx writes one
+        chunk_<n>_split-dxh<hash>.wasm per chunk and lists each module's chunks in the
+        loader (in order; the splitter's 0007). Unset: unchanged output, one
+        more log line. Unsplit builds and `dx serve`: unchanged.
+Drop when: with splitter patch 0007.
+Does not touch Cargo.toml or the lock file; on an upgrade it is re-applied
+        after 0010 (all of 0009 to 0013 change src/build/web.rs).
+Status: made under the repository owner's GO of 2026-11-27.
+
+
+0012-split-release-glue-without-debug.patch
+-------------------------------------------
+What:   src/build/web.rs - bundle_web passes wasm-bindgen's `--debug` only when
+        the build asks for debug output for its own sake (the configuration's
+        wasm_opt.debug, --debug-symbols, a debug build, a hot-patch build).
+        Upstream passed it with `--keep-debug` whenever the build was split
+        (`keep_debug` includes `self.wasm_split`). `--keep-debug` is still
+        passed: the splitter reads the sections it keeps.
+Why:    `--debug` only changes the generated JavaScript - it wraps every
+        browser call in error logging and adds argument checks - and a split
+        release build shipped that glue. Measured on three split applications
+        with wasm-bindgen 0.2.130: the module wasm-bindgen writes is byte for
+        byte the same with and without `--debug` (so the split output is
+        too), and the glue JavaScript is 16 to 18 per cent smaller without it
+        (about 0.5 to 0.7 KB Brotli); the ApplicationSplitter sample's sales
+        application worked in headless Chrome with the smaller glue (every
+        page, the hand-split parts, no console error).
+Effect: a RELEASE build with bundle splitting: the glue .js (and so its
+        hashed name and index.html) changes, without the debug checks; every
+        .wasm is unchanged. Debug builds, unsplit builds and `dx serve`:
+        unchanged.
+Drop when: upstream stops passing --debug for split release builds.
+Does not touch Cargo.toml or the lock file; re-applied after 0011.
+Status: made under the repository owner's GO of 2026-11-27.
+
+
+0013-split-module-file-names.patch
+----------------------------------
+What:   src/build/web.rs - bundle_web names a split module's file
+        `module_<n>_<name part>.wasm` with the name part of
+        split_module_file_stem (new) instead of the name of the function the
+        split point calls (upstream: `module_<n>_<function>.wasm`). The
+        splitter gives every split module the name of its PIECE (the module
+        name of its import, `__wasm_split_00___<piece>___00_import_...`) and
+        of its function:
+          lazy_loader!(extern "NAME" fn f(..))   piece NAME, function f
+          #[wasm_split(NAME)] async fn f(..)     piece NAME, function f
+          #[component(lazy)] fn Name(..)         piece "lazy" (always exactly
+                                                 that: dioxus-core-macro writes
+                                                 lazy_loader!(extern "lazy" fn
+                                                 Lazy<Name>(..))), function
+                                                 Lazy<Name> ("Lazy" + the
+                                                 component function's name)
+          a route (the router's macro)           piece module<Route><hash>,
+                                                 function route<Route><hash>
+                                                 (the same 32 hexadecimal
+                                                 digits after the same name)
+        The rule:
+          - a ROUTE - the piece name is "module" + X and the function name
+            "route" + X, X ending in 32 lowercase hexadecimal digits: the
+            function's name, `route<Route><hash>`, as before;
+          - a LAZY COMPONENT - the piece name is "lazy": `lazy_<function>`,
+            ALWAYS, also when it is the only one, so that adding a second
+            lazy component renames no file (a lazy_loader! piece a developer
+            names "lazy" is treated the same);
+          - any other piece name that several split points share:
+            `<piece>_<function>`;
+          - otherwise the piece name (an empty one: the function's name).
+        Examples: lazy_loader!(extern "details" fn panel(..)) ->
+        module_4_details.wasm; a lazy component Insights ->
+        module_1_lazy_LazyInsights.wasm, alone or beside others (Chart ->
+        module_2_lazy_LazyChart.wasm); two lazy_loader! pieces both named
+        "reports" calling monthly and yearly -> module_5_reports_monthly.wasm
+        and module_6_reports_yearly.wasm; the route Orders ->
+        module_7_routeOrders<hash>.wasm, as before. Both names are made of
+        ASCII letters, digits and `_` (the wasm_split macros make
+        `#[no_mangle]` items of them, which must be ASCII), so the name is a
+        safe file and address; the `module_<n>_` before it keeps every file
+        apart. The loader's export names (`__wasm_split_load_<piece>_<hash>_
+        <function>`), which the main module imports, are unchanged; dx then
+        adds its content hash to the file name as before (`-dxh<hash>`).
+        Unit tests (mod split_module_file_name_tests): a named piece, a lazy
+        component alone and beside others, a shared piece name, a route, a
+        look-alike that is no route, an empty piece name.
+        The lazy-component rule was added on review (2026-11-27) and awaits
+        the repository owner's confirmation; without it (the first version)
+        a lone lazy component's file was module_<n>_lazy. To go back, in
+        split_module_file_stem change `} else if shared || piece ==
+        LAZY_COMPONENT_PIECE {` to `} else if shared {`, remove the constant
+        LAZY_COMPONENT_PIECE and the test
+        a_lazy_component_always_carries_its_function_name (and its line in
+        the doc comment), and write this patch again.
+Why:    the platform's guide calls a piece by the name the developer gives
+        it (`extern "details"`, `#[wasm_split(forecast)]`); the file of a
+        lazy_loader! piece carried the function's name instead, so the files
+        did not tell which piece is which.
+Effect: the files of lazy_loader!, #[wasm_split] and lazy-component pieces
+        get new names (a returning visitor downloads them once); route
+        pieces and the shared chunks keep theirs. Nothing else depends on
+        the names: the loader lists the addresses dx gives it, and the
+        platform's backend serves and caches any `-dxh` name.
+Drop when: upstream names split modules after their piece.
+Does not touch Cargo.toml or the lock file; re-applied after 0012.
+Status: made under the repository owner's GO of 2026-11-27.
 
 
 BUILD SWITCHES (not a patch)

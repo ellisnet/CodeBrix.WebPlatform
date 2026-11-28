@@ -39,6 +39,7 @@
 /sources/dioxus-cli/target/
 /sources/wasm-bindgen-cli/target/
 /sources/codebrix-libgit2-sys/target/
+/split-check/target/
 
 # Finder droppings (the "!*" above would otherwise re-include them).
 .DS_Store

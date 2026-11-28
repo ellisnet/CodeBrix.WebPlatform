@@ -6,20 +6,24 @@ This program was BUILT HERE, from the source in this repository, by:
 
 inside a digest-pinned manylinux container with the network DISABLED. Nothing
 was downloaded during the build: every crate came from the vendored tool
-crates. It was built TWICE for this adoption, on the evening of 2026-11-24
-Pacific time (2026-11-25 UTC), runs 25 and 26: byte-identical both times.
+crates. It was built TWICE for this adoption, in the afternoon of 2026-11-27
+Pacific time (2026-11-28 UTC), runs 33 and 34: byte-identical both times.
 
 Source            : dioxus-cli 0.7.10 (upstream commit 57d6794ad60b949e5bd8aa282f6f8c3dc97a365e) with the
-                    repository's TEN patches (0007 swaps in the repository's patched copy of the
-                    bundle splitter, tools/dx-native-tools/sources/wasm-split-cli, which carries
-                    SIX patches of its own: 0001 and 0002 fix its call graph, 0003 makes a split
-                    build give the same files from the same source, 0004 keeps the main
-                    module's data whole when a split module's constant lies over it, 0005 lets a
-                    split build pass a data symbol of size 0, 0006 puts the code and data several
-                    split modules use into the shared chunk, once; 0008 makes Tailwind's default
-                    output assets/generated/tailwind.css, 0009 gives an unsplit build and
-                    `dx serve` a stand-in __wasm_split.js, 0010 writes the root application's
-                    addresses as "/assets/..." instead of "/./assets/...")
+                    repository's THIRTEEN patches (0007 swaps in the repository's patched copy of
+                    the bundle splitter, tools/dx-native-tools/sources/wasm-split-cli, which
+                    carries SEVEN patches of its own: 0001 and 0002 fix its call graph, 0003
+                    makes a split build give the same files from the same source, 0004 keeps the
+                    main module's data whole when a split module's constant lies over it, 0005
+                    lets a split build pass a data symbol of size 0, 0006 puts the code and data
+                    several split modules use into the shared chunk, once, 0007 groups shared
+                    code into several chunks on request; 0008 makes Tailwind's default output
+                    assets/generated/tailwind.css, 0009 gives an unsplit build and `dx serve` a
+                    stand-in __wasm_split.js, 0010 writes the root application's addresses as
+                    "/assets/..." instead of "/./assets/...", 0011 reads
+                    DX_WASM_SPLIT_CHUNK_THRESHOLD / DX_WASM_SPLIT_CHUNK_LIMIT and reports the
+                    shared chunks, 0012 runs wasm-bindgen without --debug for a split release
+                    build, 0013 names a split module's file after its piece)
                     (tools/dx-native-tools/
                     vendoring/dioxus-cli/PATCH-NOTES.txt and vendoring/wasm-split-cli/
                     PATCH-NOTES.txt); every dx command is there.
@@ -39,11 +43,11 @@ LINKS libgit2     : libgit2 1.9.7 as a SHARED LIBRARY, NEEDED as
                     reaches a build through that package
 --version         : "dioxus 0.7.10 (57d6794)" (with the library on LD_LIBRARY_PATH)
 
-Built             : 2026-11-25 04:56:29 UTC (run 25; run 26, 04:58:58 UTC, gave the same
-                    bytes) - the rebuild of 2026-11-24 (Pacific time): dioxus-cli
-                    patches 0008 to 0010 and the splitter's patches 0005 and 0006 (see
+Built             : 2026-11-28 00:13:19 UTC (run 33; run 34, 00:15:25 UTC, gave the same
+                    bytes) - the rebuild of 2026-11-27 (Pacific time): dioxus-cli
+                    patches 0011 to 0013 and the splitter's patch 0007 (see
                     BUILD-PROVENANCE.txt)
-Build time        : 110s for this program (cargo, inside the container, from scratch)
+Build time        : 99s for this program (cargo, inside the container, from scratch)
 Build host        : Dell Precision 7770 laptop, LMDE 7, x86_64, podman 5.4.2
                     (CROSS-compiled for aarch64 on the x86_64 laptop and run under qemu)
 Network           : DISABLED during this build (interfaces: lo)
@@ -66,11 +70,11 @@ Command           : cargo build --release --locked --offline --target
                     then llvm-strip --strip-all
 
 File             : dx
-Size (as linked) : 76333720 bytes (not kept)
-Size (stripped)  : 53344872 bytes  <- the shipped file
-Size (gzip -9 -n): 20278570 bytes
-SHA256           : 742b4830309c877cbda9ef790dcdb471e680ba63ce00102b26d3ee65cb54d0e2
-Build-id (sha1)  : f06281f17a6afb03d30ba865324c86c89fe94693
+Size (as linked) : 76520760 bytes (not kept)
+Size (stripped)  : 53476640 bytes  <- the shipped file
+Size (gzip -9 -n): 20314947 bytes
+SHA256           : 62d5674fd139599f01d57aedceffd3890f2e94ffedba3a36ef646cc6dff996c6
+Build-id (sha1)  : c087447db3841f454fa82f05f3a6b35d0223924b
 ELF              : ELF64, AArch64, DYN (Position-Independent Executable file)
 NEEDED           : libdl.so.2 libgit2-49e408b.so.1.9 libgcc_s.so.1 libpthread.so.0 libm.so.6 libc.so.6
 glibc floor      : 2.28 (allowed <= 2.28)

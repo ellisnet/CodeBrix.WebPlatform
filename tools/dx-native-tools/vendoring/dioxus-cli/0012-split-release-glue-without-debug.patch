@@ -1,0 +1,29 @@
+diff -ruN a/src/build/web.rs b/src/build/web.rs
+--- a/src/build/web.rs
++++ b/src/build/web.rs
+@@ -126,6 +126,16 @@
+             || self.wasm_split
+             || !self.release
+             || ctx.mode == BuildMode::Fat;
++        // CodeBrix change: wasm-bindgen's --debug (extra checks and error logging in the
++        // generated JavaScript) only when the build asks for debug output for its own sake. A
++        // release build with bundle splitting needs --keep-debug (the splitter reads the
++        // sections it keeps) but not --debug, which upstream passed with it; the WebAssembly
++        // wasm-bindgen writes is the same either way. See
++        // tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt.
++        let bindgen_debug = self.config.web.wasm_opt.debug
++            || self.debug_symbols
++            || !self.release
++            || ctx.mode == BuildMode::Fat;
+         let keep_names = self.config.web.wasm_opt.keep_names
+             || self.keep_names
+             || self.wasm_split
+@@ -148,7 +158,7 @@
+         WasmBindgen::new(&bindgen_version)
+             .input_path(exe)
+             .target("web")
+-            .debug(keep_debug)
++            .debug(bindgen_debug)
+             .demangle(demangle)
+             .keep_debug(keep_debug)
+             .keep_lld_exports(true)

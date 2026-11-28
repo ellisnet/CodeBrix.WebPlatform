@@ -89,8 +89,8 @@
     The shared Rust crate (Rust/codebrix-webplatform) travels inside the assembly as embedded
     resources named "CodeBrix.WebPlatform.FrontendBuilder.Rust/<path inside the crate>".
     SharedRustCrate writes it out when a frontend is materialized. Cargo's own output (target,
-    Cargo.lock) and the .cargo folder, which only serves `cargo test` in this repository, are left
-    out.
+    Cargo.lock, also of the types crate in types/) and the .cargo folder, which only serves
+    `cargo test` in this repository, are left out.
   -->
   <PropertyGroup>
     <!-- The vendored crates are data for the archive below, never project items. -->
@@ -100,7 +100,7 @@
   <ItemGroup>
     <None Remove="Rust\**" />
     <EmbeddedResource Include="Rust\codebrix-webplatform\**\*"
-                      Exclude="Rust\codebrix-webplatform\target\**;Rust\codebrix-webplatform\Cargo.lock;Rust\codebrix-webplatform\.cargo\**"
+                      Exclude="Rust\codebrix-webplatform\target\**;Rust\codebrix-webplatform\Cargo.lock;Rust\codebrix-webplatform\.cargo\**;Rust\codebrix-webplatform\types\target\**;Rust\codebrix-webplatform\types\Cargo.lock"
                       LogicalName="CodeBrix.WebPlatform.FrontendBuilder.Rust/%(RecursiveDir)%(Filename)%(Extension)" />
     <!-- The platform's lock file: written into a frontend that has no Cargo.lock yet. -->
     <EmbeddedResource Include="Rust\platform-crates\Cargo.lock"

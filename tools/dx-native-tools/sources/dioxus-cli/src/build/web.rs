@@ -50,6 +50,13 @@ use uuid::Uuid;
 
 impl BuildRequest {
     pub async fn verify_web_tooling(&self) -> Result<()> {
+        // CodeBrix change: a build with bundle splitting checks DX_WASM_SPLIT_CHUNK_THRESHOLD and
+        // DX_WASM_SPLIT_CHUNK_LIMIT before any work, so that a bad value stops it at once with a
+        // message of its own. See tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt.
+        if self.wasm_split {
+            split_chunk_options()?;
+        }
+
         // Wasm bindgen
         let krate_bindgen_version =
             self.workspace
@@ -119,6 +126,16 @@ impl BuildRequest {
             || self.wasm_split
             || !self.release
             || ctx.mode == BuildMode::Fat;
+        // CodeBrix change: wasm-bindgen's --debug (extra checks and error logging in the
+        // generated JavaScript) only when the build asks for debug output for its own sake. A
+        // release build with bundle splitting needs --keep-debug (the splitter reads the
+        // sections it keeps) but not --debug, which upstream passed with it; the WebAssembly
+        // wasm-bindgen writes is the same either way. See
+        // tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt.
+        let bindgen_debug = self.config.web.wasm_opt.debug
+            || self.debug_symbols
+            || !self.release
+            || ctx.mode == BuildMode::Fat;
         let keep_names = self.config.web.wasm_opt.keep_names
             || self.keep_names
             || self.wasm_split
@@ -141,7 +158,7 @@ impl BuildRequest {
         WasmBindgen::new(&bindgen_version)
             .input_path(exe)
             .target("web")
-            .debug(keep_debug)
+            .debug(bindgen_debug)
             .demangle(demangle)
             .keep_debug(keep_debug)
             .keep_lld_exports(true)
@@ -167,11 +184,25 @@ impl BuildRequest {
             let mut glue = wasm_split_cli::MAKE_LOAD_JS.to_string();
 
             // Run the emitter
-            let splitter = wasm_split_cli::Splitter::new(&original, &bindgened);
+            //
+            // CodeBrix change: the grouping of shared code into chunks comes from the environment
+            // variables DX_WASM_SPLIT_CHUNK_THRESHOLD and DX_WASM_SPLIT_CHUNK_LIMIT (unset: one
+            // chunk, as before; checked at the start of the build, verify_web_tooling), and one
+            // line says what was made. See tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt.
+            let split_options = split_chunk_options()?;
+            let splitter = wasm_split_cli::Splitter::new_with_options(
+                &original,
+                &bindgened,
+                split_options.clone(),
+            );
             let modules = splitter
                 .context("Failed to parse wasm for splitter")?
                 .emit()
                 .context("Failed to emit wasm split modules")?;
+            tracing::info!(
+                "{}",
+                describe_shared_chunks(modules.chunks.len(), &split_options)
+            );
 
             // Write the chunks that contain shared imports
             // These will be in the format of chunk_0_modulename.wasm - this is hardcoded in wasm-split
@@ -190,14 +221,19 @@ impl BuildRequest {
             }
 
             // Write the modules that contain the entrypoints
+            //
+            // CodeBrix change: a module's file is named after its piece (split_module_file_stems),
+            // not after the function the split point calls. See
+            // tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt.
             tracing::debug!("Writing split modules to disk");
+            let file_stems = split_module_file_stems(&modules.modules)?;
             for (idx, module) in modules.modules.iter().enumerate() {
                 let comp_name = module
                     .component_name
                     .as_ref()
                     .context("generated bindgen module has no name?")?;
 
-                let path = bindgen_outdir.join(format!("module_{idx}_{comp_name}.wasm"));
+                let path = bindgen_outdir.join(format!("module_{idx}_{}.wasm", file_stems[idx]));
                 wasm_opt::write_wasm(&module.bytes, &path, &wasm_opt_options).await?;
 
                 let hash_id = module
@@ -864,4 +900,255 @@ fn add_table_export(bytes: &[u8], name: &str) -> Result<Vec<u8>> {
 /// A JavaScript string literal for an export name (CodeBrix change).
 fn js_string(value: &str) -> String {
     serde_json::to_string(value).unwrap_or_else(|_| format!("\"{value}\""))
+}
+
+// CodeBrix change: how a build with bundle splitting groups shared code into chunks (see the calls
+// in `verify_web_tooling` and `bundle_web`, and tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt).
+
+/// The environment variable that sets the size, in bytes of code and data before optimisation,
+/// from which a group of shared code gets a chunk of its own.
+const CHUNK_THRESHOLD_VARIABLE: &str = "DX_WASM_SPLIT_CHUNK_THRESHOLD";
+
+/// The environment variable that sets the most shared chunks, the common chunk included.
+const CHUNK_LIMIT_VARIABLE: &str = "DX_WASM_SPLIT_CHUNK_LIMIT";
+
+/// The start of the line a build with bundle splitting prints about its shared chunks.
+const SHARED_CHUNKS_LINE: &str = "Bundle splitting:";
+
+/// The splitter's options from the environment (CodeBrix change).
+fn split_chunk_options() -> Result<wasm_split_cli::SplitOptions> {
+    split_chunk_options_from(
+        std::env::var(CHUNK_THRESHOLD_VARIABLE),
+        std::env::var(CHUNK_LIMIT_VARIABLE),
+    )
+}
+
+/// The splitter's options from the two variables' values (CodeBrix change): unset or empty, the
+/// splitter's defaults (one chunk for all shared code; the default limit).
+fn split_chunk_options_from(
+    threshold: std::result::Result<String, std::env::VarError>,
+    limit: std::result::Result<String, std::env::VarError>,
+) -> Result<wasm_split_cli::SplitOptions> {
+    let defaults = wasm_split_cli::SplitOptions::default();
+    Ok(wasm_split_cli::SplitOptions {
+        chunk_threshold: positive_whole_number(
+            CHUNK_THRESHOLD_VARIABLE,
+            "the size in bytes from which shared code gets a chunk of its own; unset: one chunk for all shared code",
+            threshold,
+        )?,
+        chunk_limit: positive_whole_number(
+            CHUNK_LIMIT_VARIABLE,
+            "the most shared chunks, the common one included; unset: the splitter's default",
+            limit,
+        )?
+        .unwrap_or(defaults.chunk_limit),
+    })
+}
+
+/// The value of an environment variable that must be a positive whole number, or None when it
+/// is unset or empty (CodeBrix change). Anything else is an error that names the variable, says
+/// what it is for and stops the build before anything is built.
+fn positive_whole_number(
+    variable: &str,
+    meaning: &str,
+    value: std::result::Result<String, std::env::VarError>,
+) -> Result<Option<usize>> {
+    let refuse = |shown: String| {
+        anyhow::anyhow!(
+            "Bundle splitting cannot start: the environment variable {variable} ({meaning}) must be a positive whole number - digits only, at least 1 - or unset; it is {shown}. Nothing was built."
+        )
+    };
+    let value = match value {
+        Ok(value) => value,
+        Err(std::env::VarError::NotPresent) => return Ok(None),
+        Err(std::env::VarError::NotUnicode(value)) => return Err(refuse(format!("{value:?}"))),
+    };
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    match trimmed.parse::<usize>() {
+        Ok(number) if number >= 1 && trimmed.bytes().all(|b| b.is_ascii_digit()) => Ok(Some(number)),
+        _ => Err(refuse(format!("{value:?}"))),
+    }
+}
+
+/// The line that says how the shared code of a split build was grouped (CodeBrix change).
+fn describe_shared_chunks(chunks: usize, options: &wasm_split_cli::SplitOptions) -> String {
+    let plural = if chunks == 1 { "" } else { "s" };
+    match options.chunk_threshold {
+        Some(threshold) => format!(
+            "{SHARED_CHUNKS_LINE} {chunks} shared chunk{plural} (threshold {threshold} bytes, limit {limit})",
+            limit = options.chunk_limit
+        ),
+        None => format!(
+            "{SHARED_CHUNKS_LINE} {chunks} shared chunk{plural} (no threshold: one chunk for all shared code)"
+        ),
+    }
+}
+
+#[cfg(test)]
+mod split_chunk_option_tests {
+    use super::{describe_shared_chunks, split_chunk_options_from};
+    use std::env::VarError;
+
+    fn set(value: &str) -> Result<String, VarError> {
+        Ok(value.to_string())
+    }
+
+    #[test]
+    fn unset_or_empty_gives_the_splitters_defaults() {
+        let defaults = wasm_split_cli::SplitOptions::default();
+        let unset = split_chunk_options_from(Err(VarError::NotPresent), Err(VarError::NotPresent)).unwrap();
+        assert_eq!(unset, defaults);
+        let empty = split_chunk_options_from(set(""), set("  ")).unwrap();
+        assert_eq!(empty, defaults);
+    }
+
+    #[test]
+    fn positive_whole_numbers_are_taken() {
+        let options = split_chunk_options_from(set("16384"), set(" 3 ")).unwrap();
+        assert_eq!(options.chunk_threshold, Some(16384));
+        assert_eq!(options.chunk_limit, 3);
+        let limit_only = split_chunk_options_from(Err(VarError::NotPresent), set("1")).unwrap();
+        assert_eq!(limit_only.chunk_threshold, None);
+        assert_eq!(limit_only.chunk_limit, 1);
+    }
+
+    #[test]
+    fn anything_else_in_the_threshold_is_refused_with_a_message_of_its_own() {
+        for bad in ["abc", "0", "-5", "+5", "1.5", "16 KiB", "99999999999999999999999"] {
+            let message = split_chunk_options_from(set(bad), Err(VarError::NotPresent)).unwrap_err().to_string();
+            assert!(message.starts_with("Bundle splitting cannot start: the environment variable DX_WASM_SPLIT_CHUNK_THRESHOLD"), "{message}");
+            assert!(message.contains(&format!("{bad:?}")), "{message}");
+            assert!(message.ends_with("Nothing was built."), "{message}");
+        }
+    }
+
+    #[test]
+    fn anything_else_in_the_limit_is_refused_too() {
+        for bad in ["abc", "0", "-1", "two"] {
+            let message = split_chunk_options_from(set("16384"), set(bad)).unwrap_err().to_string();
+            assert!(message.starts_with("Bundle splitting cannot start: the environment variable DX_WASM_SPLIT_CHUNK_LIMIT"), "{message}");
+            assert!(message.contains(&format!("{bad:?}")), "{message}");
+        }
+    }
+
+    #[test]
+    fn the_line_says_how_many_chunks_and_the_settings() {
+        let options = split_chunk_options_from(set("16384"), set("16")).unwrap();
+        assert_eq!(describe_shared_chunks(3, &options), "Bundle splitting: 3 shared chunks (threshold 16384 bytes, limit 16)");
+        let none = split_chunk_options_from(Err(VarError::NotPresent), Err(VarError::NotPresent)).unwrap();
+        assert_eq!(describe_shared_chunks(1, &none), "Bundle splitting: 1 shared chunk (no threshold: one chunk for all shared code)");
+    }
+}
+
+// CodeBrix change: the file names of the split modules (see the call in `bundle_web` and
+// tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt).
+
+/// The piece name dioxus's `#[component(lazy)]` gives every lazy component
+/// (`lazy_loader!(extern "lazy" fn Lazy<Component>(..))`).
+const LAZY_COMPONENT_PIECE: &str = "lazy";
+
+/// The name part of each split module's file, `module_<n>_<name part>.wasm`, in the order of
+/// `modules` (CodeBrix change). See [`split_module_file_stem`].
+fn split_module_file_stems(modules: &[wasm_split_cli::SplitModule]) -> Result<Vec<String>> {
+    let mut uses: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+    for module in modules {
+        *uses.entry(module.module_name.as_str()).or_default() += 1;
+    }
+    modules
+        .iter()
+        .map(|module| {
+            let function = module
+                .component_name
+                .as_deref()
+                .context("generated bindgen module has no name?")?;
+            Ok(split_module_file_stem(
+                &module.module_name,
+                function,
+                uses[module.module_name.as_str()] > 1,
+            ))
+        })
+        .collect()
+}
+
+/// The name part of a split module's file (CodeBrix change). `piece` is the name the split
+/// point gives its piece - the "NAME" of `lazy_loader!(extern "NAME" fn ...)`, the module of
+/// `#[wasm_split(NAME)]`, "lazy" for every `#[component(lazy)]`, and what the router's macro
+/// generates for a route - and `function` the function it calls:
+///   - a ROUTE (the router names the piece `module<Route><hash>` and the function
+///     `route<Route><hash>`, the same 32 hexadecimal digits after the same name): the function's
+///     name, `route<Route><hash>`;
+///   - a LAZY COMPONENT (`#[component(lazy)] fn Insights` gives the piece "lazy" and the
+///     function `LazyInsights`), and any other piece named "lazy": `lazy_<function>`, always, so
+///     that adding a second lazy component renames no file;
+///   - any other piece name that several split points share: `<piece>_<function>`;
+///   - otherwise the piece name; an empty one gives the function's name.
+/// Both names are ASCII letters, digits and `_` (the macros make `#[no_mangle]` items of them),
+/// so the result is a safe file name; the `module_<n>_` before it keeps every file apart.
+fn split_module_file_stem(piece: &str, function: &str, shared: bool) -> String {
+    if let Some(route) = piece.strip_prefix("module") {
+        let hash = route.len().checked_sub(32).map(|at| &route[at..]);
+        if route.len() > 32
+            && function.strip_prefix("route") == Some(route)
+            && hash.is_some_and(|hash| hash.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
+        {
+            return function.to_string();
+        }
+    }
+
+    if piece.is_empty() {
+        function.to_string()
+    } else if shared || piece == LAZY_COMPONENT_PIECE {
+        format!("{piece}_{function}")
+    } else {
+        piece.to_string()
+    }
+}
+
+#[cfg(test)]
+mod split_module_file_name_tests {
+    use super::split_module_file_stem;
+
+    #[test]
+    fn a_named_piece_keeps_its_name() {
+        assert_eq!(split_module_file_stem("details", "order_details_panel", false), "details");
+        assert_eq!(split_module_file_stem("forecast", "run_forecast", false), "forecast");
+    }
+
+    #[test]
+    fn a_lazy_component_always_carries_its_function_name() {
+        assert_eq!(split_module_file_stem("lazy", "LazyInsights", false), "lazy_LazyInsights");
+        assert_eq!(split_module_file_stem("lazy", "LazyInsights", true), "lazy_LazyInsights");
+    }
+
+    #[test]
+    fn a_shared_piece_name_gets_the_function_name() {
+        assert_eq!(split_module_file_stem("reports", "monthly", true), "reports_monthly");
+    }
+
+    #[test]
+    fn a_route_keeps_the_route_name() {
+        let hash = "d2348507f81099b5d7c92db749db3f60";
+        assert_eq!(
+            split_module_file_stem(&format!("moduleOrders{hash}"), &format!("routeOrders{hash}"), false),
+            format!("routeOrders{hash}")
+        );
+    }
+
+    #[test]
+    fn only_the_routers_pair_counts_as_a_route() {
+        assert_eq!(split_module_file_stem("moduleOrders", "routeOrders", false), "moduleOrders");
+        let hash = "d2348507f81099b5d7c92db749db3f60";
+        assert_eq!(
+            split_module_file_stem(&format!("moduleOrders{hash}"), "panel", false),
+            format!("moduleOrders{hash}")
+        );
+    }
+
+    #[test]
+    fn an_empty_piece_name_gives_the_function_name() {
+        assert_eq!(split_module_file_stem("", "panel", false), "panel");
+    }
 }

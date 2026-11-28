@@ -1,0 +1,393 @@
+diff -ruN a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -20,6 +20,40 @@
+ 
+ pub const MAKE_LOAD_JS: &str = include_str!("./__wasm_split.js");
+ 
++/// CodeBrix change: new with patch 0007. How the code and data that several split modules share
++/// (and the main module does not hold) are grouped into shared chunks. The default is upstream's
++/// behaviour as patch 0006 completed it: ONE chunk holds all of it. See
++/// tools/dx-native-tools/vendoring/wasm-split-cli/PATCH-NOTES.txt, patch 0007.
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct SplitOptions {
++    /// `None`: one chunk for all shared code. `Some(bytes)`: the shared symbols are grouped by
++    /// the exact set of split modules that use them, and a group whose code and data, measured
++    /// before optimisation, come to at least this many bytes gets a chunk of its own, which only
++    /// the split modules that use it fetch. Smaller groups go into the chunk of the smallest
++    /// larger group that every one of their users also uses, else into the common chunk (chunk
++    /// 0). At least 1.
++    pub chunk_threshold: Option<usize>,
++
++    /// The most shared chunks, the common chunk included: when more groups reach the threshold,
++    /// the largest keep their own chunks and the others are grouped as the smaller ones are. At
++    /// least 1; 1 gives the one chunk of the default.
++    pub chunk_limit: usize,
++}
++
++impl SplitOptions {
++    /// The chunk limit when none is given.
++    pub const DEFAULT_CHUNK_LIMIT: usize = 16;
++}
++
++impl Default for SplitOptions {
++    fn default() -> Self {
++        Self {
++            chunk_threshold: None,
++            chunk_limit: Self::DEFAULT_CHUNK_LIMIT,
++        }
++    }
++}
++
+ /// A parsed wasm module with additional metadata and functionality for splitting and patching.
+ ///
+ /// This struct assumes that relocations will be present in incoming wasm binary.
+@@ -48,6 +82,8 @@
+     main_graph: HashSet<Node>,
+     call_graph: HashMap<Node, HashSet<Node>>,
+     parent_graph: HashMap<Node, HashSet<Node>>,
++    // CodeBrix change: how shared code is grouped into chunks (patch 0007).
++    options: SplitOptions,
+ }
+ 
+ /// The results of splitting the wasm module with some additional metadata for later use.
+@@ -70,7 +106,9 @@
+     pub hash_id: Option<String>,
+     pub component_name: Option<String>,
+     pub bytes: Vec<u8>,
+-    pub relies_on_chunks: HashSet<usize>,
++    // CodeBrix change: an ordered set, so that dx lists a module's chunks in the loader in one
++    // fixed order now that there can be several (patch 0007; see patch 0003).
++    pub relies_on_chunks: BTreeSet<usize>,
+ }
+ 
+ impl<'a> Splitter<'a> {
+@@ -82,6 +120,26 @@
+     /// It's important to compile the wasm with --emit-relocs such that the relocations are available
+     /// to construct the callgraph.
+     pub fn new(original: &'a [u8], bindgened: &'a [u8]) -> Result<Self> {
++        // CodeBrix change: the default options give upstream's one shared chunk (patch 0007).
++        Self::new_with_options(original, bindgened, SplitOptions::default())
++    }
++
++    /// CodeBrix change: new with patch 0007. As [`Splitter::new`], with the grouping of shared
++    /// code into chunks set by `options`. Fails when the threshold or the limit is 0.
++    pub fn new_with_options(
++        original: &'a [u8],
++        bindgened: &'a [u8],
++        options: SplitOptions,
++    ) -> Result<Self> {
++        anyhow::ensure!(
++            options.chunk_limit >= 1,
++            "the shared chunk limit must be at least 1"
++        );
++        anyhow::ensure!(
++            options.chunk_threshold != Some(0),
++            "the shared chunk threshold must be at least 1 byte"
++        );
++
+         let (module, ids, fns_to_ids) = parse_module_with_ids(bindgened)?;
+ 
+         let split_points = accumulate_split_points(&module);
+@@ -103,6 +161,7 @@
+             call_graph: Default::default(),
+             parent_graph: Default::default(),
+             shared_symbols: Default::default(),
++            options,
+         };
+ 
+         module.build_call_graph()?;
+@@ -217,7 +276,7 @@
+             .collect();
+ 
+         // Convert split chunk functions to imports
+-        let mut relies_on_chunks = HashSet::new();
++        let mut relies_on_chunks = BTreeSet::new();
+         for (idx, chunk) in self.chunks.iter().enumerate() {
+             let nodes_to_extract = unique_symbols
+                 .intersection(chunk)
+@@ -317,8 +376,21 @@
+         let chunk_reachable = reachable_graph(&self.call_graph, unique_symbols);
+ 
+         // The functions we'll need to import
++        //
++        // CodeBrix change: also what the chunk reaches in ANOTHER chunk, which becomes calls
++        // through that chunk's table slots (convert_chunk_funcs_to_imports below). With only the
++        // main module's symbols here, a chunk kept a private copy of every function of another
++        // chunk it calls. See tools/dx-native-tools/vendoring/wasm-split-cli/PATCH-NOTES.txt, patch 0007.
+         let symbols_to_import: HashSet<_> = chunk_reachable
+-            .intersection(&self.main_graph)
++            .iter()
++            .filter(|node| {
++                self.main_graph.contains(node)
++                    || self
++                        .chunks
++                        .iter()
++                        .enumerate()
++                        .any(|(other, chunk)| other != idx && chunk.contains(node))
++            })
+             .cloned()
+             .collect();
+ 
+@@ -1091,12 +1163,15 @@
+         // symbol that the main module does not hold. A split point's own entry function is left
+         // out: its module exports it and puts it into the function table itself. See
+         // tools/dx-native-tools/vendoring/wasm-split-cli/PATCH-NOTES.txt, patch 0006.
++        //
++        // CodeBrix change: ordered maps and sets, and the symbols are grouped into one chunk or
++        // several by the options (assign_shared_chunks). See tools/dx-native-tools/vendoring/wasm-split-cli/PATCH-NOTES.txt, patch 0007.
+         let split_exports: HashSet<Node> = self
+             .split_points
+             .iter()
+             .map(|split| Node::Function(split.export_func))
+             .collect();
+-        let mut funcs_used_by_chunks: HashMap<Node, HashSet<usize>> = HashMap::new();
++        let mut funcs_used_by_chunks: BTreeMap<Node, BTreeSet<usize>> = BTreeMap::new();
+         for split in self.split_points.iter() {
+             for item in split.reachable_graph.iter() {
+                 if self.main_graph.contains(item) {
+@@ -1117,10 +1192,36 @@
+         // Only consider funcs that are used by multiple modules - otherwise they can just stay in their respective module
+         funcs_used_by_chunks.retain(|_, v| v.len() > 1);
+ 
+-        // todo: break down this chunk if it exceeds a certain size (100kb?) by identifying different groups
++        let chunks = assign_shared_chunks(
++            &funcs_used_by_chunks,
++            |node| self.node_size(node),
++            &self.options,
++        );
++        self.chunks = chunks
++            .into_iter()
++            .map(|chunk| chunk.into_iter().collect())
++            .collect();
++    }
+ 
+-        self.chunks
+-            .push(funcs_used_by_chunks.keys().cloned().collect());
++    /// CodeBrix change: new with patch 0007. The bytes a symbol brings, before optimisation:
++    /// a function's body in the module wasm-bindgen wrote, a data symbol's size. Imported
++    /// functions bring none.
++    fn node_size(&self, node: &Node) -> usize {
++        match node {
++            Node::Function(id) => match &self.source_module.funcs.get(*id).kind {
++                FunctionKind::Local(local) => local
++                    .original_range
++                    .as_ref()
++                    .map(|range| range.len())
++                    .unwrap_or(0),
++                _ => 0,
++            },
++            Node::DataSymbol(id) => self
++                .data_symbols
++                .get(id)
++                .map(|symbol| symbol.symbol_size)
++                .unwrap_or(0),
++        }
+     }
+ 
+     fn unused_main_symbols(&self) -> HashSet<Node> {
+@@ -1642,8 +1743,12 @@
+ 
+             // Parse the import name to get the module name, the hash, and the function name
+             let remain = import.name.trim_start_matches("__wasm_split_00___");
+-            let (module_name, rest) = remain.split_once("___00").unwrap();
+-            let (hash, fn_name) = rest.trim_start_matches("_import_").split_once("_").unwrap();
++            // CodeBrix change: split at "___00_import_", not at the first "___00", so that a
++            // module name holding "___00" (an extern name such as "a___00b") is read whole
++            // instead of ending in a panic ("Could not find export"). See
++            // tools/dx-native-tools/vendoring/wasm-split-cli/PATCH-NOTES.txt, patch 0007.
++            let (module_name, rest) = remain.split_once("___00_import_").unwrap();
++            let (hash, fn_name) = rest.split_once("_").unwrap();
+ 
+             // Look for the export with the same name
+             let export_name =
+@@ -1674,6 +1779,69 @@
+         .collect()
+ }
+ 
++/// CodeBrix change: new with patch 0007. Groups the shared symbols into chunks.
++///
++/// `users` holds every shared symbol with the split modules (by index) that reach it, two or
++/// more each. Without a threshold, all of them form one chunk. With one, the symbols are grouped
++/// by their exact set of users; a group whose `size` sum reaches the threshold is "large" and
++/// gets a chunk of its own - the largest first, ties by user set, at most `chunk_limit - 1` of
++/// them, the common chunk taking the last place. Every other group goes to the large group with
++/// the fewest users among those whose users include all of its own (ties: the smaller group,
++/// then the user set), so that no split module fetches a chunk it did not already fetch; when
++/// there is none, to the common chunk, chunk 0. The large groups' chunks follow in the order of
++/// their user sets. Every container is ordered and every tie is broken, so the result depends
++/// on nothing but the input. See tools/dx-native-tools/vendoring/wasm-split-cli/PATCH-NOTES.txt,
++/// patch 0007.
++fn assign_shared_chunks<T: Ord + Copy>(
++    users: &BTreeMap<T, BTreeSet<usize>>,
++    size: impl Fn(&T) -> usize,
++    options: &SplitOptions,
++) -> Vec<BTreeSet<T>> {
++    let Some(threshold) = options.chunk_threshold else {
++        return vec![users.keys().copied().collect()];
++    };
++
++    let mut groups: BTreeMap<&BTreeSet<usize>, BTreeSet<T>> = BTreeMap::new();
++    for (symbol, set) in users.iter() {
++        groups.entry(set).or_default().insert(*symbol);
++    }
++    let sizes: BTreeMap<&BTreeSet<usize>, usize> = groups
++        .iter()
++        .map(|(set, symbols)| (*set, symbols.iter().map(&size).sum()))
++        .collect();
++
++    let mut large: Vec<&BTreeSet<usize>> = groups
++        .keys()
++        .copied()
++        .filter(|set| sizes[set] >= threshold)
++        .collect();
++    large.sort_by(|a, b| sizes[b].cmp(&sizes[a]).then_with(|| a.cmp(b)));
++    large.truncate(options.chunk_limit.saturating_sub(1));
++    large.sort();
++
++    let mut chunks: Vec<BTreeSet<T>> = vec![BTreeSet::new(); large.len() + 1];
++    for (set, symbols) in groups.iter() {
++        let target = match large.iter().position(|chunk| chunk == set) {
++            Some(own) => own + 1,
++            None => large
++                .iter()
++                .enumerate()
++                .filter(|(_, chunk)| set.is_subset(chunk))
++                .min_by(|(_, a), (_, b)| {
++                    a.len()
++                        .cmp(&b.len())
++                        .then_with(|| sizes[*a].cmp(&sizes[*b]))
++                        .then_with(|| a.cmp(b))
++                })
++                .map(|(index, _)| index + 1)
++                .unwrap_or(0),
++        };
++        chunks[target].extend(symbols.iter().copied());
++    }
++
++    chunks
++}
++
+ #[derive(Debug, PartialEq, Eq, Hash, Copy, PartialOrd, Ord, Clone)]
+ pub enum Node {
+     Function(FunctionId),
+@@ -1789,3 +1957,119 @@
+         data_symbols,
+     })
+ }
++
++/// CodeBrix change: new with patch 0007 - the grouping of shared symbols into chunks.
++#[cfg(test)]
++mod shared_chunk_tests {
++    use super::{assign_shared_chunks, SplitOptions};
++    use std::collections::{BTreeMap, BTreeSet};
++
++    fn users(entries: &[(u32, &[usize])]) -> BTreeMap<u32, BTreeSet<usize>> {
++        entries
++            .iter()
++            .map(|(symbol, set)| (*symbol, set.iter().copied().collect()))
++            .collect()
++    }
++
++    fn sets(chunks: &[BTreeSet<u32>]) -> Vec<Vec<u32>> {
++        chunks.iter().map(|chunk| chunk.iter().copied().collect()).collect()
++    }
++
++    fn options(threshold: Option<usize>, limit: usize) -> SplitOptions {
++        SplitOptions {
++            chunk_threshold: threshold,
++            chunk_limit: limit,
++        }
++    }
++
++    // symbol -> size: the symbol number times 10
++    fn size(symbol: &u32) -> usize {
++        *symbol as usize * 10
++    }
++
++    #[test]
++    fn without_a_threshold_everything_shared_is_one_chunk() {
++        let u = users(&[(1, &[0, 1]), (2, &[1, 2]), (90, &[0, 2])]);
++        assert_eq!(sets(&assign_shared_chunks(&u, size, &options(None, 16))), vec![vec![1, 2, 90]]);
++    }
++
++    #[test]
++    fn nothing_shared_gives_one_empty_chunk() {
++        let u = users(&[]);
++        assert_eq!(sets(&assign_shared_chunks(&u, size, &options(None, 16))), vec![Vec::<u32>::new()]);
++        assert_eq!(sets(&assign_shared_chunks(&u, size, &options(Some(1), 16))), vec![Vec::<u32>::new()]);
++    }
++
++    #[test]
++    fn a_group_at_the_threshold_gets_its_own_chunk() {
++        // {0,1}: 10 + 20 = 30 bytes; {1,2}: 30 bytes; {0,2}: 900 bytes
++        let u = users(&[(1, &[0, 1]), (2, &[0, 1]), (3, &[1, 2]), (90, &[0, 2])]);
++        let chunks = assign_shared_chunks(&u, size, &options(Some(30), 16));
++        // chunks after the common one follow the order of their user sets: {0,1}, {0,2}, {1,2}
++        assert_eq!(sets(&chunks), vec![vec![], vec![1, 2], vec![90], vec![3]]);
++    }
++
++    #[test]
++    fn a_small_group_goes_to_the_large_group_with_the_fewest_users_that_includes_its_users() {
++        // large: {0,1,2,3} (500) and {0,1,2} (400); small: {0,1} (10) -> {0,1,2}; {2,3} (20) -> {0,1,2,3}
++        let u = users(&[(1, &[0, 1]), (2, &[2, 3]), (40, &[0, 1, 2]), (50, &[0, 1, 2, 3])]);
++        let chunks = assign_shared_chunks(&u, size, &options(Some(100), 16));
++        assert_eq!(sets(&chunks), vec![vec![], vec![1, 40], vec![2, 50]]);
++    }
++
++    #[test]
++    fn a_small_group_without_a_large_group_of_its_users_goes_to_the_common_chunk() {
++        let u = users(&[(1, &[0, 4]), (50, &[0, 1, 2])]);
++        let chunks = assign_shared_chunks(&u, size, &options(Some(100), 16));
++        assert_eq!(sets(&chunks), vec![vec![1], vec![50]]);
++    }
++
++    #[test]
++    fn ties_between_large_groups_of_equal_users_go_to_the_smaller_then_the_first() {
++        // {0,1,2} (300) and {0,1,3} (400) both have three users; {0,1} (10) goes to the smaller
++        let u = users(&[(1, &[0, 1]), (30, &[0, 1, 2]), (40, &[0, 1, 3])]);
++        let chunks = assign_shared_chunks(&u, size, &options(Some(100), 16));
++        assert_eq!(sets(&chunks), vec![vec![], vec![1, 30], vec![40]]);
++        // equal sizes: the first user set
++        let u = users(&[(1, &[0, 1]), (30, &[0, 1, 3]), (31, &[0, 1, 2])]);
++        let chunks = assign_shared_chunks(&u, |s: &u32| if *s == 1 { 1 } else { 300 }, &options(Some(100), 16));
++        assert_eq!(sets(&chunks), vec![vec![], vec![1, 31], vec![30]]);
++    }
++
++    #[test]
++    fn the_limit_keeps_the_largest_groups_and_groups_the_others_as_small_ones() {
++        // large: {0,1} 100, {0,1,2} 200, {2,3} 300; limit 3 keeps {2,3} and {0,1,2};
++        // {0,1} then goes to {0,1,2}
++        let u = users(&[(10, &[0, 1]), (20, &[0, 1, 2]), (30, &[2, 3])]);
++        let chunks = assign_shared_chunks(&u, size, &options(Some(100), 3));
++        assert_eq!(sets(&chunks), vec![vec![], vec![10, 20], vec![30]]);
++        // limit 1: the common chunk only, which is the one chunk of no threshold
++        let one = assign_shared_chunks(&u, size, &options(Some(100), 1));
++        assert_eq!(sets(&one), sets(&assign_shared_chunks(&u, size, &options(None, 16))));
++    }
++
++    #[test]
++    fn equal_sizes_at_the_limit_keep_the_first_user_sets() {
++        let u = users(&[(10, &[2, 3]), (11, &[0, 1]), (12, &[1, 2])]);
++        let chunks = assign_shared_chunks(&u, |_| 100, &options(Some(100), 3));
++        // {0,1} and {1,2} are kept; {2,3} has no large group of its users
++        assert_eq!(sets(&chunks), vec![vec![10], vec![11], vec![12]]);
++    }
++
++    #[test]
++    fn every_symbol_lands_in_exactly_one_chunk() {
++        let u = users(&[(1, &[0, 1]), (2, &[0, 1, 2]), (3, &[1, 2]), (4, &[0, 2]), (5, &[0, 1, 2, 3]), (6, &[3, 4])]);
++        for threshold in [None, Some(1), Some(25), Some(45), Some(1000)] {
++            for limit in [1, 2, 3, 16] {
++                let chunks = assign_shared_chunks(&u, size, &options(threshold, limit));
++                assert!(chunks.len() <= limit.max(1));
++                let all: Vec<u32> = chunks.iter().flat_map(|c| c.iter().copied()).collect();
++                let mut sorted = all.clone();
++                sorted.sort();
++                sorted.dedup();
++                assert_eq!(all.len(), sorted.len());
++                assert_eq!(sorted, vec![1, 2, 3, 4, 5, 6]);
++            }
++        }
++    }
++}

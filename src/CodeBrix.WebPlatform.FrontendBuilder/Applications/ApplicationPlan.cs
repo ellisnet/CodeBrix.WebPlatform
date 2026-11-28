@@ -55,6 +55,17 @@ internal sealed class ApplicationPlan
     /// <summary>Whether the application is built with bundle splitting.</summary>
     public bool WasmSplit { get; private set; }
 
+    /// <summary>
+    /// The size from which shared code gets a chunk of its own, in bytes before optimisation
+    /// (<see cref="PlatformFrontendOptions.SharedChunkThreshold"/>), resolved.
+    /// </summary>
+    public int SharedChunkThreshold { get; private set; }
+
+    /// <summary>
+    /// The most shared chunks (<see cref="PlatformFrontendOptions.SharedChunkLimit"/>), resolved.
+    /// </summary>
+    public int SharedChunkLimit { get; private set; }
+
     /// <summary>The cargo features for dx serve.</summary>
     public IReadOnlyList<string> ServeFeatures { get; private set; }
 
@@ -77,10 +88,12 @@ internal sealed class ApplicationPlan
     /// </summary>
     /// <exception cref="ArgumentException">No frontend folder is named, both forms are used at
     /// once, a name breaks a rule, a name or a folder is used twice, or more than one
-    /// application has no name.</exception>
+    /// application has no name, or a shared chunk threshold or limit is below 1.</exception>
     public static IReadOnlyList<ApplicationPlan> Create(PlatformFrontendOptions options)
     {
         var plans = new List<ApplicationPlan>();
+        var threshold = RequireAtLeastOne(options.SharedChunkThreshold, "PlatformFrontendOptions.SharedChunkThreshold", nameof(options)) ?? PlatformFrontendOptions.DefaultSharedChunkThreshold;
+        var limit = RequireAtLeastOne(options.SharedChunkLimit, "PlatformFrontendOptions.SharedChunkLimit", nameof(options)) ?? PlatformFrontendOptions.DefaultSharedChunkLimit;
         if (options.Applications.Count == 0)
         {
             if (string.IsNullOrWhiteSpace(options.FrontendDirectory))
@@ -92,6 +105,8 @@ internal sealed class ApplicationPlan
             plans.Add(new ApplicationPlan(FromName(options.ApplicationName, nameof(options)), frontend)
             {
                 WasmSplit = options.WasmSplit ?? false,
+                SharedChunkThreshold = threshold,
+                SharedChunkLimit = limit,
                 ServeFeatures = options.ServeFeatures.ToArray(),
                 IsOneOfSeveral = false,
             });
@@ -130,6 +145,8 @@ internal sealed class ApplicationPlan
             plans.Add(new ApplicationPlan(application, frontend)
             {
                 WasmSplit = entry.WasmSplit ?? firstSplit,
+                SharedChunkThreshold = RequireAtLeastOne(entry.SharedChunkThreshold, $"SharedChunkThreshold of {Describe(application)} in PlatformFrontendOptions.Applications", nameof(options)) ?? threshold,
+                SharedChunkLimit = RequireAtLeastOne(entry.SharedChunkLimit, $"SharedChunkLimit of {Describe(application)} in PlatformFrontendOptions.Applications", nameof(options)) ?? limit,
                 ServeFeatures = (entry.ServeFeatures.Count > 0 ? entry.ServeFeatures : options.ServeFeatures).ToArray(),
                 IsOneOfSeveral = options.Applications.Count > 1,
             });
@@ -145,6 +162,24 @@ internal sealed class ApplicationPlan
         }
 
         return plans;
+    }
+
+    /// <summary>Refuses a shared chunk threshold or limit below 1.</summary>
+    /// <param name="value">The value set, or <c>null</c>.</param>
+    /// <param name="what">How the message names the setting.</param>
+    /// <param name="parameter">The parameter the exception names.</param>
+    /// <returns>The value.</returns>
+    /// <exception cref="ArgumentException">The value is below 1.</exception>
+    private static int? RequireAtLeastOne(int? value, string what, string parameter)
+    {
+        if (value is < 1)
+        {
+            throw new ArgumentException(
+                $"{what} is {value.Value}; it must be at least 1 (leave it unset for the default). For one shared chunk with all the shared code, set SharedChunkLimit to 1.",
+                parameter);
+        }
+
+        return value;
     }
 
     private static string Capitalized(string text) => char.ToUpperInvariant(text[0]) + text.Substring(1);

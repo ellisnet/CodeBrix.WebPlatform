@@ -223,4 +223,86 @@ public class ApplicationPlanTests
         actShared.Should().Throw<ArgumentException>().WithMessage("The root application and the application 'sales' name the same frontend folder*");
         actMissing.Should().Throw<ArgumentException>().WithMessage("The root application in PlatformFrontendOptions.Applications names no FrontendDirectory*");
     }
+
+    [Fact]
+    public void Create_gives_every_application_the_default_shared_chunk_settings_when_none_are_set()
+    {
+        //Arrange
+        var single = new PlatformFrontendOptions { FrontendDirectory = Folder("frontend") };
+        var several = new PlatformFrontendOptions();
+        several.Applications.Add(new FrontendApplicationOptions { FrontendDirectory = Folder("home") });
+        several.Applications.Add(new FrontendApplicationOptions { Name = "sales", FrontendDirectory = Folder("sales") });
+
+        //Act
+        var plans = ApplicationPlan.Create(single).Concat(ApplicationPlan.Create(several)).ToList();
+
+        //Assert
+        plans.Select(p => p.SharedChunkThreshold).Should().Equal(16384, 16384, 16384);
+        plans.Select(p => p.SharedChunkLimit).Should().Equal(16, 16, 16);
+        PlatformFrontendOptions.DefaultSharedChunkThreshold.Should().Be(16 * 1024);
+        PlatformFrontendOptions.DefaultSharedChunkLimit.Should().Be(16);
+    }
+
+    [Fact]
+    public void Create_takes_the_shared_chunk_settings_of_the_application_then_of_the_options_then_the_default()
+    {
+        //Arrange
+        var options = new PlatformFrontendOptions { SharedChunkThreshold = 32768 };
+        options.Applications.Add(new FrontendApplicationOptions { FrontendDirectory = Folder("home") });
+        options.Applications.Add(new FrontendApplicationOptions { Name = "sales", FrontendDirectory = Folder("sales"), SharedChunkThreshold = 4096, SharedChunkLimit = 1 });
+        options.Applications.Add(new FrontendApplicationOptions { Name = "admin", FrontendDirectory = Folder("admin"), SharedChunkLimit = 3 });
+
+        //Act
+        var plans = ApplicationPlan.Create(options);
+
+        //Assert
+        plans.Select(p => p.SharedChunkThreshold).Should().Equal(32768, 4096, 32768);
+        plans.Select(p => p.SharedChunkLimit).Should().Equal(16, 1, 3);
+    }
+
+    [Fact]
+    public void Create_takes_the_shared_chunk_settings_of_the_single_form()
+    {
+        //Arrange
+        var options = new PlatformFrontendOptions { FrontendDirectory = Folder("frontend"), WasmSplit = true, SharedChunkThreshold = 1, SharedChunkLimit = 2 };
+
+        //Act
+        var plan = ApplicationPlan.Create(options).Single();
+
+        //Assert
+        plan.SharedChunkThreshold.Should().Be(1);
+        plan.SharedChunkLimit.Should().Be(2);
+    }
+
+    [Theory]
+    [InlineData(0, null, "PlatformFrontendOptions.SharedChunkThreshold is 0; it must be at least 1*SharedChunkLimit to 1*")]
+    [InlineData(null, -1, "PlatformFrontendOptions.SharedChunkLimit is -1; it must be at least 1*")]
+    public void Create_refuses_a_shared_chunk_setting_below_one_in_the_options(int? threshold, int? limit, string expected)
+    {
+        //Arrange
+        var options = new PlatformFrontendOptions { FrontendDirectory = Folder("frontend"), SharedChunkThreshold = threshold, SharedChunkLimit = limit };
+
+        //Act
+        Action act = () => ApplicationPlan.Create(options);
+
+        //Assert
+        act.Should().Throw<ArgumentException>().WithMessage(expected);
+    }
+
+    [Theory]
+    [InlineData(0, null, "SharedChunkThreshold of the application 'sales' in PlatformFrontendOptions.Applications is 0; it must be at least 1*")]
+    [InlineData(null, 0, "SharedChunkLimit of the application 'sales' in PlatformFrontendOptions.Applications is 0; it must be at least 1*")]
+    public void Create_refuses_a_shared_chunk_setting_below_one_of_an_application(int? threshold, int? limit, string expected)
+    {
+        //Arrange
+        var options = new PlatformFrontendOptions();
+        options.Applications.Add(new FrontendApplicationOptions { FrontendDirectory = Folder("home") });
+        options.Applications.Add(new FrontendApplicationOptions { Name = "sales", FrontendDirectory = Folder("sales"), SharedChunkThreshold = threshold, SharedChunkLimit = limit });
+
+        //Act
+        Action act = () => ApplicationPlan.Create(options);
+
+        //Assert
+        act.Should().Throw<ArgumentException>().WithMessage(expected);
+    }
 }

@@ -67,7 +67,19 @@ tools/dx-native-tools/linux - building dx and wasm-bindgen for linux-x64 and
     Each RID built twice, byte-identical both times (linux-x64 runs 23 and
     24, linux-arm64 runs 25 and 26); wasm-bindgen and the four licence and
     notices files unchanged. ADOPTED into ../../../native_libraries/ on
-    2026-11-24. <<<
+    2026-11-24 (replaced on 2026-11-27).
+    STATUS 2026-11-27 (the programs shipped now): both RIDs REBUILT on the
+    x86_64 LMDE 7 laptop (podman 5.4.2, the derived image reused) after
+    dioxus-cli patches 0011 to 0013 (several shared chunks on request and the
+    shared-chunk line, a split release build's glue without --debug, piece
+    files named after their pieces) and splitter patch 0007 (several shared
+    chunks): THIRTEEN dioxus-cli patches, SEVEN splitter patches. Every gate
+    check passed, the linux-x64 functional gate's comparison with today's
+    tools included (BYTE-IDENTICAL: the patches change only split builds).
+    Each RID built twice, byte-identical both times (linux-x64 runs 31 and
+    32, linux-arm64 runs 33 and 34); wasm-bindgen and the four licence and
+    notices files unchanged. ADOPTED into ../../../native_libraries/ on
+    2026-11-27 (../BUILD-PROVENANCE.txt). <<<
 
 NOTHING HERE INSTALLS ANYTHING ON YOUR MACHINE. Every script checks what it
 needs, and if something is missing it names it, prints the command that

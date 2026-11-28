@@ -2070,6 +2070,13 @@ everything else in the options is shared by all of them.
         public bool? WasmSplit { get; set; }              // bundle splitting
             // (see CODE SPLITTING); null or false: off. With Applications it
             // is the first application's setting when that one sets none.
+        public int? SharedChunkThreshold { get; set; }    // bytes; null:
+            // DefaultSharedChunkThreshold (const). Shared code from which a
+            // group gets a chunk of its own; see CODE SPLITTING, THE SHARED
+            // CHUNKS. At least 1.
+        public int? SharedChunkLimit { get; set; }        // null:
+            // DefaultSharedChunkLimit (const); the most shared chunks, the
+            // common one included; 1: one chunk for all shared code
         public string BackendProjectPath { get; set; }    // the backend's
             // .csproj; built in Release by MaterializeAsync
         public string BackendAssemblyPath { get; set; }   // the assembly to
@@ -2085,6 +2092,9 @@ everything else in the options is shared by all of them.
         public bool GenerateMissingStylesheet { get; set; }  // default true:
             // MaterializeAsync writes a missing Tailwind stylesheet (STEP 2)
         public bool? Shrink { get; set; }                 // see SHRINKING
+        public bool KeepFunctionNames { get; set; }       // default false;
+            // true: a PROFILING build whose WebAssembly keeps its function
+            // names - see THE SIZE REPORT AND FUNCTION NAMES
         public FrontendCompression? CompressOutput { get; set; }
             // default null: BrotliAndGzip for a Release build, None for a
             // Debug build; set: that value for both. .br and .gz copies
@@ -2129,6 +2139,9 @@ everything else in the options is shared by all of them.
         public bool? WasmSplit { get; set; }              // null: the first
             // application's setting; the first's null: the options' WasmSplit,
             // else off
+        public int? SharedChunkThreshold { get; set; }    // null: the
+        public int? SharedChunkLimit { get; set; }        // options' value,
+            // else the default (see CODE SPLITTING, THE SHARED CHUNKS)
         public IList<string> ServeFeatures { get; }       // empty: the
             // options' ServeFeatures
     }
@@ -2197,6 +2210,12 @@ everything else in the options is shared by all of them.
             // the same, then --base-path <name> for a named application
             // (null, "" or "app": none), then --wasm-split when splitting;
             // ArgumentException for a name that breaks a rule
+        public static IReadOnlyList<string> GetDxBuildArguments(
+            FrontendConfiguration configuration, string applicationName,
+            bool wasmSplit, bool keepFunctionNames);
+            // the same; keepFunctionNames: a release build passes
+            // --debug-symbols true instead of false, and every build ends
+            // with --keep-names
     }
 
     public enum FrontendConfiguration { Release, Debug }
@@ -2519,6 +2538,8 @@ STEP 3 - BuildAsync / ServeAsync
         FrontendConfiguration Configuration; string OutputDirectory;
         bool Shrunk; WasmOptSource WasmOpt; HostTools Tools;
         bool WasmSplit;                          // built with splitting
+        int SharedChunks;                        // the shared chunks dx made
+                                                 // (split builds; else 0)
         string BuiltFrontendDirectory;           // <backend>/frontend-built;
                                                  // null without a backend
                                                  // project folder
@@ -2536,7 +2557,67 @@ STEP 3 - BuildAsync / ServeAsync
                                                  // it (see COMPRESSION);
                                                  // null without a backend
                                                  // project folder
+        IReadOnlyList<string> CompilerWarnings;  // the Rust compiler's
+                                                 // warnings, each whole,
+                                                 // without colour codes;
+                                                 // empty when none
+        FrontendSizeReport Sizes;                // its WebAssembly files'
+                                                 // sizes (see THE SIZE
+                                                 // REPORT AND FUNCTION NAMES)
     }
+
+    THE COMPILER'S WARNINGS. A build that succeeds shows none of dx's own
+    output, so BuildAsync reads the Rust compiler's warnings out of it and
+    writes them to Output ("The Rust compiler gave 1 warning(s) for the root
+    application:" and each warning as rustc prints it), and hands them over in
+    CompilerWarnings. A build that fails shows the end of dx's output, as
+    before.
+
+    THE SIZE REPORT AND FUNCTION NAMES. After every build, BuildAsync reads
+    the WebAssembly files of each application's site (in .NET; no program is
+    run) and writes one line per file to Output - the main file, and for a
+    build with splitting every shared chunk and every piece - with its size,
+    the sizes of its .br / .gz copies where they were written, and its code
+    and data; result.Sizes holds the same:
+
+        public sealed class FrontendSizeReport   // ...FrontendBuilder.Sizes
+        {
+            IReadOnlyList<WasmFileSize> Files;   // main, shared chunks, pieces,
+                                                 // other .wasm files
+            long Bytes; long BrotliBytes;        // all files (a file without
+                                                 // a .br copy counts itself)
+            bool HasFunctionNames;
+        }
+        public sealed class WasmFileSize
+        {
+            string Path;                         // in the site: assets/...
+            WasmFileKind Kind;                   // Main, Piece, SharedChunk,
+                                                 // Other
+            long Bytes; long? BrotliBytes, GzipBytes;
+            long CodeBytes, DataBytes; int FunctionCount;
+            bool HasFunctionNames;
+            IReadOnlyList<WasmCrateSize> Crates; // largest first; empty
+                                                 // without names
+        }
+        public sealed class WasmCrateSize { string Crate; long CodeBytes;
+                                            int FunctionCount; }
+
+    A shipped file carries no function names, so the code is broken down BY
+    CRATE only in a build with KeepFunctionNames = true (Output then adds a
+    "code by crate:" line under each file). A function counts for the crate
+    that DEFINES it: generic code for the crate it is written in, whatever it
+    was instantiated for (core::ptr::drop_glue<MyType> is core's). Functions
+    named without a Rust name are WasmCrateSize.OtherNames, functions without
+    a name WasmCrateSize.NoName. Such a build is for PROFILING and for this
+    report (a browser's CPU profile then shows the Rust functions instead of
+    wasm-function[N]); never ship it. dx is started with --keep-names and, for
+    a release build, --debug-symbols true, so wasm-opt keeps the names. In
+    an application built WITHOUT splitting it keeps the debug information the
+    compiled standard library carries as well, which makes the main file much
+    larger and leaves wasm-opt less free to optimise; to keep the names
+    without it, the frontend's Cargo.toml can set `strip = "debuginfo"` in
+    [profile.release] (dx then removes the debug information before wasm-opt
+    runs, and the names stay). A split build's files carry the names only.
 
     ServeAsync(applicationName) runs `dx serve --platform web [--base-path
     <name>] [--features <features>]` in that application's folder, with the
@@ -2656,6 +2737,13 @@ THE PLATFORM'S CRATES
             offline = true
 
         (directory is the path from that frontend to the vendor folder.)
+        In both modes the file ends with a patch table that gives the shared
+        crate's two package names to the frontend's own copies (see SHARING
+        RUST CODE BETWEEN FRONTENDS):
+
+            [patch.crates-io]
+            codebrix-webplatform = { path = "platform/codebrix-webplatform" }
+            codebrix-webplatform-types = { path = "platform/codebrix-webplatform/types" }
         Nothing is downloaded, ever. A crate (or a version) that is not among
         the platform's or a registered bundle's is an error ("no matching
         package"); that is the moment to switch mode.
@@ -2663,8 +2751,8 @@ THE PLATFORM'S CRATES
     CrateMode.ApplicationAddsCrates
         For an application that adds crates of its own - it MAY add any crate.
         No vendor folder is written (one written before is removed) and the
-        cargo configuration sets nothing, so cargo fetches from crates.io as
-        usual. The application's Cargo.lock still pins the platform's crates
+        cargo configuration sets nothing but the patch table above, so cargo
+        fetches from crates.io as usual. The application's Cargo.lock still pins the platform's crates
         to the platform's versions, and cargo checks every download against
         the checksum recorded there. Start from a lock file resolved in the
         default mode (or the starting one MaterializeAsync writes) so the
@@ -2991,24 +3079,15 @@ SWITCHING IT ON takes both of these:
 WHAT IS SPLIT. With the feature on, EVERY route of the application's
 Routable enum becomes a piece of its own, loaded when the route is first
 shown: dx writes one module_<n>_route<Name>...wasm per route, the main
-file, and ONE shared chunk file, chunk_0_split...wasm. A second visit to a
-page downloads nothing. CODE AND DATA THAT SEVERAL PIECES USE (and the main
-file does not hold) GO ONCE INTO THE SHARED CHUNK, which the browser fetches
-once per page load, before the first piece that needs it (with nothing
-shared the chunk is empty and is never requested). A first page therefore
-requests the main file, the shared chunk and its own piece; every other
-page opened later requests only its own piece. THE TRADE-OFF: because there
-is one chunk, the FIRST page a visitor opens also downloads everything that
-ANY two pieces share, whether that page uses it or not - a visit to one
-page can download more than with each piece holding its own copies, and
-every later page downloads less. So put LARGE code that only SOME pages need
-- a crate bundle's engine, for example - behind ONE lazily loaded piece of
-its own (one #[wasm_split] function or one lazy_loader!) that those pages
-call: code reached through a single piece is not shared, so it stays in that
-piece and out of the chunk, and a visitor who never opens those pages never
-downloads it. Two pages that call such code DIRECTLY put it into the chunk,
-and every visitor downloads it with the first page. The lower-level forms,
-in dioxus::wasm_split, split off code by hand:
+file, and the SHARED CHUNK files, chunk_<n>_split...wasm. A second visit to
+a page downloads nothing. CODE AND DATA THAT SEVERAL PIECES USE (and the
+main file does not hold) GO ONCE INTO A SHARED CHUNK, which the browser
+fetches once per page load, before the first piece that needs it (with
+nothing shared there is one empty chunk, which is never requested). A first
+page therefore requests the main file, the chunks its piece uses and its
+own piece; a page opened later requests its own piece and only the chunks
+not fetched yet. The lower-level forms, in dioxus::wasm_split, split off
+code by hand:
 
     #[wasm_split::wasm_split(forecast)]       // an ASYNC function whose code
     async fn run_forecast(runs: u32) -> Forecast { ... }   // is the piece
@@ -3018,13 +3097,58 @@ in dioxus::wasm_split, split off code by hand:
         wasm_split::lazy_loader!(extern "details"
             fn panel(order: Order) -> Element);
                                               // PANEL.load().await downloads
-                                              // the piece; PANEL.call(order)
-                                              // then runs it
+                                              // the piece "details";
+                                              // PANEL.call(order) then runs it
     #[component(lazy)]                        // a component whose body is a
-    fn Insights(..) -> Element { ... }        // piece (every lazy component of
-                                              // an application shares the one
-                                              // piece "lazy"); it suspends
-                                              // until the piece has arrived
+    fn Insights(..) -> Element { ... }        // piece of its own (every lazy
+                                              // component's piece is named
+                                              // "lazy"); it suspends until
+                                              // the piece has arrived
+
+THE FILE NAMES. A piece's file is named after its piece: module_<n>_forecast
+and module_<n>_details for the two above; a route's after the route,
+module_<n>_route<Name><hash>; a lazy component's after its component,
+module_<n>_lazy_LazyInsights for Insights (every lazy component's piece is
+"lazy", so its name is always followed by the component's); and when other
+pieces share one name, the function's name follows it too. dx then adds its
+content hash (-dxh<hash>) to every name.
+
+THE SHARED CHUNKS. The shared code is grouped by the exact set of pieces
+that use it. A group of at least SharedChunkThreshold bytes becomes a chunk
+of its own, which only those pieces fetch; a smaller group goes into the
+chunk of a larger group that all of its pieces use too (so nobody fetches a
+chunk for it that they did not fetch anyway), or else into the common chunk,
+chunk_0_split...wasm, which every piece that uses any of it fetches. There are at most
+SharedChunkLimit chunks; beyond that the largest groups keep their own and
+the others are grouped as the smaller ones are. Both are options of
+PlatformFrontendOptions and of each FrontendApplicationOptions (the
+application's value, else the options', else the default):
+
+    options.Applications.Add(new FrontendApplicationOptions
+        { Name = "sales", FrontendDirectory = "frontends/sales",
+          WasmSplit = true,
+          SharedChunkThreshold = 32 * 1024,   // bytes; default
+                                              // DefaultSharedChunkThreshold
+          SharedChunkLimit = 8 });            // default
+                                              // DefaultSharedChunkLimit
+
+  * The threshold counts code and data BEFORE optimisation; the shipped file
+    is about that size and its Brotli copy roughly a third of it.
+  * SharedChunkLimit = 1 gives ONE chunk with all the shared code: every
+    first page then also downloads what any two pieces share.
+  * A lower threshold gives first pages less to download and makes more,
+    smaller files: each extra chunk is one more request and costs a little
+    compression (a page that needs several chunks can download slightly
+    more than with one).
+  * Large code that only SOME pages need - a crate bundle's engine, for
+    example - stays out of the other pages' downloads when its group is
+    above the threshold. Keeping it behind ONE lazily loaded piece of its
+    own (one #[wasm_split] function or one lazy_loader!) that those pages
+    call still helps: code reached through a single piece is not shared,
+    so it stays in that piece and nobody else downloads it.
+  * A split build fails when the dx program does not report its shared
+    chunks: the FrontendBuilder package and the host-tools package of the
+    machine ship together, at the same version.
 
   * #[wasm_split] takes async functions only, and drops the function's `pub`
     in the WebAssembly build: keep it private and call it from a public
@@ -3032,6 +3156,11 @@ in dioxus::wasm_split, split off code by hand:
   * lazy_loader! takes a function of EXACTLY ONE argument (LazyLoader<Args,
     Ret>: one Args): pass several values as a tuple or a struct, and none as
     `()`. A function of no argument, or of two or more, does not compile.
+  * lazy_loader! expands to code that names `wasm_split` by that path: a
+    module without `use dioxus::prelude::*;` needs `use dioxus::wasm_split;`,
+    or it fails with "cannot find module or crate `wasm_split`".
+  * A lazy loader inside a lazily loaded piece works: dx cuts it into a piece
+    of its own, downloaded when the outer piece first calls it.
   * In a build without splitting (ServeAsync, or WasmSplit off, Debug or
     Release) all of this is ordinary code that is already loaded: dx writes
     a stand-in loader (__wasm_split.js) that reports every split point as
@@ -3060,7 +3189,8 @@ SHRINKING. A split build ALWAYS runs wasm-opt: dx shrinks the main file and
 every piece, for a Debug build too; Shrink is ignored for it and
 FrontendBuildResult.Shrunk is true (see SHRINKING). dx switches on link-time
 optimisation and debug information for the compile by itself; the shipped
-files carry no debug or name sections.
+files carry no debug or name sections (names only with KeepFunctionNames, see
+THE SIZE REPORT AND FUNCTION NAMES).
 
 WHAT ELSE CHANGES. dx writes one extra generated JavaScript file for a split
 build, the loader of the pieces, beside the main script (toolchain glue,
@@ -3214,6 +3344,20 @@ own beside them, which each frontend names in its Cargo.toml:
   - The frontend's own .cargo/config.toml (written by MaterializeAsync)
     governs the path crate's dependencies too when cargo runs in the
     frontend folder, as dx and the build do.
+  - THE PLATFORM'S SHARED CRATE: the path crate names it BY NAME, with any
+    version, never by path (each frontend has its own copy):
+
+        # shared/Cargo.toml
+        [dependencies]
+        codebrix-webplatform = "*"
+
+    The cargo configuration MaterializeAsync writes into each frontend
+    patches that name to the frontend's own platform/codebrix-webplatform
+    (offline, in either crate mode), so the build holds ONE such crate and its
+    types (dates::Date, ApiError, the hub types) are the same in the path
+    crate and in the frontend. The same goes for codebrix-webplatform-types
+    (see THE SHARED RUST CRATE). cargo run in the path crate's own folder has
+    no such configuration; check it through a frontend.
   - It is the developer's folder: the library writes nothing into it (no
     .gitignore, no .cargo). Commit it.
   - TAILWIND does not see class names in it, because it is outside the
@@ -3224,8 +3368,8 @@ own beside them, which each frontend names in its Cargo.toml:
         @source "../shared/src";
 
   - With CODE SPLITTING, code of the path crate that several pieces use goes
-    once into the shared chunk, like any other shared code, and so arrives
-    with the first page a visitor opens (see CODE SPLITTING, WHAT IS SPLIT).
+    once into a shared chunk, like any other shared code (see CODE
+    SPLITTING, THE SHARED CHUNKS).
 
 
 FRONTENDBUILDER API REFERENCE: THE SHARED RUST CRATE
@@ -3240,6 +3384,9 @@ travels INSIDE the FrontendBuilder assembly; MaterializeAsync writes it out
     {
         public const string CrateName = "codebrix-webplatform";
         public const string RustName  = "codebrix_webplatform";
+        public const string TypesCrateName = "codebrix-webplatform-types";
+        public const string TypesRustName  = "codebrix_webplatform_types";
+        public const string TypesFolderName = "types";   // inside the crate's folder
         public static IReadOnlyList<SharedRustFile> Files { get; }
         public static IReadOnlyList<string> ExtractTo(string directory);
     }
@@ -3266,7 +3413,11 @@ the FrontendBuilder package in use (and so the BackendMapper the generated code
 was written with).
 
 The crate depends on dioxus, reqwest, serde, serde_json, web-sys, js-sys,
-wasm-bindgen, wasm-bindgen-futures and futures-core. The versions it names are
+wasm-bindgen, wasm-bindgen-futures and futures-core, and on its own
+browser-free part, codebrix-webplatform-types (SharedRustCrate.TypesCrateName),
+a crate in the folder types/ inside its own that depends on serde only and
+holds the calendar date; codebrix_webplatform::dates IS that crate's module
+(re-exported), so a frontend never names it. The versions it names are
 the platform's: the application's frontend uses the same ones (one Cargo.lock
 resolves both). It switches on the web-sys features its own code needs; the
 frontend names only the ones ITS code uses.
@@ -3423,15 +3574,25 @@ WHAT THE CRATE PROVIDES (Rust)
 
   codebrix_webplatform::dates::Date
       A calendar date without time or zone; the default Rust type of a .NET
-      DateOnly. JSON is the text yyyy-MM-dd. Copy, Ord, Default (1970-01-01),
+      DateOnly, in the browser-free types crate. JSON is the text yyyy-MM-dd.
+      Copy, Ord, Default (1970-01-01),
       Display. new, parse, parse_timestamp, to_iso, add_days, add_months,
       start_of_week (Monday), start_of_month, end_of_month, start_of_year,
       weekday_short, format_medium ("Nov 17, 2026"), format_day_month,
       format_with_weekday; free functions format_range, month_name,
       month_short, days_in_month, is_leap_year.
+      CONTRACT TYPES WITHOUT THE BROWSER: the generated models.rs needs only
+      serde and this date (`use codebrix_webplatform::dates::Date;`). A native
+      program or test that compiles it names the types crate under the shared
+      crate's name, and nothing browser-bound is built:
+          codebrix-webplatform = { package = "codebrix-webplatform-types",
+              path = "../frontend/platform/codebrix-webplatform/types" }
 
-  codebrix_webplatform::query::{encode, QueryString}
-      Percent-encoding and `?a=1&b=2` building that skips empty values.
+  codebrix_webplatform::query::{encode, QueryString, decode, parse, value}
+      Percent-encoding and `?a=1&b=2` building that skips empty values; and
+      reading: decode (%XX and +), parse("?view=north&stats") -> [("view",
+      "north"), ("stats", "")], value(query, name) -> Option<String>
+      (Some("") for a name without a value).
 
   codebrix_webplatform::browser
       What every platform page needs from the browser, through web-sys /
@@ -3445,6 +3606,24 @@ WHAT THE CRATE PROVIDES (Rust)
                                          // the local zone; "" when not one
       pub fn navigate(path: &str)        // what to hand a [WireFile] address to
       pub async fn sleep_ms(ms: i32)
+      pub async fn has_webgpu_adapter() -> bool
+                                         // navigator.gpu exists AND
+                                         // requestAdapter() gives an adapter
+                                         // (a browser can have the first and
+                                         // not the second); through js-sys,
+                                         // so no WebGPU bindings are pulled in
+      pub fn capture_opened_query()      // keep location.search; FIRST in main
+      pub fn opened_query() -> String    // "?view=north&stats", or ""
+      pub fn opened_query_value(name: &str) -> Option<String>
+      THE QUERY THE PAGE WAS OPENED WITH: when the router starts, it replaces
+      the browser's address with the route's own form whenever the two
+      differ, so a route that declares no query LOSES the query string the
+      page was opened with (/?view=north becomes /). Read such a query with
+      the helpers above, and capture it before the router starts:
+          fn main() {
+              codebrix_webplatform::browser::capture_opened_query();
+              dioxus::launch(App);
+          }
       THE PAGE TITLE: set it with browser::set_title (for example from a small
       PageTitle component each page renders), NOT with Dioxus's
       document::Title. That component sets the title by running script text,
@@ -4101,8 +4280,8 @@ PERFORMANCE TIPS
     vendor folder; only the generated code, the shared crate and the cargo
     configuration are written per application.
   * Split the application whose pages are many or heavy (CODE SPLITTING):
-    the first page then downloads the main file, the shared chunk and its
-    own piece only (see CODE SPLITTING for what the chunk holds).
+    the first page then downloads the main file, the shared chunks its piece
+    uses and its own piece only (see CODE SPLITTING, THE SHARED CHUNKS).
   * BuildAsync starts from a clean target/dx folder on purpose; cargo's own
     compiled crates in target/ are kept, so a second build is quick.
   * Leave CompressOutput unset and ServePrecompressedFiles on (the

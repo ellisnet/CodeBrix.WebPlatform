@@ -42,6 +42,20 @@ public sealed class FrontendApplicationOptions
     public bool? WasmSplit { get; set; }
 
     /// <summary>
+    /// This application's <see cref="PlatformFrontendOptions.SharedChunkThreshold"/>.
+    /// <c>null</c> takes <see cref="PlatformFrontendOptions.SharedChunkThreshold"/>, and when that
+    /// is not set either, <see cref="PlatformFrontendOptions.DefaultSharedChunkThreshold"/>.
+    /// </summary>
+    public int? SharedChunkThreshold { get; set; }
+
+    /// <summary>
+    /// This application's <see cref="PlatformFrontendOptions.SharedChunkLimit"/>. <c>null</c>
+    /// takes <see cref="PlatformFrontendOptions.SharedChunkLimit"/>, and when that is not set
+    /// either, <see cref="PlatformFrontendOptions.DefaultSharedChunkLimit"/>.
+    /// </summary>
+    public int? SharedChunkLimit { get; set; }
+
+    /// <summary>
     /// The application's cargo features to switch on for <see cref="PlatformFrontend.ServeAsync(string, System.Threading.CancellationToken)"/>.
     /// When empty, <see cref="PlatformFrontendOptions.ServeFeatures"/> is used.
     /// </summary>

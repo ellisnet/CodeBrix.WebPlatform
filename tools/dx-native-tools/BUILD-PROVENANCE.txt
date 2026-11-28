@@ -12,6 +12,148 @@ its section here is updated from that build's output/<rid>/BUILD-INFO.txt and
 the <program>.provenance.txt beside it is written from the same values.
 
 ================================================================================
+ADOPTED 2026-11-27 - thirteen dioxus-cli patches and seven splitter patches:
+several shared chunks, the split release glue without --debug, piece files
+named after their pieces: linux-x64 and linux-arm64 (win-x64, osx-arm64 and
+osx-x64 NOT YET REBUILT)
+================================================================================
+(The times below are UTC, which was already 2026-11-28; the builds ran in the
+afternoon of 2026-11-27, Pacific time.)
+Why - what an application developer gains, one line per new patch
+(vendoring/dioxus-cli/PATCH-NOTES.txt, vendoring/wasm-split-cli/PATCH-NOTES.txt):
+  * splitter 0007: on request (a threshold), shared code is grouped by the
+    exact set of split modules that use it, and a group above the threshold
+    gets a chunk of its own that only those modules fetch, so a first page no
+    longer downloads code only lazily loaded parts share; a chunk calls
+    another chunk's functions through the table; without a threshold the
+    output is byte for byte as before;
+  * dioxus-cli 0011: DX_WASM_SPLIT_CHUNK_THRESHOLD / DX_WASM_SPLIT_CHUNK_LIMIT
+    (set by the FrontendBuilder from SharedChunkThreshold / SharedChunkLimit),
+    checked at the start of a split build, and one "Bundle splitting: N shared
+    chunk(s) ..." line, without which the FrontendBuilder fails a split build;
+  * dioxus-cli 0012: a split RELEASE build runs wasm-bindgen without --debug -
+    a smaller glue file without debug checks; the .wasm is the same;
+  * dioxus-cli 0013: a split module's file is named after its piece
+    (module_<n>_<extern name>, module_<n>_lazy_Lazy<Component>; routes keep
+    module_<n>_route<Name><hash>).
+Made under the repository owner's GO of 2026-11-27 ("GO on the work as
+planned"); the Linux programs built on this laptop as part of that work.
+What changed in the source:
+  * dioxus-cli gains 0011-split-shared-chunk-options.patch,
+    0012-split-release-glue-without-debug.patch and
+    0013-split-module-file-names.patch: THIRTEEN patches;
+    sources/dioxus-cli/src/build/web.rs sha256
+    18f67df7fabd86a0f2a83acdcd143ae8a49c7a44fefff35d61f901398f29aec8; its
+    Cargo.lock unchanged (bbc7445a...);
+  * wasm-split-cli gains 0007-several-shared-chunks.patch: SEVEN splitter
+    patches; sources/wasm-split-cli/src/lib.rs sha256
+    19cf46fb1869277912e2b3a961e41d6f5415519086dd8518c3c716699d67c5bb,
+    src/__wasm_split.js unchanged (3499310c...);
+  * 965 folders in sources/vendor (unchanged); wasm-bindgen-cli unpatched,
+    its Cargo.lock unchanged (653f29ed...);
+  * wasm-bindgen, both licence files and both notices files that travel with
+    the programs: byte-identical to the adopted ones. Only dx changed.
+  (A first build of these patches - runs 27 to 30 - passed too; patches 0011
+  and 0013 were amended after it (the options checked at the start of the
+  build; a lazy component's file always carries its name), so those programs
+  were not adopted. The runs below are of the final source.)
+Runs (this x86_64 laptop: Dell Precision 7770, LMDE 7, podman 5.4.2; the
+derived image codebrix-dx-build-x86_64 reused - not rebuilt; libgit2 from
+output/libgit2/ of an earlier run, checked against the pinned checksums;
+network off for every build - interfaces: lo; cargo's target inside the
+container, every build from scratch; logs output/run31-... to run34-...):
+  run31 x64     2026-11-28 00:05:14 UTC - ADOPTED. Gate, host check and
+                functional gate passed every check (output/run31-x64-r2.log)
+  run32 x64     00:09:13 UTC - the reproducibility check: 119s in the
+                container (dx 98s, wasm-bindgen 19s), about 4 minutes end to
+                end; the same results; dx and wasm-bindgen BYTE-IDENTICAL to
+                run 31's (output/run32-x64-r2-repeat.log; output/linux-x64/
+                holds this run's files)
+  run33 arm64   00:13:19 UTC - ADOPTED. Gate and qemu run passed
+                (output/run33-arm64-r2.log)
+  run34 arm64   00:15:24 UTC - the reproducibility check: 120s in the
+                container (dx 99s, wasm-bindgen 19s), about 2 minutes end to
+                end; gate and qemu run passed; dx and wasm-bindgen
+                BYTE-IDENTICAL to run 33's (output/run34-arm64-r2-repeat.log;
+                output/linux-arm64/ holds this run's files)
+  linux-x64/dx    59741864 bytes stripped (77510224 as linked; 21886412
+                  gzip -9 -n)
+                  sha256 9772871eb8d5fc748053c1d2bfbb8af89972147c8cd3944df2bdb00a125bd502
+                  build-id ce9854a2daca3e13a063d5435b8797244ecd86d3
+                  replaces sha256 50ee060d... (ADOPTED 2026-11-24)
+  linux-arm64/dx  53476640 bytes stripped (76520760 as linked; 20314947
+                  gzip -9 -n)
+                  sha256 62d5674fd139599f01d57aedceffd3890f2e94ffedba3a36ef646cc6dff996c6
+                  build-id c087447db3841f454fa82f05f3a6b35d0223924b
+                  replaces sha256 742b4830... (ADOPTED 2026-11-24)
+  wasm-bindgen (both RIDs): unchanged, byte for byte (0efc609f..., 924af54d...).
+Gates:
+  linux-x64     every check PASSED (output/linux-x64/GATE.txt, HOST-CHECK.txt,
+                FUNCTIONAL-GATE.txt): ELF64 x86-64, stripped, no
+                RPATH/RUNPATH/TEXTREL, NEEDED libdl.so.2 libgit2-49e408b.so.1.9
+                libgcc_s.so.1 libpthread.so.0 libm.so.6 libc.so.6
+                ld-linux-x86-64.so.2, no OpenSSL symbol imported, glibc floor
+                2.28, no build paths, "dioxus 0.7.10 (57d6794)" /
+                "wasm-bindgen 0.2.130", dx without libgit2 does not start (exit
+                127), licence and notices files present; 624 packages compiled
+                into dx. Functional gate (WorkSite, unsplit): .wasm 1,846,326
+                bytes shrunk, 2,092,759 with DX_SKIP_WASM_OPT, 19 site files,
+                `dx new` passed, and today's tools (the dx of 2026-11-24) built
+                the same copy BYTE-IDENTICALLY - no difference this time: the
+                new patches change only split builds.
+  linux-arm64   every check PASSED (output/linux-arm64/GATE.txt, QEMU-RUN.txt):
+                ELF64 AArch64, the same static checks, glibc floor 2.28; under
+                qemu in the pinned aarch64 image: both --version lines, dx
+                without libgit2 does not start (exit 127). No functional gate
+                (as before).
+Proved with the NEW linux-x64 programs before adoption (from output/linux-x64,
+by the build agent; /home/jeremy/ClaudeHome/wp-split-2026-11-27/build-report.txt):
+  * the opt-in real-dx class (CODEBRIX_WEBPLATFORM_DX_BUILD_TESTS=1, with
+    CODEBRIX_WEBPLATFORM_DX_BUILD_TESTS_DX_FOLDER=output/linux-x64): 11 of 11;
+  * a split release build of a scratch copy of the ApplicationSplitter
+    sample's sales application at DX_WASM_SPLIT_CHUNK_THRESHOLD=16384 ("2
+    shared chunks") and 1024 ("11 shared chunks"), target/dx deleted before
+    each: tools/dx-native-tools/split-check 0 problems both times; the lazy
+    piece module_1_lazy_LazyAccountInsights;
+  * DX_WASM_SPLIT_CHUNK_THRESHOLD=abc and DX_WASM_SPLIT_CHUNK_LIMIT=0: refused
+    at the start ("Bundle splitting cannot start: ..."), exit 1, no target/
+    folder made.
+Verified before adoption (recomputed): the sha256 of the four programs in
+output/linux-x64/ and output/linux-arm64/ (the values above, equal to the
+build report's); wasm-bindgen and the four licence and notices files
+cmp-identical to native_libraries/<rid>/; GATE.txt of both RIDs without a
+[FAIL].
+After adoption, with THESE programs (linux-x64 host):
+  * the full `LibraryChecker`: 16 of 16 passed;
+  * dotnet build -c Release of src/CodeBrix.WebPlatform.FrontendBuilder.LinuxX64
+    and .LinuxArm64: 0 warnings; each new package in bin/Release (1.0.332.23)
+    carries the new dx (sha256 as above, under tools/frontend-tools/<rid>/);
+  * tests/CodeBrix.WebPlatform.FrontendBuilder.HostTools.Tests: 9 passed, 0
+    failed, 0 skipped (linux-x64; they test the machine they run on - the
+    linux-arm64 package's programs are checked only by the build's qemu run);
+  * the opt-in real-dx class with the adopted dx (no folder variable): 12 of 12
+    (the 11 above and the test that target/ never reaches the stylesheet);
+  * dotnet build of the solution, Debug and Release: 0 warnings; the full
+    dotnet test: 1421, 1409 passed, 12 skipped (the opt-in class), 0 failed.
+Adopted into ../../native_libraries/linux-x64 and linux-arm64 on 2026-11-27
+(dx replaced, executable bit kept, sha256 checked after the copy; wasm-bindgen
+and the four licence and notices files came out byte-identical and were kept;
+dx.provenance.txt rewritten in both folders, wasm-bindgen.provenance.txt
+unchanged).
+Not done:
+  * win-x64, osx-arm64 and osx-x64 are NOT YET REBUILT: they still carry the
+    PREVIOUS dx (adopted 2026-11-24: dioxus-cli 0001 to 0010, splitter 0001
+    to 0006 - none of dioxus-cli 0011 to 0013 or splitter 0007). The
+    FrontendBuilder of this source REFUSES a split build with such a dx (it
+    prints no shared-chunk line), so the owner rebuilds them himself
+    (windows/build.dx.ps1; macos/build.sh arm64 and x64) and adopts them
+    BEFORE the packages are published;
+  * linux-arm64 has no functional gate (qemu is not silicon): none of the new
+    patches was exercised on arm64;
+  * the samples' temporary packages and the published packages were not
+    repacked (a later step).
+
+================================================================================
 ADOPTED 2026-11-24 - the second macOS builds: osx-arm64 and osx-x64 dx with
 the ten dioxus-cli patches and six splitter patches (wasm-bindgen KEPT)
 ================================================================================

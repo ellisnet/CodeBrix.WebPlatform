@@ -1,0 +1,7 @@
+# Every crate comes from the build tools' vendor folder, never from the network
+# (tools/dx-native-tools/README.txt). The path is relative to this folder's parent.
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "../sources/vendor"

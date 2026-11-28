@@ -1,0 +1,189 @@
+diff -ruN a/src/build/web.rs b/src/build/web.rs
+--- a/src/build/web.rs
++++ b/src/build/web.rs
+@@ -50,6 +50,13 @@
+ 
+ impl BuildRequest {
+     pub async fn verify_web_tooling(&self) -> Result<()> {
++        // CodeBrix change: a build with bundle splitting checks DX_WASM_SPLIT_CHUNK_THRESHOLD and
++        // DX_WASM_SPLIT_CHUNK_LIMIT before any work, so that a bad value stops it at once with a
++        // message of its own. See tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt.
++        if self.wasm_split {
++            split_chunk_options()?;
++        }
++
+         // Wasm bindgen
+         let krate_bindgen_version =
+             self.workspace
+@@ -167,11 +174,25 @@
+             let mut glue = wasm_split_cli::MAKE_LOAD_JS.to_string();
+ 
+             // Run the emitter
+-            let splitter = wasm_split_cli::Splitter::new(&original, &bindgened);
++            //
++            // CodeBrix change: the grouping of shared code into chunks comes from the environment
++            // variables DX_WASM_SPLIT_CHUNK_THRESHOLD and DX_WASM_SPLIT_CHUNK_LIMIT (unset: one
++            // chunk, as before; checked at the start of the build, verify_web_tooling), and one
++            // line says what was made. See tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt.
++            let split_options = split_chunk_options()?;
++            let splitter = wasm_split_cli::Splitter::new_with_options(
++                &original,
++                &bindgened,
++                split_options.clone(),
++            );
+             let modules = splitter
+                 .context("Failed to parse wasm for splitter")?
+                 .emit()
+                 .context("Failed to emit wasm split modules")?;
++            tracing::info!(
++                "{}",
++                describe_shared_chunks(modules.chunks.len(), &split_options)
++            );
+ 
+             // Write the chunks that contain shared imports
+             // These will be in the format of chunk_0_modulename.wasm - this is hardcoded in wasm-split
+@@ -865,3 +886,144 @@
+ fn js_string(value: &str) -> String {
+     serde_json::to_string(value).unwrap_or_else(|_| format!("\"{value}\""))
+ }
++
++// CodeBrix change: how a build with bundle splitting groups shared code into chunks (see the calls
++// in `verify_web_tooling` and `bundle_web`, and tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt).
++
++/// The environment variable that sets the size, in bytes of code and data before optimisation,
++/// from which a group of shared code gets a chunk of its own.
++const CHUNK_THRESHOLD_VARIABLE: &str = "DX_WASM_SPLIT_CHUNK_THRESHOLD";
++
++/// The environment variable that sets the most shared chunks, the common chunk included.
++const CHUNK_LIMIT_VARIABLE: &str = "DX_WASM_SPLIT_CHUNK_LIMIT";
++
++/// The start of the line a build with bundle splitting prints about its shared chunks.
++const SHARED_CHUNKS_LINE: &str = "Bundle splitting:";
++
++/// The splitter's options from the environment (CodeBrix change).
++fn split_chunk_options() -> Result<wasm_split_cli::SplitOptions> {
++    split_chunk_options_from(
++        std::env::var(CHUNK_THRESHOLD_VARIABLE),
++        std::env::var(CHUNK_LIMIT_VARIABLE),
++    )
++}
++
++/// The splitter's options from the two variables' values (CodeBrix change): unset or empty, the
++/// splitter's defaults (one chunk for all shared code; the default limit).
++fn split_chunk_options_from(
++    threshold: std::result::Result<String, std::env::VarError>,
++    limit: std::result::Result<String, std::env::VarError>,
++) -> Result<wasm_split_cli::SplitOptions> {
++    let defaults = wasm_split_cli::SplitOptions::default();
++    Ok(wasm_split_cli::SplitOptions {
++        chunk_threshold: positive_whole_number(
++            CHUNK_THRESHOLD_VARIABLE,
++            "the size in bytes from which shared code gets a chunk of its own; unset: one chunk for all shared code",
++            threshold,
++        )?,
++        chunk_limit: positive_whole_number(
++            CHUNK_LIMIT_VARIABLE,
++            "the most shared chunks, the common one included; unset: the splitter's default",
++            limit,
++        )?
++        .unwrap_or(defaults.chunk_limit),
++    })
++}
++
++/// The value of an environment variable that must be a positive whole number, or None when it
++/// is unset or empty (CodeBrix change). Anything else is an error that names the variable, says
++/// what it is for and stops the build before anything is built.
++fn positive_whole_number(
++    variable: &str,
++    meaning: &str,
++    value: std::result::Result<String, std::env::VarError>,
++) -> Result<Option<usize>> {
++    let refuse = |shown: String| {
++        anyhow::anyhow!(
++            "Bundle splitting cannot start: the environment variable {variable} ({meaning}) must be a positive whole number - digits only, at least 1 - or unset; it is {shown}. Nothing was built."
++        )
++    };
++    let value = match value {
++        Ok(value) => value,
++        Err(std::env::VarError::NotPresent) => return Ok(None),
++        Err(std::env::VarError::NotUnicode(value)) => return Err(refuse(format!("{value:?}"))),
++    };
++    let trimmed = value.trim();
++    if trimmed.is_empty() {
++        return Ok(None);
++    }
++    match trimmed.parse::<usize>() {
++        Ok(number) if number >= 1 && trimmed.bytes().all(|b| b.is_ascii_digit()) => Ok(Some(number)),
++        _ => Err(refuse(format!("{value:?}"))),
++    }
++}
++
++/// The line that says how the shared code of a split build was grouped (CodeBrix change).
++fn describe_shared_chunks(chunks: usize, options: &wasm_split_cli::SplitOptions) -> String {
++    let plural = if chunks == 1 { "" } else { "s" };
++    match options.chunk_threshold {
++        Some(threshold) => format!(
++            "{SHARED_CHUNKS_LINE} {chunks} shared chunk{plural} (threshold {threshold} bytes, limit {limit})",
++            limit = options.chunk_limit
++        ),
++        None => format!(
++            "{SHARED_CHUNKS_LINE} {chunks} shared chunk{plural} (no threshold: one chunk for all shared code)"
++        ),
++    }
++}
++
++#[cfg(test)]
++mod split_chunk_option_tests {
++    use super::{describe_shared_chunks, split_chunk_options_from};
++    use std::env::VarError;
++
++    fn set(value: &str) -> Result<String, VarError> {
++        Ok(value.to_string())
++    }
++
++    #[test]
++    fn unset_or_empty_gives_the_splitters_defaults() {
++        let defaults = wasm_split_cli::SplitOptions::default();
++        let unset = split_chunk_options_from(Err(VarError::NotPresent), Err(VarError::NotPresent)).unwrap();
++        assert_eq!(unset, defaults);
++        let empty = split_chunk_options_from(set(""), set("  ")).unwrap();
++        assert_eq!(empty, defaults);
++    }
++
++    #[test]
++    fn positive_whole_numbers_are_taken() {
++        let options = split_chunk_options_from(set("16384"), set(" 3 ")).unwrap();
++        assert_eq!(options.chunk_threshold, Some(16384));
++        assert_eq!(options.chunk_limit, 3);
++        let limit_only = split_chunk_options_from(Err(VarError::NotPresent), set("1")).unwrap();
++        assert_eq!(limit_only.chunk_threshold, None);
++        assert_eq!(limit_only.chunk_limit, 1);
++    }
++
++    #[test]
++    fn anything_else_in_the_threshold_is_refused_with_a_message_of_its_own() {
++        for bad in ["abc", "0", "-5", "+5", "1.5", "16 KiB", "99999999999999999999999"] {
++            let message = split_chunk_options_from(set(bad), Err(VarError::NotPresent)).unwrap_err().to_string();
++            assert!(message.starts_with("Bundle splitting cannot start: the environment variable DX_WASM_SPLIT_CHUNK_THRESHOLD"), "{message}");
++            assert!(message.contains(&format!("{bad:?}")), "{message}");
++            assert!(message.ends_with("Nothing was built."), "{message}");
++        }
++    }
++
++    #[test]
++    fn anything_else_in_the_limit_is_refused_too() {
++        for bad in ["abc", "0", "-1", "two"] {
++            let message = split_chunk_options_from(set("16384"), set(bad)).unwrap_err().to_string();
++            assert!(message.starts_with("Bundle splitting cannot start: the environment variable DX_WASM_SPLIT_CHUNK_LIMIT"), "{message}");
++            assert!(message.contains(&format!("{bad:?}")), "{message}");
++        }
++    }
++
++    #[test]
++    fn the_line_says_how_many_chunks_and_the_settings() {
++        let options = split_chunk_options_from(set("16384"), set("16")).unwrap();
++        assert_eq!(describe_shared_chunks(3, &options), "Bundle splitting: 3 shared chunks (threshold 16384 bytes, limit 16)");
++        let none = split_chunk_options_from(Err(VarError::NotPresent), Err(VarError::NotPresent)).unwrap();
++        assert_eq!(describe_shared_chunks(1, &none), "Bundle splitting: 1 shared chunk (no threshold: one chunk for all shared code)");
++    }
++}

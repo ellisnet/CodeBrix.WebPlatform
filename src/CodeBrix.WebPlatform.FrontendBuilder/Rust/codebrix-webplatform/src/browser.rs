@@ -1,8 +1,18 @@
 //! The browser facilities every platform application needs, reached through the `web-sys` /
-//! `js-sys` Rust bindings: the page's origin and title, the local date and clock, navigation and
-//! sleeping. No JavaScript is written here, and none is generated from text at run time.
+//! `js-sys` Rust bindings: the page's origin and title, the query the page was opened with, the
+//! local date and clock, navigation, sleeping and whether WebGPU has an adapter. No JavaScript is
+//! written here, and none is generated from text at run time.
+
+use std::cell::OnceCell;
+
+use wasm_bindgen::{JsCast, JsValue};
 
 use crate::dates::Date;
+
+thread_local! {
+    /// The query string of the address the page was opened with, once it has been read.
+    static OPENED_QUERY: OnceCell<String> = const { OnceCell::new() };
+}
 
 fn window() -> Option<web_sys::Window> {
     web_sys::window()
@@ -64,6 +74,83 @@ pub fn navigate(path: &str) {
     }
 }
 
+/// Keeps the query string of the address the page was opened with (`window.location.search`,
+/// such as `?view=north&stats`), so that [`opened_query`] and [`opened_query_value`] give it later.
+///
+/// Call it FIRST in `main`, before `dioxus::launch`: when the router starts, it replaces the
+/// browser's address with the route's own form whenever the two differ, and the query of a route
+/// that declares none is lost then. Calling it again changes nothing; the first query is kept.
+pub fn capture_opened_query() {
+    remember_opened_query(current_query);
+}
+
+/// The query string the page was opened with, `?` included (`?view=north&stats`), or empty for
+/// none: what [`capture_opened_query`] kept. Before any capture it captures the current one, which
+/// is the opened one only while the router has not started.
+pub fn opened_query() -> String {
+    remember_opened_query(current_query)
+}
+
+/// One value of the query string the page was opened with ([`opened_query`]), decoded:
+/// `Some("north")` for `?view=north`, `Some("")` for a name given without a value (`?stats`),
+/// `None` when the name is not there.
+pub fn opened_query_value(name: &str) -> Option<String> {
+    crate::query::value(&opened_query(), name)
+}
+
+/// The kept query, reading it with `read` when nothing is kept yet.
+fn remember_opened_query(read: impl FnOnce() -> String) -> String {
+    OPENED_QUERY.with(|kept| kept.get_or_init(read).clone())
+}
+
+/// `window.location.search`. Empty outside a browser.
+fn current_query() -> String {
+    window()
+        .and_then(|w| w.location().search().ok())
+        .unwrap_or_default()
+}
+
+/// Whether the browser gives this page a WebGPU adapter: `navigator.gpu` exists AND
+/// `navigator.gpu.requestAdapter()` resolves to an adapter. `navigator.gpu` alone does not tell:
+/// a browser can have it and still give no adapter (Chrome on Linux without its WebGPU flags).
+///
+/// It asks through `js-sys` reflection, so a page that only wants to know (to show a notice
+/// instead of a WebGPU canvas, or to choose which piece to load) pulls in no WebGPU bindings.
+/// False outside a browser and when the request fails.
+pub async fn has_webgpu_adapter() -> bool {
+    let Some(window) = window() else {
+        return false;
+    };
+    let Some(gpu) = property(window.as_ref(), "navigator").and_then(|n| property(&n, "gpu")) else {
+        return false;
+    };
+    let Some(request) = property(&gpu, "requestAdapter").and_then(|f| f.dyn_into::<js_sys::Function>().ok()) else {
+        return false;
+    };
+    let Some(promise) = request
+        .call0(&gpu)
+        .ok()
+        .and_then(|p| p.dyn_into::<js_sys::Promise>().ok())
+    else {
+        return false;
+    };
+    match wasm_bindgen_futures::JsFuture::from(promise).await {
+        Ok(adapter) => is_present(&adapter),
+        Err(_) => false,
+    }
+}
+
+/// `target[name]`, when it is neither `undefined` nor `null`.
+fn property(target: &JsValue, name: &str) -> Option<JsValue> {
+    js_sys::Reflect::get(target, &JsValue::from_str(name))
+        .ok()
+        .filter(is_present)
+}
+
+fn is_present(value: &JsValue) -> bool {
+    !value.is_undefined() && !value.is_null()
+}
+
 /// Resolves after `ms` milliseconds (a `setTimeout` wrapped in a promise).
 pub async fn sleep_ms(ms: i32) {
     let Some(window) = window() else {
@@ -78,6 +165,13 @@ pub async fn sleep_ms(ms: i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_first_query_kept_is_the_opened_one() {
+        assert_eq!(remember_opened_query(|| "?view=north&stats".to_string()), "?view=north&stats");
+        assert_eq!(remember_opened_query(|| "".to_string()), "?view=north&stats");
+        assert_eq!(remember_opened_query(|| panic!("read again")), "?view=north&stats");
+    }
 
     #[test]
     fn the_clock_text_has_two_digits_for_hours_and_minutes() {

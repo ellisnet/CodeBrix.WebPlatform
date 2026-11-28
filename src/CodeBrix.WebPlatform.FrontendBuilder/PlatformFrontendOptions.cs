@@ -71,6 +71,39 @@ public sealed class PlatformFrontendOptions
     public bool? WasmSplit { get; set; }
 
     /// <summary>
+    /// The default of <see cref="SharedChunkThreshold"/>: 16 KiB of code and data before
+    /// optimisation.
+    /// </summary>
+    public const int DefaultSharedChunkThreshold = 16 * 1024;
+
+    /// <summary>The default of <see cref="SharedChunkLimit"/>: 16 shared chunks, the common chunk included.</summary>
+    public const int DefaultSharedChunkLimit = 16;
+
+    /// <summary>
+    /// With bundle splitting (<see cref="WasmSplit"/>): from what size a group of code and data
+    /// that several pieces share gets a shared chunk of its own, in bytes. The shared code is
+    /// grouped by the exact set of pieces that use it; a group of at least this size becomes a
+    /// chunk that only those pieces fetch, and a smaller group goes into the chunk of a larger
+    /// group that all of its pieces use too, or else into the common chunk. The size is measured
+    /// BEFORE optimisation: the files are shrunk afterwards, and the Brotli copy of a chunk is
+    /// roughly a third of it. <c>null</c> (the default): <see cref="DefaultSharedChunkThreshold"/>.
+    /// At least 1. For ONE chunk with all the shared code, set <see cref="SharedChunkLimit"/> to
+    /// 1. With several applications (<see cref="Applications"/>) this is the value of every
+    /// application that sets none of its own.
+    /// </summary>
+    public int? SharedChunkThreshold { get; set; }
+
+    /// <summary>
+    /// With bundle splitting (<see cref="WasmSplit"/>): the most shared chunks a build makes, the
+    /// common chunk included. When more groups reach <see cref="SharedChunkThreshold"/>, the
+    /// largest keep their own chunks and the others are grouped as the smaller ones are.
+    /// <c>null</c> (the default): <see cref="DefaultSharedChunkLimit"/>. At least 1; 1 gives one
+    /// chunk with all the shared code. With several applications this is the value of every
+    /// application that sets none of its own.
+    /// </summary>
+    public int? SharedChunkLimit { get; set; }
+
+    /// <summary>
     /// The backend's project file (<c>.csproj</c>). When it is set,
     /// <see cref="PlatformFrontend.MaterializeAsync"/> builds it in the Release configuration
     /// before reading it.
@@ -137,6 +170,20 @@ public sealed class PlatformFrontendOptions
     /// <see cref="FrontendBuildResult.Shrunk"/> says what happened.
     /// </summary>
     public bool? Shrink { get; set; }
+
+    /// <summary>
+    /// Whether the shipped WebAssembly keeps its function names (a <c>name</c> section), for a
+    /// PROFILING build: a browser's CPU profile then shows the Rust functions instead of
+    /// <c>wasm-function[N]</c>, and the size report (<see cref="FrontendBuildResult.Sizes"/>)
+    /// breaks each file's code down by crate. <c>false</c> (the default): no names, as always.
+    /// <c>true</c>: dx is started with <c>--keep-names</c>, and a release build with
+    /// <c>--debug-symbols true</c> instead of <c>--debug-symbols false</c>, so wasm-opt keeps
+    /// the names (it keeps the debug information the files carry with them too, which makes
+    /// them larger); a debug build this library shrinks (<see cref="Shrink"/> <c>true</c>) is
+    /// shrunk with <c>--debuginfo</c> instead of <c>--strip-debug</c>. Every application of the
+    /// build is built this way. Do not ship such a build.
+    /// </summary>
+    public bool KeepFunctionNames { get; set; }
 
     /// <summary>
     /// The compressed copies <see cref="PlatformFrontend.BuildAsync(FrontendConfiguration, string, System.Threading.CancellationToken)"/>

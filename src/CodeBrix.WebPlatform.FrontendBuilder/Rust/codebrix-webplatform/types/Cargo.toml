@@ -1,0 +1,18 @@
+# The browser-free part of the shared Rust crate of the CodeBrix.WebPlatform web application
+# platform: the types the client code generated from a backend names (the calendar date). It
+# depends on serde only, so contract types compile without the browser-bound crate around it -
+# in a native program or test, for example. It ships inside the CodeBrix.WebPlatform.FrontendBuilder
+# NuGet package with the shared crate, is written into each application's frontend with it
+# (platform/codebrix-webplatform/types) and is build output there; the shared crate re-exports it,
+# so `codebrix_webplatform::dates` is the same module.
+[package]
+name = "codebrix-webplatform-types"
+version = "1.0.0"
+edition = "2021"
+publish = false
+description = "The browser-free types of the CodeBrix.WebPlatform web application platform's shared crate: calendar dates."
+license = "Apache-2.0"
+
+[dependencies]
+# The version is the platform's: an application's frontend uses the same one.
+serde = "1"
