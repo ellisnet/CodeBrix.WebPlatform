@@ -28,7 +28,7 @@
       ..\libs\WorkSite.Core\WorkSite.Core.csproj and WebPlatformPackageVersion in
       ..\..\build\WorkSite.BuildFrontend\WorkSite.BuildFrontend.csproj.
     -->
-    <PackageReference Include="CodeBrix.WebPlatform.Backend.ApacheLicenseForever" Version="1.0.329.452" />
+    <PackageReference Include="CodeBrix.WebPlatform.Backend.ApacheLicenseForever" Version="1.0.332.326" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.15" />
   </ItemGroup>
 
