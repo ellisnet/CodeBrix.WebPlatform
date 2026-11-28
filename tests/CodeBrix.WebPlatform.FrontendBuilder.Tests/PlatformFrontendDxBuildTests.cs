@@ -149,7 +149,8 @@ public class PlatformFrontendDxBuildTests : IClassFixture<PlatformFrontendDxBuil
         //Assert
         _built.Result.CompilerWarnings.Should().ContainSingle()
             .Which.Should().StartWith("warning: function `unused_helper` is never used\n");
-        _built.Result.CompilerWarnings[0].Should().Contain("src/main.rs");
+        // The compiler writes the path with the platform's separator: src\main.rs on Windows.
+        _built.Result.CompilerWarnings[0].Should().Contain(Path.Combine("src", "main.rs"));
         _built.Result.CompilerWarnings[0].Should().NotContain("\u001b");
     }
 

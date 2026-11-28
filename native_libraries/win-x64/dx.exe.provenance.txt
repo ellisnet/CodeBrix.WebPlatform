@@ -7,24 +7,29 @@ This program was BUILT HERE, from the source in this repository, by:
 on a Windows x64 machine, natively with MSVC (no container). Nothing was
 downloaded during the build: cargo ran --locked --offline against the vendored
 tool crates, and the libgit2 package came from the local NuGet cache. This is
-the SECOND Windows build of dx.exe (the rebuild of 2026-11-24, Pacific time);
+the THIRD Windows build of dx.exe (the rebuild of 2026-11-27, Pacific time);
 the wasm-bindgen.exe beside it is still the first build's (2026-11-22), kept
 because its source did not change (see BUILD-PROVENANCE.txt).
 
 Source            : dioxus-cli 0.7.10 (upstream commit 57d6794ad60b949e5bd8aa282f6f8c3dc97a365e) with the
-                    repository's TEN patches (0007 swaps in the repository's patched copy of the
-                    bundle splitter, tools/dx-native-tools/sources/wasm-split-cli, which carries
-                    SIX patches of its own: 0001 and 0002 fix its call graph, 0003 makes a split
-                    build give the same files from the same source, 0004 keeps the main
+                    repository's THIRTEEN patches (0007 swaps in the repository's patched copy of
+                    the bundle splitter, tools/dx-native-tools/sources/wasm-split-cli, which
+                    carries SEVEN patches of its own: 0001 and 0002 fix its call graph, 0003 makes
+                    a split build give the same files from the same source, 0004 keeps the main
                     module's data whole when a split module's constant lies over it, 0005 lets a
                     split build pass a data symbol of size 0, 0006 puts the code and data several
-                    split modules use into the shared chunk, once; 0008 makes Tailwind's default
-                    output assets/generated/tailwind.css, 0009 gives an unsplit build and
-                    `dx serve` a stand-in __wasm_split.js, 0010 writes the root application's
-                    addresses as "/assets/..." instead of "/./assets/...")
+                    split modules use into the shared chunk, once, 0007 on request groups shared
+                    code into several chunks by the split modules that use it; 0008 makes
+                    Tailwind's default output assets/generated/tailwind.css, 0009 gives an unsplit
+                    build and `dx serve` a stand-in __wasm_split.js, 0010 writes the root
+                    application's addresses as "/assets/..." instead of "/./assets/...", 0011
+                    reads DX_WASM_SPLIT_CHUNK_THRESHOLD / DX_WASM_SPLIT_CHUNK_LIMIT and reports
+                    the shared chunks, 0012 runs wasm-bindgen without --debug for a split release
+                    build, 0013 names a split module's file after its piece)
                     (tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt and
                     vendoring/wasm-split-cli/PATCH-NOTES.txt); every dx command is there - the
-                    same sources as the linux-x64 and linux-arm64 programs adopted 2026-11-24
+                    same sources as the linux-x64, linux-arm64, osx-arm64 and osx-x64 programs
+                    adopted 2026-11-27
 Folder            : tools/dx-native-tools/sources (TOOL_SOURCES_DIR in
                     tools/dx-native-tools/linux/pins.env), read-only
 libgit2-sys       : the declarations-only stand-in tools/dx-native-tools/sources/
@@ -36,16 +41,16 @@ LINKS libgit2     : libgit2 1.9.7 as a SHARED LIBRARY, git2-49e408b.dll, linked 
                     57e17c62ced01f96fd88dd041baee399f3102b09682ef7ad2dd1baa4c75dfd2d; the package
                     has no import library: dumpbin /exports -> .def, 954 exports -> lib /def
                     /machine:x64; import library sha256
-                    d37d4f49ec7490d6d17d5771002cfb541829efda2e56dbf21e6c98311ae4ed01). dx.exe DOES
-                    NOT START without the DLL beside it or on PATH (measured: exit 0xC0000135,
-                    STATUS_DLL_NOT_FOUND); it is NOT in this folder - it reaches a build through
-                    that package
+                    ecb4d378e74cbbee3414f64206d8f034ec76e8cf07fc91609fed6e307f7c8214 this time -
+                    lib.exe stamps it, so it differs per run). dx.exe DOES NOT START without the
+                    DLL beside it or on PATH (measured: exit 0xC0000135, STATUS_DLL_NOT_FOUND);
+                    it is NOT in this folder - it reaches a build through that package
 --version         : "dioxus 0.7.10 (57d6794)" (with the DLL's folder on PATH)
 
-Built             : 2026-11-25 06:02:34 UTC (2026-11-24, Pacific time)
-Build time        : dx 714s, compiled FROM SCRATCH (the build root's cargo target folder,
-                    C:\cbx-dx\target, was deleted before the run); about 18 minutes end to end
-                    with wasm-bindgen (114s) and the gate
+Built             : 2026-11-28 03:49:29 UTC (2026-11-27, Pacific time)
+Build time        : dx 705s, compiled FROM SCRATCH (the build root's cargo target folder,
+                    C:\cbx-dx\target, was deleted before the run); about 19 minutes end to end
+                    with wasm-bindgen (156s) and the gate
 Build host        : Windows 11 Pro 10.0.26300, x64, Dell Precision 7770
                     (12th Gen Intel Core i7-12850HX)
 MSVC              : Visual Studio Professional 2026 18.12.1, MSVC 14.52.37025
@@ -60,16 +65,16 @@ Command           : cargo +1.100.0 build --release --locked --offline --target
                     profile, -C target-feature=+crt-static -C link-arg=/PDBALTPATH:%_PDB%
 
 File             : dx.exe
-Size             : 68323840 bytes  <- the shipped file (no debug information in it: the
+Size             : 68497920 bytes  <- the shipped file (no debug information in it: the
                    .pdb stays in the build folder)
-Size (gzip -9 -n): 22447896 bytes (measured on the build machine, Git for Windows' gzip 1.14)
-SHA256           : 6f700e30414cc98f638b5e5a2e0596333de4380dd391cfd52ed28178641fcc49
-                   replaces sha256 664e819f... (ADOPTED 2026-11-22, the first Windows build)
+Size (gzip -9 -n): 22515330 bytes (measured on the build machine, Git for Windows' gzip 1.14)
+SHA256           : 4a112a7d12d3f84e8e6b957d417e6dafc23ab14ee453cb2792c3629dd9c31441
+                   replaces sha256 6f700e30... (ADOPTED 2026-11-24, the second Windows build)
 PE               : PE32+, machine 8664 (x64), the C runtime linked statically (no Visual C++
                    Redistributable needed)
 Imports          : advapi32.dll api-ms-win-core-synch-l1-2-0.dll bcrypt.dll bcryptprimitives.dll
                    combase.dll git2-49e408b.dll kernel32.dll ntdll.dll shell32.dll user32.dll
-                   userenv.dll ws2_32.dll (the same set as the first build's)
+                   userenv.dll ws2_32.dll (the same set as the earlier builds')
 
 Gate              : PE machine x64; imports only operating-system DLLs and git2-49e408b.dll
                     (combase.dll on the allow-list since the first build), no VCRUNTIME/MSVCP/
@@ -79,16 +84,18 @@ Gate              : PE machine x64; imports only operating-system DLLs and git2-
                     present; the functional gate, run by build.dx.ps1: the new dx.exe + the new
                     build's wasm-bindgen.exe built a scratch copy of the WorkSite frontend with
                     WasmShrink 1.0.323.365's wasm-opt and the Tailwind of
-                    CodeBrix.WebPlatform.Styling.Tailwind4.WindowsX64 1.0.327.82 (.wasm 1,838,015
-                    bytes, 19 site files; index.html links "/assets/...", not "/./assets/...":
-                    patch 0010), a DX_SKIP_WASM_OPT release build with no wasm-opt succeeded
-                    (.wasm 2,086,096 bytes), and `dx new` from a local git template with no git
-                    program on PATH succeeded - ALL PASSED. The script makes no comparison with
-                    the earlier win-x64 programs. The WorkSite frontend's generated folders
-                    (platform\, src\generated\, .cargo\, assets\generated\) came from an archive
-                    materialized on the Linux side in the current layout (windows/README.txt,
-                    step 2) (tools/dx-native-tools/output/win-x64/GATE.txt at the time of the
-                    build)
+                    CodeBrix.WebPlatform.Styling.Tailwind4.WindowsX64 1.0.327.82 (.wasm 1,837,796
+                    bytes, 19 site files; index.html links "/assets/..."), a DX_SKIP_WASM_OPT
+                    release build with no wasm-opt succeeded (.wasm 2,085,890 bytes), and `dx new`
+                    from a local git template with no git program on PATH succeeded - ALL PASSED.
+                    The script makes no comparison with the earlier win-x64 programs. The WorkSite
+                    frontend was materialized on this machine just before, by its build program's
+                    `generate`, against local Release builds of this repository's nine packages
+                    (1.0.332.228), so its shared crate and the platform's crates were the current
+                    ones (tools/dx-native-tools/output/win-x64/GATE.txt at the time of the build).
+                    The WorkSite gate is UNSPLIT, so the new split patches (splitter 0007,
+                    dioxus-cli 0011 to 0013) were exercised by the opt-in real-dx tests after
+                    adoption (BUILD-PROVENANCE.txt)
 
 LICENCE AND NOTICES FILES BESIDE THIS ONE:
   LICENSE-Dioxus.txt              dx's licence (Apache-2.0 text; dioxus-cli is

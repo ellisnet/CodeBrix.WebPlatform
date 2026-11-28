@@ -122,12 +122,15 @@ FOLDER MAP
                           fetch-libgit2.sh and functional-gate.sh (both
                           shared with macOS), README.txt
   windows/                win-x64: build.dx.ps1, README.txt. RUN
-                          2026-11-22 (built and adopted) and 2026-11-24
-                          (dx.exe rebuilt from the current sources and
-                          adopted; wasm-bindgen.exe kept)
+                          2026-11-22 (built and adopted), 2026-11-24 and
+                          2026-11-27 (dx.exe rebuilt and adopted, the last
+                          time from the current sources; wasm-bindgen.exe
+                          kept)
   macos/                  osx-arm64 and osx-x64: build.sh, README.txt. RUN
-                          2026-11-22 (both slices built and adopted; not yet
-                          rebuilt from the current sources)
+                          2026-11-22 (both slices built and adopted),
+                          2026-11-24 and 2026-11-27 (dx rebuilt and adopted,
+                          the last time from the current sources;
+                          wasm-bindgen kept)
   output/                 build results (git-ignored). Disposable. Includes
                           output/libgit2/ (the libgit2 package and, per RID,
                           the library under its link name and loader name)
@@ -182,9 +185,9 @@ THE FIVE RUNTIME IDENTIFIERS
   -----------  ---------------------------  -----------------------  -------
   linux-x64    linux/build.sh x64           dx, wasm-bindgen         BUILT
   linux-arm64  linux/build.sh arm64 (cross) dx, wasm-bindgen         BUILT
-  win-x64      windows/build.dx.ps1         dx.exe, wasm-bindgen.exe BEHIND
-  osx-arm64    macos/build.sh arm64         dx, wasm-bindgen         BEHIND
-  osx-x64      macos/build.sh x64           dx, wasm-bindgen         BEHIND
+  win-x64      windows/build.dx.ps1         dx.exe, wasm-bindgen.exe BUILT
+  osx-arm64    macos/build.sh arm64         dx, wasm-bindgen         BUILT
+  osx-x64      macos/build.sh x64           dx, wasm-bindgen         BUILT
 
 BUILT = built here from the current sources, gated and adopted into
 ../../native_libraries/<rid>/. BEHIND = built and adopted, but from older
@@ -201,19 +204,12 @@ patches (BUILD-PROVENANCE.txt):
                            under Rosetta 2, not yet run on an Intel Mac.
                            wasm-bindgen (unpatched, its source unchanged) is
                            the first build's, of 2026-11-22
-  win-x64                  NOT YET REBUILT - it carries the PREVIOUS dx.exe
-                           (dioxus-cli 0001 to 0010, splitter 0001 to 0006:
-                           built 2026-11-24 on the owner's Windows x64
-                           machine, once), without dioxus-cli 0011 to 0013
-                           and splitter 0007. The FrontendBuilder of this
-                           repository refuses a split build with such a dx
-                           (it prints no shared-chunk line), so the owner
-                           rebuilds it (windows/build.dx.ps1) and adopts it
-                           BEFORE the packages are published.
-                           wasm-bindgen.exe (unpatched, its source unchanged)
-                           is the first build's, of 2026-11-22
-All five platforms' packages carry their programs (win-x64's the previous
-dx.exe, above).
+  win-x64                  ALL of them (dx.exe): built 2026-11-27 (Pacific
+                           time) on the owner's Windows x64 machine, once,
+                           from scratch. wasm-bindgen.exe (unpatched, its
+                           source unchanged) is the first build's, of
+                           2026-11-22
+All five platforms' packages carry their programs.
 
 NOT SUPPORTED, and neither built nor scripted: linux-riscv64, win-arm64,
 android-*.

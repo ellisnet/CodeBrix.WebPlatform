@@ -12,10 +12,102 @@ its section here is updated from that build's output/<rid>/BUILD-INFO.txt and
 the <program>.provenance.txt beside it is written from the same values.
 
 ================================================================================
+ADOPTED 2026-11-27 - the third Windows build: win-x64 dx.exe with the thirteen
+dioxus-cli patches and seven splitter patches (wasm-bindgen.exe KEPT)
+================================================================================
+(The time below is UTC, which was already 2026-11-28; the build ran on the
+evening of 2026-11-27, Pacific time.)
+What: windows/build.dx.ps1 run again, unchanged, on the owner's Windows x64
+machine (Dell Precision 7770, 12th Gen Intel Core i7-12850HX, Windows 11 Pro
+10.0.26300; Visual Studio Professional 2026 18.12.1, MSVC 14.52.37025;
+rustc/cargo 1.100.0 through rustup, `cargo +1.100.0`), from the same tool
+sources as the Linux and macOS programs adopted the same day (the two blocks
+below): dioxus-cli 0.7.10 with its thirteen patches, the splitter with its
+seven, wasm-bindgen-cli 0.2.130 unpatched; --locked --offline, nothing
+downloaded. Run, and dx.exe adopted, at the owner's request.
+Before the run:
+  * the WorkSite frontend was MATERIALIZED AGAIN, here, as on the Mac: its
+    copy (from the Linux side's archive of 2026-11-24) predated the platform
+    crate's changes of 2026-11-27, and the samples name the published
+    1.0.329.452, which predates them too. This repository's nine packages
+    were built locally (dotnet build -c Release) and the sample's build
+    program run against them (in samples\WorkSite: `dotnet run --project
+    build\WorkSite.BuildFrontend -p:WebPlatformPackageVersion=1.0.332.228
+    -p:RestoreAdditionalProjectSources=<a scratch folder holding the nine>
+    -- generate`): "wrote 0 generated file(s) and 8 shared-crate file(s), the
+    crates, the cargo configuration"; the shared crate's Rust sources then
+    equal to src/CodeBrix.WebPlatform.FrontendBuilder/Rust/codebrix-webplatform
+    (diff -r: only that folder's repository-only .cargo/ and Cargo.lock and
+    the copy's generated .gitignore differ); no tracked file changed. The
+    FIRST local build crossed a UTC minute: its packages were named
+    1.0.332.225 but four of them named their CodeBrix dependencies
+    1.0.332.226, and the restore failed (NU1102). Those packages, and the two
+    the failed restore had put in the NuGet cache, were deleted; the build was
+    run again from the start of a minute (03:48:00 UTC, 11 s): all nine
+    1.0.332.228, their dependencies too;
+  * the build root's cargo target folder, C:\cbx-dx\target, was deleted, so
+    dx and wasm-bindgen were compiled from scratch.
+Run (log C:\cbx-dx\build-run-2026-11-27.log; output/win-x64/GATE.txt,
+BUILD-INFO.txt):
+  2026-11-28 03:49:29 UTC - dx.exe ADOPTED. dx 705s, wasm-bindgen 156s, both
+                          from scratch; about 19 minutes end to end with the
+                          gate. Every gate check passed, the functional gate
+                          included (WasmShrink 1.0.323.365's wasm-opt, Styling
+                          1.0.327.82's tailwindcss.exe; .wasm 1,837,796 bytes
+                          shrunk, 2,085,890 with DX_SKIP_WASM_OPT, 19 site
+                          files, `dx new` passed). The WorkSite gate is
+                          unsplit, so it does not exercise the new patches;
+                          the opt-in real-dx tests below do.
+             dx.exe           68,497,920 bytes (gzip -9 -n 22,515,330, Git for
+                              Windows' gzip 1.14), sha256
+                              4a112a7d12d3f84e8e6b957d417e6dafc23ab14ee453cb2792c3629dd9c31441
+                              replaces sha256 6f700e30... (ADOPTED 2026-11-24);
+                              the same imports as the earlier builds'
+             wasm-bindgen.exe (built, gated, NOT adopted) sha256
+                              b8a13bb3156361ab1232520d1d56177ff6f595dbc80841f5d370f60fa8d5d8ff
+WASM-BINDGEN.EXE KEPT (the owner's decision, as before): its source, its
+Cargo.lock and the vendored crates are unchanged; the new build again differs
+from the kept one (a92e2294...) in 37 bytes, the linker's build stamps and the
+9 characters of this repository's HEAD commit (now "4dec9e5f...") - the second
+Windows block below says why.
+After adoption, with THESE programs (win-x64 host, .NET 10.0.404):
+  * dotnet build -c Release of src/CodeBrix.WebPlatform.FrontendBuilder.WindowsX64:
+    0 warnings; its package in bin/Release (1.0.332.250, a local build, not
+    published) carries the new dx.exe (4a112a7d...) and the kept
+    wasm-bindgen.exe (a92e2294...) under tools/frontend-tools/win-x64/;
+  * tests/CodeBrix.WebPlatform.FrontendBuilder.HostTools.Tests: 9 passed, 0
+    failed, 0 skipped;
+  * the opt-in real-dx class (CODEBRIX_WEBPLATFORM_DX_BUILD_TESTS=1,
+    PlatformFrontendDxBuildTests, with the adopted dx.exe): 11 of 12 passed in
+    406 s, among them all five split tests (several shared chunks with a
+    threshold of one byte, the same files byte for byte when built twice,
+    exactly one chunk with a limit of one, none of an earlier build's files
+    shipped, piece files named after their pieces) and the Tailwind test that
+    needs dioxus-cli 0008. The ONE failure was the test's, not dx's:
+    BuildAsync_reports_the_compiler_warnings_that_dx_only_logs expected the
+    warning to contain "src/main.rs", and on Windows rustc writes the path
+    "src\main.rs" (the warning was found and reported; only the separator
+    differed). The test now expects Path.Combine("src", "main.rs") (the
+    owner's GO); run again: 12 of 12 passed in 420 s.
+Adopted into ../../native_libraries/win-x64 on 2026-11-27: dx.exe replaced
+(sha256 checked after the copy), dx.exe.provenance.txt rewritten;
+wasm-bindgen.exe, wasm-bindgen.exe.provenance.txt and the four licence and
+notices files unchanged (the rebuild's four files were byte-identical).
+Not done:
+  * reproducibility: built once (a Windows build is not byte-identical across
+    runs anyway: the linker's build stamps);
+  * tools/dx-native-tools/split-check was not run on Windows; the split
+    builds were checked by the real-dx tests only;
+  * the samples' temporary packages and the published packages were not
+    repacked (a later step).
+
+================================================================================
 ADOPTED 2026-11-27 - the third macOS builds: osx-arm64 and osx-x64 dx with the
 thirteen dioxus-cli patches and seven splitter patches (wasm-bindgen KEPT;
 win-x64 NOT YET REBUILT)
 ================================================================================
+(win-x64's dx.exe was rebuilt from the same sources and adopted later the same
+evening - the block above.)
 (The times below are UTC, which was already 2026-11-28; the builds ran on the
 evening of 2026-11-27, Pacific time.)
 What: macos/build.sh run again, unchanged, on the owner's Apple Silicon Mac
@@ -103,6 +195,8 @@ several shared chunks, the split release glue without --debug, piece files
 named after their pieces: linux-x64 and linux-arm64 (win-x64, osx-arm64 and
 osx-x64 NOT YET REBUILT)
 ================================================================================
+(osx-arm64 and osx-x64's dx and win-x64's dx.exe were rebuilt from the same
+sources and adopted that evening - the two blocks above.)
 (The times below are UTC, which was already 2026-11-28; the builds ran in the
 afternoon of 2026-11-27, Pacific time.)
 Why - what an application developer gains, one line per new patch
@@ -349,6 +443,8 @@ ADOPTED 2026-11-24 - the second Windows build: win-x64 dx.exe with the ten
 dioxus-cli patches and six splitter patches (wasm-bindgen.exe KEPT; osx-arm64
 and osx-x64 NOT YET REBUILT)
 ================================================================================
+(dx.exe REPLACED on 2026-11-27 by the third Windows build - the block at the
+top. The wasm-bindgen.exe of 2026-11-22 is still kept.)
 (The time below is UTC, which was already 2026-11-25; the build ran on the
 evening of 2026-11-24, Pacific time.)
 What: windows/build.dx.ps1 run again, unchanged since the first Windows build,
@@ -1542,7 +1638,7 @@ Adopted          : YES, 2026-11-18, into native_libraries/linux-arm64/; dx REPLA
 
 
 ================================================================================
-win-x64                          BUILT 2026-11-22, dx.exe REBUILT 2026-11-24
+win-x64                          BUILT 2026-11-22, dx.exe REBUILT 2026-11-27
 ================================================================================
 Route            : windows/build.dx.ps1, natively with MSVC: rustup 1.100.0,
                    x86_64-pc-windows-msvc, static CRT (+crt-static),
@@ -1555,20 +1651,20 @@ Route            : windows/build.dx.ps1, natively with MSVC: rustup 1.100.0,
 Build host       : Dell Precision 7770, 12th Gen Intel Core i7-12850HX,
                    Windows 11 Pro 10.0.26300, Visual Studio Professional 2026
                    18.12.1 (MSVC 14.52.37025)
-Built            : dx.exe 2026-11-25 06:02:34 UTC (the rebuild of 2026-11-24,
-                   Pacific time: ten dioxus-cli patches, six splitter
+Built            : dx.exe 2026-11-28 03:49:29 UTC (the rebuild of 2026-11-27,
+                   Pacific time: thirteen dioxus-cli patches, seven splitter
                    patches, from scratch); wasm-bindgen.exe 2026-11-23
                    02:46:42 UTC (the first build, kept). Each built once
-dx.exe           : 68323840 bytes (gzip -9 -n 22447896), sha256
-                   6f700e30414cc98f638b5e5a2e0596333de4380dd391cfd52ed28178641fcc49
+dx.exe           : 68497920 bytes (gzip -9 -n 22515330), sha256
+                   4a112a7d12d3f84e8e6b957d417e6dafc23ab14ee453cb2792c3629dd9c31441
 wasm-bindgen.exe : 6388224 bytes (gzip -9 -n 2451970), sha256
                    a92e229416245f934cedc7de130d0207421c70efe9cfc44f08897acabb333eb5
-Gate             : every check passed, the functional gate included, in both
-                   builds
+Gate             : every check passed, the functional gate included, in all
+                   three builds
 Adopted          : YES, 2026-11-22, into native_libraries/win-x64/; dx.exe
-                   REPLACED 2026-11-24 (the ADOPTED sections at the top; the
-                   newest is first); HostTools tests passed on the Windows
-                   machine (9 of 9) after each
+                   REPLACED 2026-11-24 and 2026-11-27 (the ADOPTED sections at
+                   the top; the newest is first); HostTools tests passed on
+                   the Windows machine (9 of 9) after each
 
 ================================================================================
 osx-arm64                         BUILT 2026-11-22, dx REBUILT 2026-11-27

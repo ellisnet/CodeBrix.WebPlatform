@@ -15,8 +15,8 @@ tools/dx-native-tools/windows - building dx.exe and wasm-bindgen.exe for win-x64
     The libgit2 import library step, and dx.exe refusing to start without the
     DLL (0xC0000135), worked as written. It has been run with PowerShell 7.6
     only, not with Windows PowerShell 5.1. The script
-    builds whatever the tool sources hold (today ten dioxus-cli patches,
-    six splitter patches); nothing in it names the patches.
+    builds whatever the tool sources hold (today thirteen dioxus-cli
+    patches, seven splitter patches); nothing in it names the patches.
     RUN AGAIN 2026-11-24, unchanged, from scratch: dx.exe rebuilt with all
     ten dioxus-cli patches and six splitter patches, every gate check passed
     (the functional gate included), and dx.exe adopted
@@ -27,7 +27,22 @@ tools/dx-native-tools/windows - building dx.exe and wasm-bindgen.exe for win-x64
     build.rs picks up with `git rev-parse HEAD` because the vendored sources
     lie inside this repository (that block says where they end up). The
     WorkSite frontend's generated folders came from an archive materialized
-    on the Linux side (step 2 below). <<<
+    on the Linux side (step 2 below).
+    RUN AGAIN 2026-11-27, unchanged, from scratch: dx.exe rebuilt with all
+    thirteen dioxus-cli patches and seven splitter patches, every gate check
+    passed, and dx.exe adopted (../BUILD-PROVENANCE.txt, ADOPTED 2026-11-27
+    - the third Windows build); wasm-bindgen.exe kept again. This time the
+    WorkSite frontend was materialized HERE (step 2): this repository's nine
+    packages built locally in Release (all nine of ONE version - a build
+    that crosses a UTC minute gives packages whose dependencies name the
+    next minute's version, and restore fails; build again then), then, in
+    samples\WorkSite:
+        dotnet run --project build\WorkSite.BuildFrontend
+            -p:WebPlatformPackageVersion=<that version>
+            -p:RestoreAdditionalProjectSources=<a folder holding the nine>
+            -- generate
+    The WorkSite gate is unsplit; the new split patches were checked with
+    the opt-in real-dx tests (PlatformFrontendDxBuildTests). <<<
 
 WHAT THIS IS
 --------------------------------------------------------------------------------
