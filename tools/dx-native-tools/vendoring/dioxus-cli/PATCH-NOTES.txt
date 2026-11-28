@@ -52,10 +52,9 @@ The patches, in the order they apply:
                                             function the split point calls
 
 Which adopted programs carry them (BUILD-PROVENANCE.txt): linux-x64,
-linux-arm64, osx-arm64 and osx-x64 carry all thirteen (adopted 2026-11-27).
-win-x64 (dx.exe) carries 0001 to 0010 (adopted 2026-11-24) and must be
-rebuilt for 0011 to 0013 (and the splitter's 0007) before the packages are
-published: the FrontendBuilder refuses a split build with a dx without 0011.
+linux-arm64, osx-arm64, osx-x64 and win-x64 (dx.exe) carry all thirteen
+(adopted 2026-11-27). The FrontendBuilder refuses a split build with a dx
+without 0011.
 
 
 0001-image-crate-encoders.patch
