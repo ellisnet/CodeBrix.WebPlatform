@@ -72,8 +72,8 @@ chunks, the split file names and the split release build's glue (dioxus-cli
 patches 0011 to 0013 are its dx side).
 
 Which adopted programs carry them (BUILD-PROVENANCE.txt; dx links this
-splitter): linux-x64 and linux-arm64 carry all seven (adopted 2026-11-27);
-win-x64, osx-arm64 and osx-x64 carry 0001 to 0006 (their dx rebuilds of
+splitter): linux-x64, linux-arm64, osx-arm64 and osx-x64 carry all seven
+(adopted 2026-11-27); win-x64 carries 0001 to 0006 (its dx.exe rebuild of
 2026-11-24) and must be rebuilt for 0007 before the packages are published.
 
 

@@ -6,14 +6,15 @@ This program was BUILT HERE, from the source in this repository, by:
 
 on an Apple Silicon Mac, natively with the Xcode SDK (no container). Nothing
 was downloaded during the build: cargo ran --locked --offline against the
-vendored tool crates. This is the SECOND macOS build of dx (2026-11-24,
-Pacific time); it replaces the first, of 2026-11-22.
+vendored tool crates. This is the THIRD macOS build of dx (2026-11-27,
+Pacific time); it replaces the second, of 2026-11-24.
 
 Source            : dioxus-cli 0.7.10 (upstream commit 57d6794ad60b949e5bd8aa282f6f8c3dc97a365e) with the
-                    repository's TEN patches (0007 swaps in the patched bundle splitter,
-                    tools/dx-native-tools/sources/wasm-split-cli, with SIX patches of its own;
-                    0008 writes the Tailwind output into assets/generated/, 0009 the split
-                    loader of an unsplit build, 0010 the site root's addresses without "./")
+                    repository's THIRTEEN patches (0007 swaps in the patched bundle splitter,
+                    tools/dx-native-tools/sources/wasm-split-cli, with SEVEN patches of its own;
+                    0011 the shared-chunk options and their report line, 0012 a split release
+                    build's glue without --debug, 0013 split module files named after their
+                    pieces; splitter 0007 several shared chunks)
                     (tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt and
                     vendoring/wasm-split-cli/PATCH-NOTES.txt); every dx command is there
 Folder            : tools/dx-native-tools/sources (TOOL_SOURCES_DIR in
@@ -29,8 +30,8 @@ LINKS libgit2     : libgit2 1.9.7 as a SHARED LIBRARY, load command
                     reaches a build through that package
 --version         : "dioxus 0.7.10 (57d6794)" (with the library on DYLD_LIBRARY_PATH)
 
-Built             : 2026-11-25 06:34:38 UTC
-Build time        : dx 146s, wasm-bindgen 26s (cargo, from scratch)
+Built             : 2026-11-28 02:56:00 UTC
+Build time        : dx 146s, wasm-bindgen 26s (cargo)
 Build host        : Mac mini, macOS 27.2.1 (26B131), arm64, Apple M2 Pro
 Xcode             : SDK macosx 27.2, Apple clang version 21.0.0 (clang-2100.4.1.1)
 Toolchain         : rustc 1.100.0 (0ef1bc386 2026-11-09)
@@ -45,18 +46,18 @@ Command           : cargo +1.100.0 build --release --locked --offline --target
                     then strip, then codesign --force --sign - (ad hoc)
 
 File             : dx
-Size (stripped)  : 56127632 bytes  <- the shipped file
-Size (gzip -9 -n): 21588188 bytes
-SHA256           : 1a61d76323031af016e6d56fa37eaec1cd668266c7c24b72ba9c3eac4d77eb66
-Replaces         : sha256 e806aa06... (ADOPTED 2026-11-22)
+Size (stripped)  : 56099872 bytes  <- the shipped file
+Size (gzip -9 -n): 21612747 bytes
+SHA256           : 129a839c4a8bd611be3f2a4cdc7226ed542d7968f366908075430935af0656bf
+Replaces         : sha256 1a61d763... (ADOPTED 2026-11-24)
 Mach-O           : thin x64 slice (x86_64-apple-darwin), ad-hoc signed
 Links            : /usr/lib/libSystem.B.dylib, CoreFoundation, CoreServices, Security,
                     Foundation (/System/Library/Frameworks), /usr/lib/libobjc.A.dylib,
                     /usr/lib/libiconv.2.dylib, @rpath/libgit2-49e408b.1.9.dylib
-Reproducible     : a second build from scratch, in a fresh build root, gave this
-                    program with only its 16-byte Mach-O UUID different (and so the
-                    ad-hoc signature, which covers the file); everything else byte for
-                    byte. dx does not carry this repository's commit.
+Reproducible     : built once. The second macOS build (2026-11-24) showed that a
+                    rebuild from scratch gives the same program apart from its 16-byte
+                    Mach-O UUID (and so the ad-hoc signature, which covers the file); dx
+                    does not carry this repository's commit.
 
 Gate              : thin slice, only system libraries and
                     @rpath/libgit2-49e408b.1.9.dylib (no Homebrew, no
@@ -70,11 +71,10 @@ Gate              : thin slice, only system libraries and
                     linux/functional-gate.sh with WasmShrink 1.0.323.365's osx-x64 wasm-opt
                     and Styling 1.0.327.82's osx-x64 tailwindcss v4.3.5): the new dx +
                     wasm-bindgen built a scratch copy of the WorkSite frontend (.wasm
-                    1,844,232 bytes, 19 site files), a DX_SKIP_WASM_OPT release build with
-                    no wasm-opt succeeded (.wasm 2,091,121 bytes), and `dx new` from a local
-                    git template with no git program on PATH succeeded - ALL PASSED but ONE,
-                    the comparison with today's tools, which differed ONLY by patch 0010's
-                    root addresses, exactly as for osx-arm64 (the .wasm byte-identical)
+                    1,844,091 bytes, 19 site files), today's tools (the dx of 2026-11-24)
+                    built the same copy BYTE-IDENTICALLY, a DX_SKIP_WASM_OPT release build
+                    with no wasm-opt succeeded (.wasm 2,090,938 bytes), and `dx new` from a
+                    local git template with no git program on PATH succeeded - ALL PASSED
                     (tools/dx-native-tools/output/osx-x64/GATE.txt and FUNCTIONAL-GATE.txt
                     at the time of the build)
 

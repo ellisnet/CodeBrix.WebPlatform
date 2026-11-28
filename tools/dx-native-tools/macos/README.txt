@@ -25,7 +25,15 @@ tools/dx-native-tools/macos - building dx and wasm-bindgen for osx-arm64 and
     "/assets/..." instead of "/./assets/..."), as on linux-x64; it compares
     against these programs from now on. A rebuild from scratch gives the
     same programs apart from the 16-byte Mach-O UUID (and so the ad-hoc
-    signature): macOS builds are not byte-identical across runs. <<<
+    signature): macOS builds are not byte-identical across runs.
+    REBUILT AGAIN 2026-11-27 (Pacific time): dx for both slices, with all
+    thirteen dioxus-cli and seven splitter patches, built, gated and adopted
+    (../BUILD-PROVENANCE.txt, the newest ADOPTED block); wasm-bindgen KEPT
+    from 2026-11-22. The WorkSite frontend was materialized again first,
+    with this repository's own packages built locally (the archive's copy
+    predated the platform crate's changes of 2026-11-27). Every gate check
+    passed on both slices, the comparison with today's tools included
+    (byte-identical: the new patches change only split builds). <<<
 
 WHAT THIS IS
 --------------------------------------------------------------------------------

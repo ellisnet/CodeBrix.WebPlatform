@@ -6,14 +6,15 @@ This program was BUILT HERE, from the source in this repository, by:
 
 on an Apple Silicon Mac, natively with the Xcode SDK (no container). Nothing
 was downloaded during the build: cargo ran --locked --offline against the
-vendored tool crates. This is the SECOND macOS build of dx (2026-11-24,
-Pacific time); it replaces the first, of 2026-11-22.
+vendored tool crates. This is the THIRD macOS build of dx (2026-11-27,
+Pacific time); it replaces the second, of 2026-11-24.
 
 Source            : dioxus-cli 0.7.10 (upstream commit 57d6794ad60b949e5bd8aa282f6f8c3dc97a365e) with the
-                    repository's TEN patches (0007 swaps in the patched bundle splitter,
-                    tools/dx-native-tools/sources/wasm-split-cli, with SIX patches of its own;
-                    0008 writes the Tailwind output into assets/generated/, 0009 the split
-                    loader of an unsplit build, 0010 the site root's addresses without "./")
+                    repository's THIRTEEN patches (0007 swaps in the patched bundle splitter,
+                    tools/dx-native-tools/sources/wasm-split-cli, with SEVEN patches of its own;
+                    0011 the shared-chunk options and their report line, 0012 a split release
+                    build's glue without --debug, 0013 split module files named after their
+                    pieces; splitter 0007 several shared chunks)
                     (tools/dx-native-tools/vendoring/dioxus-cli/PATCH-NOTES.txt and
                     vendoring/wasm-split-cli/PATCH-NOTES.txt); every dx command is there
 Folder            : tools/dx-native-tools/sources (TOOL_SOURCES_DIR in
@@ -29,9 +30,8 @@ LINKS libgit2     : libgit2 1.9.7 as a SHARED LIBRARY, load command
                     reaches a build through that package
 --version         : "dioxus 0.7.10 (57d6794)" (with the library on DYLD_LIBRARY_PATH)
 
-Built             : 2026-11-25 06:27 UTC (the first run; build.sh's record run at 06:36:46 UTC
-                    reused cargo's output and gave this program byte for byte)
-Build time        : dx 157s, wasm-bindgen 27s (cargo, from scratch)
+Built             : 2026-11-28 02:52:56 UTC
+Build time        : dx 157s, wasm-bindgen 30s (cargo; 366s with the gate)
 Build host        : Mac mini, macOS 27.2.1 (26B131), arm64, Apple M2 Pro
 Xcode             : SDK macosx 27.2, Apple clang version 21.0.0 (clang-2100.4.1.1)
 Toolchain         : rustc 1.100.0 (0ef1bc386 2026-11-09)
@@ -46,18 +46,18 @@ Command           : cargo +1.100.0 build --release --locked --offline --target
                     then strip, then codesign --force --sign - (ad hoc)
 
 File             : dx
-Size (stripped)  : 52243600 bytes  <- the shipped file
-Size (gzip -9 -n): 19621536 bytes
-SHA256           : e678f184101f688f7e8e00ccc074b667ab820e9d9f418a235d4c4e174fc81fbd
-Replaces         : sha256 388dc981... (ADOPTED 2026-11-22)
+Size (stripped)  : 52343472 bytes  <- the shipped file
+Size (gzip -9 -n): 19645577 bytes
+SHA256           : 5ec3970cba2fcf7d5ba336f9ed88ccb0a4c91cc5addbc9b90ffda7fe848864df
+Replaces         : sha256 e678f184... (ADOPTED 2026-11-24)
 Mach-O           : thin arm64 slice (aarch64-apple-darwin), ad-hoc signed
 Links            : /usr/lib/libSystem.B.dylib, CoreFoundation, CoreServices, Security,
                     Foundation (/System/Library/Frameworks), /usr/lib/libobjc.A.dylib,
                     /usr/lib/libiconv.2.dylib, @rpath/libgit2-49e408b.1.9.dylib
-Reproducible     : a second build from scratch, in a fresh build root, gave this
-                    program with only its 16-byte Mach-O UUID different (and so the
-                    ad-hoc signature, which covers the file); everything else byte for
-                    byte. dx does not carry this repository's commit.
+Reproducible     : built once. The second macOS build (2026-11-24) showed that a
+                    rebuild from scratch gives the same program apart from its 16-byte
+                    Mach-O UUID (and so the ad-hoc signature, which covers the file); dx
+                    does not carry this repository's commit.
 
 Gate              : thin slice, only system libraries and
                     @rpath/libgit2-49e408b.1.9.dylib (no Homebrew, no
@@ -66,18 +66,13 @@ Gate              : thin slice, only system libraries and
                     licence and notices files present;
                     RUN natively on the build host (macOS 27.2.1, Apple M2 Pro),
                     with the library on DYLD_LIBRARY_PATH, and WITHOUT it (does not start);
-                    the functional gate (WasmShrink 1.0.323.365's wasm-opt, Styling
-                    1.0.327.82's tailwindcss v4.3.5): the new dx + wasm-bindgen built a
-                    scratch copy of the WorkSite frontend (.wasm 1,844,151 bytes, 19 site
-                    files, the index.html links "/assets/...", not "/./assets/"), a
-                    DX_SKIP_WASM_OPT release build with no wasm-opt succeeded (.wasm
-                    2,091,038 bytes), and `dx new` from a local git template with no git
-                    program on PATH succeeded - ALL PASSED but ONE, the comparison with
-                    today's tools, which differed ONLY by patch 0010's root addresses
-                    ("/./assets/..." became "/assets/..." in index.html's two lines and the
-                    glue file's .wasm address, so the glue file's hashed name): with that
-                    normalised every site file is identical, the .wasm byte for byte
-                    (THE FUNCTIONAL GATE'S EXPECTED DIFFERENCE in BUILD-PROVENANCE.txt)
+                    the functional gate, run by build.sh (WasmShrink 1.0.323.365's wasm-opt,
+                    Styling 1.0.327.82's tailwindcss v4.3.5): the new dx + wasm-bindgen
+                    built a scratch copy of the WorkSite frontend (.wasm 1,843,982 bytes,
+                    19 site files), today's tools (the dx of 2026-11-24) built the same
+                    copy BYTE-IDENTICALLY, a DX_SKIP_WASM_OPT release build with no
+                    wasm-opt succeeded (.wasm 2,090,843 bytes), and `dx new` from a local
+                    git template with no git program on PATH succeeded - ALL PASSED
                     (tools/dx-native-tools/output/osx-arm64/GATE.txt and FUNCTIONAL-GATE.txt
                     at the time of the build)
 

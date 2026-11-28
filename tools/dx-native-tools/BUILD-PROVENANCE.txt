@@ -12,6 +12,92 @@ its section here is updated from that build's output/<rid>/BUILD-INFO.txt and
 the <program>.provenance.txt beside it is written from the same values.
 
 ================================================================================
+ADOPTED 2026-11-27 - the third macOS builds: osx-arm64 and osx-x64 dx with the
+thirteen dioxus-cli patches and seven splitter patches (wasm-bindgen KEPT;
+win-x64 NOT YET REBUILT)
+================================================================================
+(The times below are UTC, which was already 2026-11-28; the builds ran on the
+evening of 2026-11-27, Pacific time.)
+What: macos/build.sh run again, unchanged, on the owner's Apple Silicon Mac
+(Mac mini, Apple M2 Pro, macOS 27.2.1 (26B131); Xcode SDK macosx 27.2, Apple
+clang 21.0.0; rustc/cargo 1.100.0 through rustup, `cargo +1.100.0`), from the
+same tool sources as the Linux programs adopted the same day (the block
+below): dioxus-cli 0.7.10 with its thirteen patches, the splitter with its
+seven, wasm-bindgen-cli 0.2.130 unpatched; --locked --offline, nothing
+downloaded. Run, and dx adopted, at the owner's request.
+Before the run: the WorkSite frontend was MATERIALIZED AGAIN. Its copy (from
+the Linux side's archive of 2026-11-24) predated the platform crate's changes
+of 2026-11-27 (browser.rs, query.rs, the new types/ sub-crate, entries added
+to the crate lock), and the samples name the published 1.0.329.452, which
+predates them too. So this repository's nine packages were built locally
+(dotnet build -c Release: 1.0.332.165) into a scratch folder and the sample's
+build program run against them (`generate` with
+-p:WebPlatformPackageVersion=1.0.332.165 and RestoreAdditionalProjectSources
+naming that folder; no tracked file changed): 8 shared-crate files and the
+crates rewritten; the shared crate then equal to
+src/CodeBrix.WebPlatform.FrontendBuilder/Rust/codebrix-webplatform (but for
+its generated .gitignore).
+Runs (output/osx-<arch>/GATE.txt, BUILD-INFO.txt, FUNCTIONAL-GATE.txt):
+  osx-arm64  2026-11-28 02:52:56 UTC - dx ADOPTED. dx 157s, wasm-bindgen 30s,
+             366s with the gate. Every check PASSED, the functional gate
+             included (WasmShrink 1.0.323.365's wasm-opt, Styling 1.0.327.82's
+             tailwindcss): .wasm 1,843,982 bytes shrunk, 2,090,843 with
+             DX_SKIP_WASM_OPT, 19 site files, `dx new` passed, and today's
+             tools (the dx of 2026-11-24) built the same copy BYTE-IDENTICALLY
+             - no difference this time: the new patches change only split
+             builds.
+             dx  52,343,472 bytes (gzip -9 -n 19,645,577), sha256
+                 5ec3970cba2fcf7d5ba336f9ed88ccb0a4c91cc5addbc9b90ffda7fe848864df
+                 replaces sha256 e678f184... (ADOPTED 2026-11-24)
+             wasm-bindgen (built, gated, NOT adopted) sha256
+                 bc1da398b70d18ca458bd058c2cf2ceb3a25842434a1b58d046042c1531e0896
+  osx-x64    2026-11-28 02:56:00 UTC - dx ADOPTED. dx 146s, wasm-bindgen 26s.
+             Gate passed every check (--version under Rosetta 2); the
+             functional gate, which build.sh skips for x64 on Apple Silicon,
+             run by hand from an x86_64 shell (arch -x86_64 /bin/bash
+             linux/functional-gate.sh, osx-x64 wasm-opt and tailwindcss):
+             every check PASSED (.wasm 1,844,091 bytes shrunk, 2,090,938 with
+             DX_SKIP_WASM_OPT, 19 site files, `dx new` passed, today's tools
+             BYTE-IDENTICAL). NOT run on an Intel Mac.
+             dx  56,099,872 bytes (gzip -9 -n 21,612,747), sha256
+                 129a839c4a8bd611be3f2a4cdc7226ed542d7968f366908075430935af0656bf
+                 replaces sha256 1a61d763... (ADOPTED 2026-11-24)
+             wasm-bindgen (built, gated, NOT adopted) sha256
+                 cad347d5453294e2e9a3ceb4c3e9146bae4b21ad69f77dbc3b5a8eeabd31803d
+WASM-BINDGEN KEPT (the owner's decision, as before): wasm-bindgen-cli's
+source, its Cargo.lock and the 965 vendored crates are unchanged since
+2026-11-22; a new build differs from the kept one only in the Mach-O UUID,
+the signature and the embedded commit (the second macOS block below).
+After adoption, with THESE programs (osx-arm64 host, .NET 10.0.404):
+  * dotnet build -c Release of src/CodeBrix.WebPlatform.FrontendBuilder.MacOSArm64
+    and .MacOSX64: their packages in bin/Release (1.0.332.181, local builds,
+    not published) carry the new dx (5ec3970c..., 129a839c...) and the kept
+    wasm-bindgen (3c786214..., b6a1cb7b...) under tools/frontend-tools/osx-<arch>/;
+  * tests/CodeBrix.WebPlatform.FrontendBuilder.HostTools.Tests: 9 passed, 0
+    failed, 0 skipped (osx-arm64; not run under an x64 .NET SDK);
+  * the opt-in real-dx class (CODEBRIX_WEBPLATFORM_DX_BUILD_TESTS=1) with the
+    adopted dx: 12 of 12;
+  * the full `LibraryChecker`: 16 of 16 passed.
+Adopted into ../../native_libraries/osx-arm64 and osx-x64 on 2026-11-27: dx
+replaced (executable bit kept, sha256 checked after the copy, signature
+verified), dx.provenance.txt rewritten; wasm-bindgen,
+wasm-bindgen.provenance.txt and the four licence and notices files unchanged
+(the rebuild's four files were byte-identical).
+Not done:
+  * reproducibility: each slice built once (the 2026-11-24 builds showed that
+    a macOS rebuild differs only in the Mach-O UUID);
+  * tools/dx-native-tools/split-check was not run with these programs (the
+    Linux block's split builds of the ApplicationSplitter sales application);
+    the WorkSite gate is unsplit, so on macOS the new patches are exercised
+    only by the opt-in real-dx class;
+  * osx-x64 has still not been run on an Intel Mac, nor its HostTools tests
+    under an x64 .NET SDK;
+  * win-x64 is NOT YET REBUILT (dx.exe of 2026-11-24, without dioxus-cli 0011
+    to 0013 and splitter 0007);
+  * the samples' temporary packages and the published packages were not
+    repacked (a later step).
+
+================================================================================
 ADOPTED 2026-11-27 - thirteen dioxus-cli patches and seven splitter patches:
 several shared chunks, the split release glue without --debug, piece files
 named after their pieces: linux-x64 and linux-arm64 (win-x64, osx-arm64 and
@@ -1485,7 +1571,7 @@ Adopted          : YES, 2026-11-22, into native_libraries/win-x64/; dx.exe
                    machine (9 of 9) after each
 
 ================================================================================
-osx-arm64                         BUILT 2026-11-22, dx REBUILT 2026-11-24
+osx-arm64                         BUILT 2026-11-22, dx REBUILT 2026-11-27
 ================================================================================
 Route            : macos/build.sh arm64, natively on the Apple Silicon Mac:
                    rustup 1.100.0, aarch64-apple-darwin,
@@ -1496,26 +1582,27 @@ Route            : macos/build.sh arm64, natively on the Apple Silicon Mac:
                    and without libgit2), linux/functional-gate.sh
 Build host       : Mac mini, Apple M2 Pro, macOS 27.2.1 (26B131), Xcode SDK
                    macosx 27.2, Apple clang 21.0.0
-Built            : dx 2026-11-25 06:27 UTC (the rebuild of 2026-11-24, Pacific
-                   time: ten dioxus-cli patches, six splitter patches);
-                   wasm-bindgen 2026-11-22 19:26:49 UTC (the first build,
-                   kept). A rebuild from scratch matches apart from the
-                   Mach-O UUID
-dx               : 52243600 bytes (gzip -9 -n 19621536), sha256
-                   e678f184101f688f7e8e00ccc074b667ab820e9d9f418a235d4c4e174fc81fbd
+Built            : dx 2026-11-28 02:52:56 UTC (the rebuild of 2026-11-27,
+                   Pacific time: thirteen dioxus-cli patches, seven splitter
+                   patches; once); wasm-bindgen 2026-11-22 19:26:49 UTC (the
+                   first build, kept). A rebuild from scratch matches apart
+                   from the Mach-O UUID (shown 2026-11-24)
+dx               : 52343472 bytes (gzip -9 -n 19645577), sha256
+                   5ec3970cba2fcf7d5ba336f9ed88ccb0a4c91cc5addbc9b90ffda7fe848864df
 wasm-bindgen     : 5169072 bytes (gzip -9 -n 2069624), sha256
                    3c786214dd190fb13f4be1ccef141e3b13a5f259906f06171599f59bca4241df
-Gate             : every check passed in both builds, the functional gate
-                   included - in the rebuild apart from the comparison with
-                   the programs of 2026-11-22, which differed only by patch
-                   0010's root addresses (the ADOPTED section at the top)
+Gate             : every check passed in every build, the functional gate
+                   included - in the 2026-11-24 rebuild apart from the
+                   comparison with the programs of 2026-11-22, which differed
+                   only by patch 0010's root addresses; in the 2026-11-27
+                   rebuild with no exception (byte-identical)
 Adopted          : YES, 2026-11-22, into native_libraries/osx-arm64/; dx
-                   REPLACED 2026-11-24 (the ADOPTED sections at the top; the
-                   newest is first); HostTools tests passed on the Mac after
-                   each (7 of 7, then 9 of 9)
+                   REPLACED 2026-11-24 and 2026-11-27 (the ADOPTED sections
+                   at the top; the newest is first); HostTools tests passed
+                   on the Mac after each (7 of 7, then 9 of 9, then 9 of 9)
 
 ================================================================================
-osx-x64                           BUILT 2026-11-22, dx REBUILT 2026-11-24
+osx-x64                           BUILT 2026-11-22, dx REBUILT 2026-11-27
 ================================================================================
 Route            : macos/build.sh x64 - as osx-arm64 with x86_64-apple-darwin
                    and MACOSX_DEPLOYMENT_TARGET=10.15, cross-built on the Apple
@@ -1527,18 +1614,19 @@ Route            : macos/build.sh x64 - as osx-arm64 with x86_64-apple-darwin
                    LIBGIT2_DIR and GATE_RID=osx-x64 (the osx-x64 tailwindcss
                    is found from GATE_RID)
 Build host       : as osx-arm64
-Built            : dx 2026-11-25 06:34:38 UTC (the rebuild of 2026-11-24,
-                   Pacific time); wasm-bindgen 2026-11-22 19:30:08 UTC (the
-                   first build, kept). A rebuild from scratch matches apart
-                   from the Mach-O UUID
-dx               : 56127632 bytes (gzip -9 -n 21588188), sha256
-                   1a61d76323031af016e6d56fa37eaec1cd668266c7c24b72ba9c3eac4d77eb66
+Built            : dx 2026-11-28 02:56:00 UTC (the rebuild of 2026-11-27,
+                   Pacific time; once); wasm-bindgen 2026-11-22 19:30:08 UTC
+                   (the first build, kept). A rebuild from scratch matches
+                   apart from the Mach-O UUID (shown 2026-11-24)
+dx               : 56099872 bytes (gzip -9 -n 21612747), sha256
+                   129a839c4a8bd611be3f2a4cdc7226ed542d7968f366908075430935af0656bf
 wasm-bindgen     : 5584400 bytes (gzip -9 -n 2311729), sha256
                    b6a1cb7b8e6131789739523dd105e646347a3b9fea1ef725b428b76dc2f89ee1
-Gate             : every check passed in both builds (functional gate under
-                   Rosetta 2 as above; in the rebuild apart from the expected
-                   patch 0010 difference); NOT yet run on an Intel Mac, and the
-                   HostTools tests not yet run under an x64 .NET SDK
+Gate             : every check passed in every build (functional gate under
+                   Rosetta 2 as above; in the 2026-11-24 rebuild apart from
+                   the expected patch 0010 difference); NOT yet run on an
+                   Intel Mac, and the HostTools tests not yet run under an
+                   x64 .NET SDK
 Adopted          : YES, 2026-11-22, into native_libraries/osx-x64/; dx
-                   REPLACED 2026-11-24
+                   REPLACED 2026-11-24 and 2026-11-27
 ================================================================================

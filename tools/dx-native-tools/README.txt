@@ -195,29 +195,25 @@ patches (BUILD-PROVENANCE.txt):
   linux-x64, linux-arm64   ALL of them: dioxus-cli 0001 to 0013, splitter
                            0001 to 0007 - built 2026-11-27 on the x86_64
                            laptop, each RID twice, byte-identical
-  win-x64, osx-arm64,      NOT YET REBUILT - they carry the PREVIOUS dx,
-  osx-x64                  without dioxus-cli 0011 to 0013 and splitter 0007.
-                           The FrontendBuilder of this repository refuses a
-                           split build with such a dx (it prints no shared-
-                           chunk line), so the owner rebuilds them
-                           (windows/build.dx.ps1, macos/build.sh arm64 and
-                           x64) and adopts them BEFORE the packages are
-                           published. What they carry now:
-  win-x64                  dioxus-cli 0001 to 0010, splitter 0001 to 0006
-                           (dx.exe): built 2026-11-24 on the
-                           owner's Windows x64 machine, once; wasm-bindgen.exe
-                           (unpatched, its source unchanged) is the first
-                           build's, of 2026-11-22
-  osx-arm64, osx-x64       the same as win-x64 (dx): built 2026-11-24 (Pacific time)
-                           on the owner's Apple Silicon Mac, each slice once
-                           plus a reproducibility build (identical apart from
-                           the Mach-O UUID); osx-x64's functional gate run
-                           from an x86_64 shell under Rosetta 2, not yet run
-                           on an Intel Mac. wasm-bindgen (unpatched, its
-                           source unchanged) is the first build's, of
-                           2026-11-22
-All five platforms' packages carry their programs (three of them the
-previous dx, above).
+  osx-arm64, osx-x64       ALL of them (dx): built 2026-11-27 (Pacific time)
+                           on the owner's Apple Silicon Mac, each slice once;
+                           osx-x64's functional gate run from an x86_64 shell
+                           under Rosetta 2, not yet run on an Intel Mac.
+                           wasm-bindgen (unpatched, its source unchanged) is
+                           the first build's, of 2026-11-22
+  win-x64                  NOT YET REBUILT - it carries the PREVIOUS dx.exe
+                           (dioxus-cli 0001 to 0010, splitter 0001 to 0006:
+                           built 2026-11-24 on the owner's Windows x64
+                           machine, once), without dioxus-cli 0011 to 0013
+                           and splitter 0007. The FrontendBuilder of this
+                           repository refuses a split build with such a dx
+                           (it prints no shared-chunk line), so the owner
+                           rebuilds it (windows/build.dx.ps1) and adopts it
+                           BEFORE the packages are published.
+                           wasm-bindgen.exe (unpatched, its source unchanged)
+                           is the first build's, of 2026-11-22
+All five platforms' packages carry their programs (win-x64's the previous
+dx.exe, above).
 
 NOT SUPPORTED, and neither built nor scripted: linux-riscv64, win-arm64,
 android-*.
